@@ -1,0 +1,22 @@
+# Secrets y credenciales
+.env
+.env.local
+.env.production
+
+# Dependencias
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# Docker — datos persistentes (nunca en repo)
+data/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

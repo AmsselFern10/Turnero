@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel de Mesa - Atención de Matrículas</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes pulse-ring {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.04); opacity: 0.85; }
+    }
+    .llamando-mesa {
+      animation: pulse-ring 1.2s ease-in-out infinite;
+      border-color: #3b82f6 !important;
+      background-color: #eff6ff !important;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-900 font-sans min-h-screen flex flex-col justify-between p-6 select-none">
+
+  <!-- BARRA SUPERIOR CON "MESABOX" E INFORMACIÓN DE LA MESA -->
+  <header class="max-w-4xl mx-auto w-full flex flex-wrap justify-between items-center bg-white border border-slate-200 rounded-3xl p-4 sm:px-6 shadow-sm mb-6 gap-4">
+    
+    <!-- 1. MESABOX: IDENTIDAD CLARA DEL OPERADOR Y SU MESA -->
+    <div class="flex items-center space-x-3.5">
+      <div id="mesaIconBox" class="w-12 h-12 bg-blue-600 text-white rounded-2xl flex flex-col items-center justify-center font-mono shadow-sm">
+        <span class="text-[9px] font-bold uppercase leading-none opacity-80">MESA</span>
+        <span id="headerNumMesa" class="text-xl font-black leading-none mt-0.5">3</span>
+      </div>
+
+      <div>
+        <div class="flex items-center space-x-2">
+          <span id="headerNombreUsuario" class="text-sm font-black text-slate-900">Lic. Roberto Morales</span>
+          <span class="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full">Operador</span>
+        </div>
+        <p id="subtextEstadoMesa" class="text-xs text-slate-400 font-medium flex items-center space-x-1.5 mt-0.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>Ventanilla en servicio • Lista para llamar</span>
+        </p>
+      </div>
+    </div>
+
+    <!-- 2. BOTONES DE CONTROL DE SESIÓN Y CAMBIO DE MESA -->
+    <div class="flex items-center space-x-2.5">
+      <button onclick="abrirModalAsignacion()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition flex items-center space-x-1.5">
+        <span>🔄</span>
+        <span>Cambiar Mesa / Usuario</span>
+      </button>
+
+      <button id="btnToggleMesa" onclick="toggleEstadoMesa()" class="px-3.5 py-2 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 font-bold text-xs rounded-xl border border-slate-200 transition flex items-center space-x-1.5">
+        <span id="btnMesaIcon">⛔</span>
+        <span id="btnMesaText">Pausar Mesa</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- PANTALLA CUANDO LA MESA ESTÁ PAUSADA / CERRADA -->
+  <div id="panelCerrado" class="hidden max-w-4xl mx-auto w-full my-auto py-16 bg-white border-2 border-dashed border-slate-300 rounded-3xl text-center shadow-sm">
+    <div class="text-5xl mb-3">☕</div>
+    <h2 class="text-2xl font-black text-slate-800">MESA EN PAUSA</h2>
+    <p class="text-sm text-slate-400 max-w-md mx-auto my-3">
+      En la pantalla de TV pública tu mesa figura como <strong>CERRADA</strong>. Los alumnos no se acercarán mientras estés ausente.
+    </p>
+    <button onclick="toggleEstadoMesa()" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-sm rounded-xl shadow transition">
+      🟢 Reanudar Atención en Mesa
+    </button>
+  </div>
+
+  <!-- CUERPO PRINCIPAL DEL OPERADOR (ACTIVO) -->
+  <main id="panelAbierto" class="max-w-4xl mx-auto w-full my-auto flex flex-col gap-5">
+
+    <!-- SECCIÓN DE LOS 2 TURNOS: EN TU MESA Y PRÓXIMO EN FILA -->
+    <div class="grid grid-cols-1 md:grid-cols-12 gap-5">
+      
+      <!-- 1. TURNO ACTUAL EN ESTA MESA (7 Columnas) -->
+      <div id="cardTurnoActual" class="md:col-span-7 bg-white border-2 border-slate-200 rounded-3xl p-7 shadow-sm flex flex-col justify-between text-center min-h-[300px] transition-all">
+        
+        <div class="flex justify-between items-center">
+          <span class="text-xs font-black uppercase tracking-widest text-slate-400">Atendiendo en tu Mesa</span>
+          <span id="badgeEstadoTurno" class="text-xs font-black uppercase px-3.5 py-1 bg-blue-100 text-blue-800 rounded-full border border-blue-200 animate-pulse">
+            📢 LLAMANDO ALUMNO...
+          </span>
+        </div>
+
+        <div class="my-4">
+          <div id="displayTurnoActual" class="text-7xl xl:text-8xl font-black font-mono text-slate-900 tracking-tight">
+            LU-018
+          </div>
+          <p id="textoEstadoTurno" class="text-xs font-semibold text-slate-400 mt-2">
+            Sonando en la TV pública • Esperando que el alumno tome asiento
+          </p>
+        </div>
+
+        <!-- CRONÓMETRO DISCRETO Y CONTADOR -->
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between text-xs">
+          <div class="flex items-center space-x-2">
+            <span id="timerDot" class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <span class="font-semibold text-slate-500">Tiempo de atención:</span>
+            <span id="timerDisplay" class="font-mono font-bold text-slate-800 text-sm">00:15</span>
+          </div>
+          <div class="text-slate-400 font-medium">
+            Atendidos hoy: <span id="contadorAtendidos" class="font-black text-slate-800 font-mono">14</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 2. PRÓXIMO EN FILA GENERAL (5 Columnas) -->
+      <div class="md:col-span-5 bg-white border border-slate-200 rounded-3xl p-7 shadow-sm flex flex-col justify-between text-center min-h-[300px]">
+        
+        <div class="flex justify-between items-center">
+          <span class="text-xs font-black uppercase tracking-widest text-slate-400">Siguiente en Fila</span>
+          <span class="text-[10px] font-black uppercase px-2.5 py-0.5 bg-slate-100 text-slate-600 rounded-full">
+            ⏳ En espera
+          </span>
+        </div>
+
+        <div class="my-4">
+          <div id="displayProximoFila" class="text-5xl xl:text-6xl font-black font-mono text-blue-600 tracking-tight">
+            LU-019
+          </div>
+          <p class="text-xs text-slate-400 mt-2 font-medium">
+            El alumno que entrará en cuanto desocupes tu mesa
+          </p>
+        </div>
+
+        <div class="text-xs text-blue-900 bg-blue-50 border border-blue-100 rounded-xl p-3 text-center font-medium">
+          ⚡ Asignación por <strong>orden estricto</strong> al dar clic en "Listo y Siguiente"
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- BOTONERA DE ACCIÓN RÁPIDA: LOS 3 BOTONES PRINCIPALES -->
+    <div class="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        
+        <!-- BOTÓN 1: ATENDIENDO (Verde) -->
+        <button id="btnAtendiendo" onclick="accionAtendiendo()" class="py-5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white rounded-2xl font-black text-base shadow-sm transition flex flex-col items-center justify-center space-y-1">
+          <span class="text-2xl">👤</span>
+          <span>ATENDIENDO</span>
+          <span class="text-[11px] font-medium opacity-85">(El alumno ya se sentó)</span>
+        </button>
+
+        <!-- BOTÓN 2: LLAMAR DE NUEVO (Gris/Ámbar) -> Dispara la card superior de la TV -->
+        <button id="btnRellamar" onclick="accionLlamarDeNuevo()" class="py-5 px-4 bg-slate-100 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-800 text-slate-800 border border-slate-200 rounded-2xl font-black text-base shadow-sm transition flex flex-col items-center justify-center space-y-1">
+          <span class="text-2xl">🔔</span>
+          <span>LLAMAR DE NUEVO</span>
+          <span class="text-[11px] font-medium text-slate-400">(2º aviso en card superior de TV)</span>
+        </button>
+
+        <!-- BOTÓN 3: LISTO Y LLAMAR AL SIGUIENTE (Azul principal) -->
+        <button id="btnListoYSiguiente" onclick="accionListoYSiguiente()" class="py-5 px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-2xl font-black text-base shadow-md transition flex flex-col items-center justify-center space-y-1">
+          <span class="text-2xl">🚀</span>
+          <span>LISTO Y SIGUIENTE</span>
+          <span class="text-[11px] font-medium opacity-85">(Llama al <span id="tagBotonSig">LU-019</span>)</span>
+        </button>
+
+      </div>
+
+      <!-- BARRA INFERIOR DE ACCIONES SECUNDARIAS: ATENDER REZAGADO Y SALA VACÍA -->
+      <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+        
+        <!-- BOTÓN ATENDER REZAGADO (EL ALUMNO QUE VOLVIÓ TARDE) -->
+        <button onclick="abrirModalRezagado()" class="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold rounded-xl transition flex items-center space-x-2">
+          <span>↩️</span>
+          <span>Atender Alumno Rezagado</span>
+        </button>
+
+        <!-- BOTÓN SALA VACÍA -->
+        <div class="space-x-2">
+          <button id="btnSalaVacia" onclick="toggleSalaVacia()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition">
+            💤 Poner Mesa en "Disponible / Sala Vacía"
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- NOTIFICACIÓN FLOTANTE NO INVASIVA TRAS 1 MINUTO DE LLAMADO -->
+  <div id="alertaUnMinuto" class="fixed bottom-20 right-6 hidden max-w-sm bg-white border-2 border-amber-400 p-4 rounded-2xl shadow-xl space-y-2 z-40 transition-all">
+    <div class="flex items-center space-x-2 text-amber-800 font-black text-xs">
+      <span class="text-base">⏳</span>
+      <span>1 MINUTO DESDE EL LLAMADO</span>
+    </div>
+    <p class="text-xs text-slate-600 font-medium">
+      Ha pasado 1 minuto. Recuerda presionar <strong>"Atendiendo"</strong> si el estudiante ya llegó, o <strong>"Llamar de nuevo"</strong> si no se ha presentado.
+    </p>
+    <div class="flex justify-end space-x-2 pt-1 text-[11px] font-bold">
+      <button onclick="cerrarAlertaUnMinuto()" class="text-slate-400 hover:text-slate-600 px-2 py-1">Descartar</button>
+      <button onclick="accionLlamarDeNuevo(); cerrarAlertaUnMinuto();" class="bg-amber-100 text-amber-800 px-3 py-1 rounded-lg">Rellamar</button>
+    </div>
+  </div>
+
+  <!-- MODAL: ATENDER REZAGADO -->
+  <div id="modalRezagado" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+    <div class="bg-white border border-slate-200 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+      <div class="flex justify-between items-center pb-3 border-b border-slate-100">
+        <div>
+          <h3 class="text-sm font-black text-slate-900 uppercase">Atender Estudiante Rezagado</h3>
+          <p class="text-xs text-slate-400">Para alumnos que fueron llamados antes pero llegaron con retraso</p>
+        </div>
+        <button onclick="cerrarModalRezagado()" class="text-slate-400 hover:text-slate-600 font-bold text-xl">✕</button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Código del Turno Rezagado:</label>
+          <input type="text" id="inputTurnoRezagado" placeholder="Ej: LU-012" class="w-full bg-slate-50 border border-slate-300 rounded-2xl p-3 font-mono font-black text-base text-slate-900 outline-none uppercase focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div class="p-3 bg-blue-50 border border-blue-100 rounded-xl text-blue-800 text-[11px] font-medium">
+          💡 Este número se asignará a tu mesa de inmediato sin alterar la fila general de los demás alumnos.
+        </div>
+      </div>
+
+      <div class="flex justify-end space-x-2 pt-3 border-t border-slate-100 text-xs">
+        <button onclick="cerrarModalRezagado()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl">Cancelar</button>
+        <button onclick="confirmarTurnoRezagado()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow">
+          Atender Este Número
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE ASIGNACIÓN: "¿QUÉ MESA SOS Y QUÉ USUARIO?" -->
+  <div id="modalAsignacion" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+    <div class="bg-white border border-slate-200 rounded-3xl p-7 max-w-lg w-full shadow-2xl space-y-5">
+      <div class="flex justify-between items-center pb-3 border-b border-slate-100">
+        <div>
+          <h3 class="text-base font-black text-slate-900 uppercase tracking-tight">Asignación de Mesa de Trabajo</h3>
+          <p class="text-xs text-slate-400">Identifica quién eres y en qué mesa te vas a sentar hoy</p>
+        </div>
+        <button onclick="cerrarModalAsignacion()" class="text-slate-400 hover:text-slate-600 font-bold text-xl">✕</button>
+      </div>
+
+      <div>
+        <label class="block text-xs font-black uppercase text-slate-500 mb-2">1. ¿Qué usuario eres?</label>
+        <select id="modalSelectUsuario" class="w-full bg-slate-50 border border-slate-300 rounded-2xl p-3 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="Lic. Roberto Morales">Lic. Roberto Morales (Operador)</option>
+          <option value="Lic. Ana Gómez">Lic. Ana Gómez (Operador)</option>
+          <option value="Carlos Mendoza">Carlos Mendoza (Operador)</option>
+          <option value="Pedro Vargas">Pedro Vargas (Operador)</option>
+          <option value="Lucía Ramírez">Lucía Ramírez (Operador)</option>
+          <option value="Sofía Torres">Sofía Torres (Operador)</option>
+        </select>
+      </div>
+
+      <div>
+        <div class="flex justify-between items-center mb-2">
+          <label class="text-xs font-black uppercase text-slate-500">2. ¿En qué mesa te vas a sentar?</label>
+          <span class="text-[10px] text-slate-400 font-medium">Las mesas ocupadas aparecen bloqueadas</span>
+        </div>
+        <div id="grillaMesasModal" class="grid grid-cols-4 gap-2.5"></div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-100 flex justify-end space-x-2 text-xs">
+        <button onclick="cerrarModalAsignacion()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl">Cancelar</button>
+        <button onclick="guardarAsignacion()" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl shadow transition">
+          Confirmar e Ingresar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST GENERAL -->
+  <div id="toast" class="fixed bottom-6 right-6 hidden bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl text-xs font-bold flex items-center space-x-2.5 z-50">
+    <span id="toastIcon" class="text-base">📢</span>
+    <span id="toastMsg">Acción ejecutada</span>
+  </div>
+
+  <script>
+    let mesaActualId = 3;
+    let usuarioActualNombre = "Lic. Roberto Morales";
+
+    let estadoMesasGlobal = [
+      { id: 1, ocupadaPor: "Lic. Ana Gómez" },
+      { id: 2, ocupadaPor: "Carlos Mendoza" },
+      { id: 3, ocupadaPor: "Lic. Roberto Morales" },
+      { id: 4, ocupadaPor: "Pedro Vargas" },
+      { id: 5, ocupadaPor: null },
+      { id: 6, ocupadaPor: "Jorge Morales" },
+      { id: 7, ocupadaPor: null },
+      { id: 8, ocupadaPor: null }
+    ];
+
+    let numTurnoActual = 18;
+    let numProximoTurno = 19;
+    let estadoTurno = "LLAMANDO";
+    let mesaAbierta = true;
+    let salaVacia = false;
+    let atendidosContador = 14;
+
+    let timerSegundos = 15;
+    let timerInterval = null;
+    let bloqueadoDobleClic = false;
+    let tiempoLlamadoActivo = 0; // Contador desde que se llamó al alumno
+
+    function accionAtendiendo() {
+      if (!mesaAbierta || salaVacia) return;
+
+      estadoTurno = "ATENDIENDO";
+      const badge = document.getElementById('badgeEstadoTurno');
+      badge.textContent = "ALUMNO EN ATENCIÓN";
+      badge.className = "text-xs font-black uppercase px-3.5 py-1 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-200";
+
+      document.getElementById('textoEstadoTurno').textContent = "Realizando trámite de matrícula • Mesa ocupada";
+      document.getElementById('cardTurnoActual').classList.remove('llamando-mesa');
+
+      cerrarAlertaUnMinuto();
+      mostrarToast("Estado: Alumno sentado en mesa", "👤");
+    }
+
+    function accionLlamarDeNuevo() {
+      if (!mesaAbierta || salaVacia) return;
+      mostrarToast(`Rellamando LU-0${numTurnoActual} en la card superior de la TV...`, "🔔");
+      const badge = document.getElementById('badgeEstadoTurno');
+      badge.textContent = "🔔 RE-LLAMANDO (2º AVISO)";
+      badge.className = "text-xs font-black uppercase px-3.5 py-1 bg-amber-100 text-amber-800 rounded-full border border-amber-200 animate-pulse";
+      tiempoLlamadoActivo = 0; // Reiniciar contador de espera
+    }
+
+    function accionListoYSiguiente() {
+      if (!mesaAbierta) return;
+      if (bloqueadoDobleClic) return;
+      bloqueadoDobleClic = true;
+      setTimeout(() => { bloqueadoDobleClic = false; }, 1000);
+
+      if (salaVacia) toggleSalaVacia();
+
+      atendidosContador++;
+      document.getElementById('contadorAtendidos').textContent = atendidosContador;
+
+      numTurnoActual = numProximoTurno;
+      numProximoTurno++;
+
+      document.getElementById('displayTurnoActual').textContent = `LU-0${numTurnoActual}`;
+      document.getElementById('displayProximoFila').textContent = `LU-0${numProximoTurno}`;
+      document.getElementById('tagBotonSig').textContent = `LU-0${numProximoTurno}`;
+
+      estadoTurno = "LLAMANDO";
+      const badge = document.getElementById('badgeEstadoTurno');
+      badge.textContent = "📢 LLAMANDO ALUMNO...";
+      badge.className = "text-xs font-black uppercase px-3.5 py-1 bg-blue-100 text-blue-800 rounded-full border border-blue-200 animate-pulse";
+
+      document.getElementById('textoEstadoTurno').textContent = "Sonando en la TV pública • Esperando que el alumno tome asiento";
+      document.getElementById('cardTurnoActual').classList.add('llamando-mesa');
+
+      tiempoLlamadoActivo = 0;
+      cerrarAlertaUnMinuto();
+      reiniciarCronometro();
+      mostrarToast(`Turno anterior finalizado. Llamando LU-0${numTurnoActual}`, "🚀");
+    }
+
+    // ATENDER REZAGADO
+    function abrirModalRezagado() {
+      document.getElementById('modalRezagado').classList.remove('hidden');
+      document.getElementById('inputTurnoRezagado').focus();
+    }
+
+    function cerrarModalRezagado() {
+      document.getElementById('modalRezagado').classList.add('hidden');
+    }
+
+    function confirmarTurnoRezagado() {
+      const rezagado = document.getElementById('inputTurnoRezagado').value.trim().toUpperCase();
+      if (!rezagado) {
+        alert("Por favor ingresa un código de turno.");
+        return;
+      }
+
+      document.getElementById('displayTurnoActual').textContent = rezagado;
+      cerrarModalRezagado();
+
+      estadoTurno = "ATENDIENDO";
+      const badge = document.getElementById('badgeEstadoTurno');
+      badge.textContent = "ALUMNO REZAGADO EN ATENCIÓN";
+      badge.className = "text-xs font-black uppercase px-3.5 py-1 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-200";
+
+      document.getElementById('textoEstadoTurno').textContent = `Atendiendo al alumno rezagado ${rezagado}`;
+      reiniciarCronometro();
+      cerrarAlertaUnMinuto();
+      mostrarToast(`Atendiendo turno rezagado ${rezagado}`, "↩️");
+    }
+
+    // ALERTA TRAS 1 MINUTO
+    function mostrarAlertaUnMinuto() {
+      document.getElementById('alertaUnMinuto').classList.remove('hidden');
+    }
+
+    function cerrarAlertaUnMinuto() {
+      document.getElementById('alertaUnMinuto').classList.add('hidden');
+    }
+
+    function toggleSalaVacia() {
+      salaVacia = !salaVacia;
+      const btn = document.getElementById('btnSalaVacia');
+      const badge = document.getElementById('badgeEstadoTurno');
+      const displayTurno = document.getElementById('displayTurnoActual');
+      const textoTurno = document.getElementById('textoEstadoTurno');
+
+      if (salaVacia) {
+        btn.textContent = "🟢 Llegó alumno (Reanudar llamadas)";
+        btn.className = "px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition";
+        displayTurno.textContent = "--";
+        textoTurno.textContent = "Mesa libre • Esperando que ingresen alumnos a la sala";
+        badge.textContent = "DISPONIBLE (SIN ALUMNOS)";
+        badge.className = "text-xs font-black uppercase px-3.5 py-1 bg-slate-100 text-slate-600 rounded-full border border-slate-200";
+        document.getElementById('cardTurnoActual').classList.remove('llamando-mesa');
+        clearInterval(timerInterval);
+        document.getElementById('timerDisplay').textContent = "00:00";
+        cerrarAlertaUnMinuto();
+        mostrarToast("Mesa en DISPONIBLE: Sala de espera vacía", "💤");
+      } else {
+        btn.textContent = "💤 Poner Mesa en 'Disponible / Sala Vacía'";
+        btn.className = "px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition";
+        accionListoYSiguiente();
+      }
+    }
+
+    function toggleEstadoMesa() {
+      mesaAbierta = !mesaAbierta;
+      const abierto = document.getElementById('panelAbierto');
+      const cerrado = document.getElementById('panelCerrado');
+      const btnText = document.getElementById('btnMesaText');
+      const btnIcon = document.getElementById('btnMesaIcon');
+      const btn = document.getElementById('btnToggleMesa');
+      const subtext = document.getElementById('subtextEstadoMesa');
+
+      if (mesaAbierta) {
+        abierto.classList.remove('hidden');
+        cerrado.classList.add('hidden');
+        btnText.textContent = "Pausar Mesa";
+        btnIcon.textContent = "⛔";
+        btn.className = "px-3.5 py-2 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 font-bold text-xs rounded-xl border border-slate-200 transition flex items-center space-x-1.5";
+        subtext.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span>Ventanilla en servicio • Lista para llamar</span>`;
+        mostrarToast("Mesa reanudada", "🟢");
+      } else {
+        abierto.classList.add('hidden');
+        cerrado.classList.remove('hidden');
+        btnText.textContent = "Reanudar Mesa";
+        btnIcon.textContent = "🟢";
+        btn.className = "px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl border border-emerald-200 transition flex items-center space-x-1.5";
+        subtext.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-500"></span><span>Mesa en Pausa / Fuera de servicio</span>`;
+        cerrarAlertaUnMinuto();
+        mostrarToast("Mesa en pausa. En la TV figura como CERRADA.", "⛔");
+      }
+    }
+
+    function abrirModalAsignacion() {
+      const container = document.getElementById('grillaMesasModal');
+      container.innerHTML = "";
+
+      estadoMesasGlobal.forEach(m => {
+        const esMiMesa = m.id === mesaActualId;
+        const estaOcupadaPorOtro = m.ocupadaPor && !esMiMesa;
+
+        const btn = document.createElement('button');
+        btn.type = "button";
+        btn.disabled = estaOcupadaPorOtro;
+
+        let claseColor = "bg-white border-2 border-slate-200 hover:border-blue-500 text-slate-800";
+        let subtexto = "Libre";
+
+        if (esMiMesa) {
+          claseColor = "bg-blue-600 border-2 border-blue-600 text-white font-black shadow-md ring-2 ring-blue-300";
+          subtexto = "Tu mesa actual";
+        } else if (estaOcupadaPorOtro) {
+          claseColor = "bg-slate-100 border border-slate-200 text-slate-400 opacity-60 cursor-not-allowed";
+          subtexto = m.ocupadaPor.split(' ')[0];
+        }
+
+        btn.className = `p-3 rounded-2xl flex flex-col items-center justify-center transition-all ${claseColor}`;
+        btn.onclick = () => seleccionarMesaModal(m.id);
+        btn.id = `btnMesaModal-${m.id}`;
+
+        btn.innerHTML = `
+          <span class="text-[10px] uppercase font-bold tracking-wider opacity-80">MESA</span>
+          <span class="text-xl font-black font-mono my-0.5">${m.id}</span>
+          <span class="text-[9px] truncate max-w-full font-medium">${subtexto}</span>
+        `;
+        container.appendChild(btn);
+      });
+
+      document.getElementById('modalSelectUsuario').value = usuarioActualNombre;
+      document.getElementById('modalAsignacion').classList.remove('hidden');
+    }
+
+    let mesaSeleccionadaTemp = mesaActualId;
+
+    function seleccionarMesaModal(id) {
+      mesaSeleccionadaTemp = id;
+      estadoMesasGlobal.forEach(m => {
+        const b = document.getElementById(`btnMesaModal-${m.id}`);
+        if (!b || b.disabled) return;
+        if (m.id === id) {
+          b.className = "p-3 rounded-2xl flex flex-col items-center justify-center transition-all bg-blue-600 border-2 border-blue-600 text-white font-black shadow-md ring-2 ring-blue-300";
+        } else {
+          b.className = "p-3 rounded-2xl flex flex-col items-center justify-center transition-all bg-white border-2 border-slate-200 hover:border-blue-500 text-slate-800";
+        }
+      });
+    }
+
+    function cerrarModalAsignacion() {
+      document.getElementById('modalAsignacion').classList.add('hidden');
+    }
+
+    function guardarAsignacion() {
+      const nuevoUsuario = document.getElementById('modalSelectUsuario').value;
+      mesaActualId = mesaSeleccionadaTemp;
+      usuarioActualNombre = nuevoUsuario;
+
+      document.getElementById('headerNumMesa').textContent = mesaActualId;
+      document.getElementById('headerNombreUsuario').textContent = usuarioActualNombre;
+
+      cerrarModalAsignacion();
+      mostrarToast(`Conectado como ${usuarioActualNombre} en MESA ${mesaActualId}`, "🪑");
+    }
+
+    function reiniciarCronometro() {
+      clearInterval(timerInterval);
+      timerSegundos = 0;
+      tiempoLlamadoActivo = 0;
+      actualizarTimerDisplay();
+      timerInterval = setInterval(() => {
+        timerSegundos++;
+        actualizarTimerDisplay();
+
+        // Control de 1 minuto en estado LLAMANDO
+        if (estadoTurno === "LLAMANDO") {
+          tiempoLlamadoActivo++;
+          if (tiempoLlamadoActivo === 60) {
+            mostrarAlertaUnMinuto();
+          }
+        }
+      }, 1000);
+    }
+
+    function actualizarTimerDisplay() {
+      const mins = Math.floor(timerSegundos / 60);
+      const secs = timerSegundos % 60;
+      document.getElementById('timerDisplay').textContent = 
+        `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+      const dot = document.getElementById('timerDot');
+      if (mins < 4) dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+      else if (mins < 5) dot.className = "w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse";
+      else dot.className = "w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping";
+    }
+
+    function mostrarToast(msg, icon = "📢") {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastIcon').textContent = icon;
+      document.getElementById('toastMsg').textContent = msg;
+      toast.classList.remove('hidden');
+      setTimeout(() => toast.classList.add('hidden'), 3500);
+    }
+
+    reiniciarCronometro();
+  </script>
+</body>
+</html>

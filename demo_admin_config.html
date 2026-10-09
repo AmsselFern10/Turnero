@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Administración y Dashboard - Turnero</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 text-slate-900 font-sans min-h-screen p-6 select-none flex flex-col justify-between">
+
+  <div class="max-w-6xl mx-auto w-full space-y-6">
+    
+    <!-- ENCABEZADO INTEGRADO DE ADMINISTRADOR -->
+    <header class="flex flex-wrap justify-between items-center bg-white border border-slate-200 rounded-3xl p-6 shadow-sm gap-4">
+      <div class="flex items-center space-x-3.5">
+        <div class="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black text-xl shadow-md">
+          ⚙️
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-xl font-black text-slate-900 tracking-tight">CENTRO DE GESTIÓN Y SUPERVISIÓN</h1>
+            <span class="px-2.5 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-black rounded-full uppercase">Administrador</span>
+          </div>
+          <p class="text-xs text-slate-400 font-medium">Control unificado de Mesas, Usuarios, Métricas en Vivo y Pantallas</p>
+        </div>
+      </div>
+
+      <!-- TABS DE NAVEGACIÓN COMPLETA (TODO EN UN SOLO LUGAR) -->
+      <div class="flex flex-wrap gap-1.5 bg-slate-100 p-1.5 rounded-2xl">
+        <button onclick="cambiarTab('dashboard')" id="tabBtn-dashboard" class="px-4 py-2 rounded-xl text-xs font-black transition bg-white text-slate-900 shadow-sm flex items-center space-x-1.5">
+          <span>📊</span>
+          <span>Dashboard en Vivo</span>
+        </button>
+
+        <button onclick="cambiarTab('mesas')" id="tabBtn-mesas" class="px-4 py-2 rounded-xl text-xs font-black transition text-slate-500 hover:text-slate-900 flex items-center space-x-1.5">
+          <span>🪑</span>
+          <span>Mesas</span>
+        </button>
+
+        <button onclick="cambiarTab('usuarios')" id="tabBtn-usuarios" class="px-4 py-2 rounded-xl text-xs font-black transition text-slate-500 hover:text-slate-900 flex items-center space-x-1.5">
+          <span>👥</span>
+          <span>Usuarios</span>
+        </button>
+
+        <button onclick="cambiarTab('config')" id="tabBtn-config" class="px-4 py-2 rounded-xl text-xs font-black transition text-slate-500 hover:text-slate-900 flex items-center space-x-1.5">
+          <span>⚙️</span>
+          <span>Ajustes</span>
+        </button>
+
+        <!-- ENLACE DIRECTO A LA PANTALLA DE TV -->
+        <a href="demo_pantalla_tv.html" target="_blank" class="px-4 py-2 rounded-xl text-xs font-black transition bg-blue-50 text-blue-700 hover:bg-blue-100 flex items-center space-x-1.5 border border-blue-200">
+          <span>📺</span>
+          <span>Ver TV Pública</span>
+        </a>
+
+        <!-- CERRAR SESIÓN -->
+        <a href="demo_login.html" class="px-3 py-2 rounded-xl text-xs font-black transition text-rose-600 hover:bg-rose-50 flex items-center space-x-1">
+          <span>🚪</span>
+        </a>
+      </div>
+    </header>
+
+    <!-- TAB 1: DASHBOARD EN VIVO INTEGRADO DIRECTAMENTE -->
+    <section id="seccion-dashboard" class="space-y-6">
+      
+      <!-- KPIS -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+          <span class="text-[11px] font-black uppercase tracking-wider text-slate-400 block mb-1">Total Atendidos Hoy</span>
+          <div class="text-4xl font-black font-mono text-slate-900">148</div>
+          <span class="text-[11px] font-bold text-emerald-600 mt-1 block">▲ +12% vs día anterior</span>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+          <span class="text-[11px] font-black uppercase tracking-wider text-slate-400 block mb-1">Tiempo Promedio</span>
+          <div class="text-4xl font-black font-mono text-blue-600">03m 42s</div>
+          <span class="text-[11px] font-bold text-emerald-600 mt-1 block">✓ Dentro de meta (5 min)</span>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+          <span class="text-[11px] font-black uppercase tracking-wider text-slate-400 block mb-1">Mesas Operando</span>
+          <div class="text-4xl font-black font-mono text-slate-900">7 <span class="text-lg text-slate-400 font-normal">/ 8</span></div>
+          <span class="text-[11px] font-bold text-slate-500 mt-1 block">1 mesa en pausa</span>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+          <span class="text-[11px] font-black uppercase tracking-wider text-slate-400 block mb-1">Alumnos en Espera</span>
+          <div class="text-4xl font-black font-mono text-amber-600">4</div>
+          <span class="text-[11px] font-bold text-slate-500 mt-1 block">Fila continua y fluida</span>
+        </div>
+      </div>
+
+      <!-- TABLA DE RENDIMIENTO POR MESA -->
+      <div class="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+        <div class="p-5 border-b border-slate-100 flex justify-between items-center">
+          <div>
+            <h2 class="text-sm font-black uppercase tracking-wider text-slate-800">Rendimiento en Vivo por Mesa</h2>
+            <p class="text-xs text-slate-400 font-medium">Tiempos de atención por estudiante y carga de trabajo</p>
+          </div>
+          <span class="text-[11px] font-bold text-slate-400 bg-slate-50 border border-slate-200 px-3 py-1 rounded-full">
+            Meta: Máximo 5 min / alumno
+          </span>
+        </div>
+
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase font-black tracking-wider text-[10px]">
+            <tr>
+              <th class="py-3.5 px-6">Mesa</th>
+              <th class="py-3.5 px-6">Operador</th>
+              <th class="py-3.5 px-6">Estado</th>
+              <th class="py-3.5 px-6">Turno Actual</th>
+              <th class="py-3.5 px-6 text-center">Atendidos</th>
+              <th class="py-3.5 px-6">Tiempo Medio</th>
+              <th class="py-3.5 px-6">Eficiencia</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 font-medium">
+            <tr class="hover:bg-slate-50 transition">
+              <td class="py-3.5 px-6 font-mono font-black text-sm text-slate-900">MESA 1</td>
+              <td class="py-3.5 px-6 font-bold text-slate-800">Lic. Ana Gómez</td>
+              <td class="py-3.5 px-6"><span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">ATENDIENDO</span></td>
+              <td class="py-3.5 px-6 font-mono font-black text-slate-800">LU-014</td>
+              <td class="py-3.5 px-6 text-center font-mono font-bold text-slate-800">22</td>
+              <td class="py-3.5 px-6 font-mono font-bold text-slate-700">03m 15s</td>
+              <td class="py-3.5 px-6"><span class="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">Excelente</span></td>
+            </tr>
+            <tr class="hover:bg-slate-50 transition">
+              <td class="py-3.5 px-6 font-mono font-black text-sm text-slate-900">MESA 2</td>
+              <td class="py-3.5 px-6 font-bold text-slate-800">Carlos Mendoza</td>
+              <td class="py-3.5 px-6"><span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">ATENDIENDO</span></td>
+              <td class="py-3.5 px-6 font-mono font-black text-slate-800">LU-017</td>
+              <td class="py-3.5 px-6 text-center font-mono font-bold text-slate-800">25</td>
+              <td class="py-3.5 px-6 font-mono font-bold text-slate-700">03m 00s</td>
+              <td class="py-3.5 px-6"><span class="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">Excelente</span></td>
+            </tr>
+            <tr class="hover:bg-slate-50 transition">
+              <td class="py-3.5 px-6 font-mono font-black text-sm text-slate-900">MESA 3</td>
+              <td class="py-3.5 px-6 font-bold text-slate-800">Lic. Roberto Morales</td>
+              <td class="py-3.5 px-6"><span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200">LLAMANDO</span></td>
+              <td class="py-3.5 px-6 font-mono font-black text-slate-800">LU-018</td>
+              <td class="py-3.5 px-6 text-center font-mono font-bold text-slate-800">14</td>
+              <td class="py-3.5 px-6 font-mono font-bold text-slate-700">03m 35s</td>
+              <td class="py-3.5 px-6"><span class="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">Excelente</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </section>
+
+    <!-- TAB 2: GESTIÓN DE MESAS -->
+    <section id="seccion-mesas" class="hidden space-y-6">
+      <div class="flex justify-between items-center bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+        <div>
+          <h2 class="text-base font-black text-slate-800">Mesas de Atención Habilitadas</h2>
+          <p class="text-xs text-slate-400">Habilita mesas 1 al 10 o más según la cantidad de operadores</p>
+        </div>
+        <button onclick="abrirModalMesa()" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-xl shadow transition flex items-center space-x-2">
+          <span>➕ Agregar Nueva Mesa</span>
+        </button>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase font-black tracking-wider text-[10px]">
+            <tr>
+              <th class="py-4 px-6">Mesa</th>
+              <th class="py-4 px-6">Operador Conectado</th>
+              <th class="py-4 px-6">Estado</th>
+              <th class="py-4 px-6 text-right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tablaMesasBody" class="divide-y divide-slate-100 font-medium">
+            <!-- Renderizado dinámico -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 3: GESTIÓN DE USUARIOS -->
+    <section id="seccion-usuarios" class="hidden space-y-6">
+      <div class="flex justify-between items-center bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+        <div>
+          <h2 class="text-base font-black text-slate-800">Cuentas de Operadores y Personal</h2>
+          <p class="text-xs text-slate-400">Administra quiénes tienen acceso para operar mesas o recepción</p>
+        </div>
+        <button onclick="abrirModalUsuario()" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-xl shadow transition flex items-center space-x-2">
+          <span>➕ Nuevo Usuario</span>
+        </button>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase font-black tracking-wider text-[10px]">
+            <tr>
+              <th class="py-4 px-6">Nombre Completo</th>
+              <th class="py-4 px-6">Usuario</th>
+              <th class="py-4 px-6">Rol</th>
+              <th class="py-4 px-6">Estado</th>
+              <th class="py-4 px-6 text-right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tablaUsuariosBody" class="divide-y divide-slate-100 font-medium">
+            <!-- Renderizado dinámico -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 4: AJUSTES GENERALES -->
+    <section id="seccion-config" class="hidden space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+          <h3 class="text-sm font-black uppercase tracking-wider text-slate-400">Prefijos y Tiempos</h3>
+          <div class="space-y-2 text-xs">
+            <span class="block font-bold text-slate-700">Prefijo de hoy (Lunes): <strong class="font-mono text-blue-700">LU-</strong></span>
+            <span class="block text-slate-400">Los turnos se reinician automáticamente cada medianoche.</span>
+          </div>
+
+          <div class="pt-4 border-t border-slate-100">
+            <label class="block text-xs font-bold text-slate-700 mb-1">Tiempo máximo sugerido por estudiante:</label>
+            <select class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs font-bold text-slate-800 outline-none">
+              <option value="5" selected>5 minutos (Estándar)</option>
+              <option value="8">8 minutos</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col justify-between">
+          <div class="space-y-3">
+            <h3 class="text-sm font-black uppercase tracking-wider text-slate-400">Reinicio Manual</h3>
+            <p class="text-xs text-slate-500">Si deseas reiniciar la numeración a <strong>LU-001</strong> manualmente:</p>
+          </div>
+          <button onclick="reiniciarCorrelativoManual()" class="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow transition mt-4">
+            🔄 Reiniciar Turnos a 001
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- MODAL AGREGAR MESA -->
+  <div id="modalMesa" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+    <div class="bg-white border border-slate-200 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+      <div class="flex justify-between items-center pb-2 border-b border-slate-100">
+        <h3 class="text-sm font-black text-slate-900 uppercase">Nueva Mesa</h3>
+        <button onclick="cerrarModalMesa()" class="text-slate-400 font-bold text-lg">✕</button>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-700 mb-1">Número de Mesa:</label>
+        <input type="number" id="inputNumMesa" value="9" class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-bold outline-none text-xs">
+      </div>
+      <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100 text-xs">
+        <button onclick="cerrarModalMesa()" class="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl">Cancelar</button>
+        <button onclick="guardarNuevaMesa()" class="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl shadow">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL AGREGAR USUARIO -->
+  <div id="modalUsuario" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+    <div class="bg-white border border-slate-200 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+      <div class="flex justify-between items-center pb-2 border-b border-slate-100">
+        <h3 class="text-sm font-black text-slate-900 uppercase">Nuevo Operador</h3>
+        <button onclick="cerrarModalUsuario()" class="text-slate-400 font-bold text-lg">✕</button>
+      </div>
+      <div class="space-y-2 text-xs">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Nombre Completo:</label>
+          <input type="text" id="inputNombreUsuario" placeholder="Ej: Lic. Elena Vega" class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 outline-none font-medium">
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Usuario (login):</label>
+          <input type="text" id="inputUsername" placeholder="evega" class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 outline-none font-bold font-mono">
+        </div>
+      </div>
+      <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100 text-xs">
+        <button onclick="cerrarModalUsuario()" class="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl">Cancelar</button>
+        <button onclick="guardarNuevoUsuario()" class="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl shadow">Crear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast" class="fixed bottom-6 right-6 hidden bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl text-xs font-bold flex items-center space-x-2.5 z-50">
+    <span id="toastIcon">✅</span>
+    <span id="toastMsg">Guardado</span>
+  </div>
+
+  <script>
+    let mesas = [
+      { id: 1, numero: 1, operador: "Lic. Ana Gómez", activa: true },
+      { id: 2, numero: 2, operador: "Carlos Mendoza", activa: true },
+      { id: 3, numero: 3, operador: "Lic. Roberto Morales", activa: true },
+      { id: 4, numero: 4, operador: "Pedro Vargas", activa: true },
+      { id: 5, numero: 5, operador: "Lucía Ramírez", activa: true },
+      { id: 6, numero: 6, operador: "Jorge Morales", activa: true },
+      { id: 7, numero: 7, operador: "Sofía Torres", activa: true },
+      { id: 8, numero: 8, operador: "-- Sin Asignar --", activa: false }
+    ];
+
+    let usuarios = [
+      { id: 1, nombre: "Lic. Roberto Morales", username: "rmorales", rol: "OPERADOR_MESA", activo: true },
+      { id: 2, nombre: "Lic. Ana Gómez", username: "agomez", rol: "OPERADOR_MESA", activo: true },
+      { id: 3, nombre: "Carlos Mendoza", username: "cmendoza", rol: "OPERADOR_MESA", activo: true },
+      { id: 4, nombre: "Admin Principal", username: "admin", rol: "SUPERVISOR", activo: true }
+    ];
+
+    function renderMesas() {
+      const tbody = document.getElementById('tablaMesasBody');
+      tbody.innerHTML = "";
+      mesas.forEach(m => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-50 transition";
+        tr.innerHTML = `
+          <td class="py-3.5 px-6 font-mono font-black text-sm text-slate-800">MESA ${m.numero}</td>
+          <td class="py-3.5 px-6 font-bold ${m.operador.includes('--') ? 'text-slate-300' : 'text-slate-800'}">${m.operador}</td>
+          <td class="py-3.5 px-6"><span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${m.activa ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}">${m.activa ? 'HABILITADA' : 'INACTIVA'}</span></td>
+          <td class="py-3.5 px-6 text-right"><button onclick="toggleMesa(${m.id})" class="text-xs font-bold text-blue-600 hover:underline">${m.activa ? 'Pausar' : 'Habilitar'}</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderUsuarios() {
+      const tbody = document.getElementById('tablaUsuariosBody');
+      tbody.innerHTML = "";
+      usuarios.forEach(u => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-50 transition";
+        tr.innerHTML = `
+          <td class="py-3.5 px-6 font-bold text-slate-800">${u.nombre}</td>
+          <td class="py-3.5 px-6 font-mono font-semibold text-slate-600">${u.username}</td>
+          <td class="py-3.5 px-6"><span class="px-2.5 py-0.5 rounded-md font-bold text-[10px] bg-slate-100 text-slate-700">${u.rol}</span></td>
+          <td class="py-3.5 px-6"><span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${u.activo ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'}">${u.activo ? 'ACTIVO' : 'INACTIVO'}</span></td>
+          <td class="py-3.5 px-6 text-right"><button onclick="toggleUsuario(${u.id})" class="text-xs font-bold text-blue-600 hover:underline">${u.activo ? 'Desactivar' : 'Activar'}</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function cambiarTab(tab) {
+      ['dashboard', 'mesas', 'usuarios', 'config'].forEach(t => {
+        document.getElementById(`seccion-${t}`).classList.add('hidden');
+        document.getElementById(`tabBtn-${t}`).className = "px-4 py-2 rounded-xl text-xs font-black transition text-slate-500 hover:text-slate-900 flex items-center space-x-1.5";
+      });
+
+      document.getElementById(`seccion-${tab}`).classList.remove('hidden');
+      document.getElementById(`tabBtn-${tab}`).className = "px-4 py-2 rounded-xl text-xs font-black transition bg-white text-slate-900 shadow-sm flex items-center space-x-1.5";
+    }
+
+    function toggleMesa(id) {
+      const m = mesas.find(item => item.id === id);
+      if (m) { m.activa = !m.activa; renderMesas(); mostrarToast(`Mesa ${m.numero} actualizada`); }
+    }
+
+    function toggleUsuario(id) {
+      const u = usuarios.find(item => item.id === id);
+      if (u) { u.activo = !u.activo; renderUsuarios(); mostrarToast(`Usuario ${u.username} actualizado`); }
+    }
+
+    function abrirModalMesa() { document.getElementById('inputNumMesa').value = mesas.length + 1; document.getElementById('modalMesa').classList.remove('hidden'); }
+    function cerrarModalMesa() { document.getElementById('modalMesa').classList.add('hidden'); }
+    function guardarNuevaMesa() {
+      const n = parseInt(document.getElementById('inputNumMesa').value);
+      mesas.push({ id: mesas.length + 1, numero: n, operador: "-- Sin Asignar --", activa: true });
+      renderMesas(); cerrarModalMesa(); mostrarToast(`Mesa ${n} agregada`);
+    }
+
+    function abrirModalUsuario() { document.getElementById('modalUsuario').classList.remove('hidden'); }
+    function cerrarModalUsuario() { document.getElementById('modalUsuario').classList.add('hidden'); }
+    function guardarNuevoUsuario() {
+      const nom = document.getElementById('inputNombreUsuario').value;
+      const user = document.getElementById('inputUsername').value;
+      if (!nom || !user) return;
+      usuarios.push({ id: usuarios.length + 1, nombre: nom, username: user, rol: "OPERADOR_MESA", activo: true });
+      renderUsuarios(); cerrarModalUsuario(); mostrarToast(`Operador ${user} creado`);
+    }
+
+    function reiniciarCorrelativoManual() {
+      if (confirm("¿Reiniciar turnos a LU-001?")) mostrarToast("Turnos reiniciados a LU-001", "🔄");
+    }
+
+    function mostrarToast(msg, icon = "✅") {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastIcon').textContent = icon;
+      document.getElementById('toastMsg').textContent = msg;
+      toast.classList.remove('hidden');
+      setTimeout(() => toast.classList.add('hidden'), 3500);
+    }
+
+    renderMesas();
+    renderUsuarios();
+  </script>
+</body>
+</html>
