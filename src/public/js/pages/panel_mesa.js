@@ -428,33 +428,22 @@ export function panelMesaView() {
           return;
         }
 
-        // Enter -> Llamar Siguiente
-        if (e.code === 'Enter') {
+        // Barra Espaciadora o Enter -> Llamar Siguiente (coincide exactamente con el botón [ESPACIO])
+        if (e.code === 'Space' || e.code === 'Enter') {
           e.preventDefault();
           this.llamarSiguiente();
           return;
         }
 
-        // Barra Espaciadora: Re-llamar a TV si hay turno activo, o Llamar Siguiente si no hay turno
-        if (e.code === 'Space') {
-          e.preventDefault();
-          if (this.turnoActual) {
-            this.rellamarTurno();
-          } else {
-            this.llamarSiguiente();
-          }
-          return;
-        }
-
-        // Tecla R -> Re-llamar a TV
+        // Tecla R -> Re-llamar a TV (coincide con el botón [R])
         if (e.key === 'r' || e.key === 'R') {
           e.preventDefault();
           this.rellamarTurno();
           return;
         }
 
-        // Tecla Escape o N -> No se presentó
-        if (e.key === 'Escape' || e.key === 'n' || e.key === 'N') {
+        // Tecla N o Escape -> No se presentó (coincide con el botón [N])
+        if (e.key === 'n' || e.key === 'N' || e.key === 'Escape') {
           e.preventDefault();
           this.cancelarTurno();
           return;
