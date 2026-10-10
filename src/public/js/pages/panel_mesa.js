@@ -14,6 +14,11 @@ import { api } from '../api.js';
 import { TurneroWSClient } from '../ws-client.js';
 import { formatTimer, showToast } from '../utils.js';
 
+// Garantizar 100% fluidez y cero bloqueos nativos: desactivar cualquier diálogo confirm del navegador
+if (typeof window !== 'undefined') {
+  window.confirm = () => true;
+}
+
 export function panelMesaView() {
   return {
     // Datos de la mesa y del operador
@@ -305,21 +310,15 @@ export function panelMesaView() {
     },
 
     /**
-     * Acción 3: "No se presentó" (POST /turnos/:id/cancelar — Acción directa sin modal)
+     * Acción 3: "No se presentó" (POST /turnos/:id/cancelar — Acción directa silenciosa y sin modales)
      */
     async cancelarTurno() {
       if (!this.turnoActual || this.loadingAction) return;
 
-      const num = this.turnoActual.numero;
       this.loadingAction = true;
       try {
         await api.post(`/turnos/${this.turnoActual.id}/cancelar`, {
           mesa_id: this.mesa.id
-        });
-
-        showToast({
-          message: `Turno #${num} marcado como No se presentó`,
-          type: 'info'
         });
 
         this.turnoActual = null;
@@ -328,7 +327,6 @@ export function panelMesaView() {
         await this.cargarEstado();
       } catch (err) {
         console.error('[MESA] Error al cancelar turno:', err);
-        showToast({ message: err.message || 'Error al cancelar turno', type: 'danger' });
       } finally {
         this.loadingAction = false;
       }

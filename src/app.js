@@ -56,11 +56,21 @@ async function buildApp (opts = {}) {
   // Servir archivos estáticos del frontend (RNF-DIS-06 — funciona sin Internet)
   await app.register(require('@fastify/static'), {
     root: require('path').join(__dirname, 'public'),
-    prefix: '/'
+    prefix: '/',
+    setHeaders: (res) => {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
   })
 
   // ── WebSocket Hub ───────────────────────────────────────────────────────────
-  await app.register(require('@fastify/websocket'))
+  await app.register(require('@fastify/websocket'), {
+    options: {
+      maxPayload: 16384,          // 16 KB máx para prevenir ataques de memoria (WS-004)
+      perMessageDeflate: false     // Deshabilitar zlib para rendimiento óptimo en LAN (WS-016)
+    }
+  })
   await app.register(require('./modules/ws/hub'))
 
   // ── Módulos de dominio ──────────────────────────────────────────────────────
@@ -77,11 +87,65 @@ async function buildApp (opts = {}) {
     version: require('../package.json').version
   }))
 
-  // ── Errores no controlados (RNF-MAN-05) ────────────────────────────────────
+  // ── Errores no controlados — contrato de respuesta (RNF-MAN-05) ───────────
+  // Nunca filtra texto interno de la BD al cliente.
+  // El ID de correlacion permite rastrear el error en los logs del servidor.
   app.setErrorHandler((error, request, reply) => {
-    app.log.error({ err: error, url: request.url }, 'Unhandled error')
-    reply.status(error.statusCode || 500).send({
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Error interno del servidor'
+    const correlationId = require('crypto').randomUUID().slice(0, 8).toUpperCase()
+
+    // Log completo en el servidor (incluye stack y mensaje real de PG)
+    app.log.error({
+      err:           error,
+      url:           request.url,
+      method:        request.method,
+      correlationId,
+      pgCode:        error.code,
+      pgConstraint:  error.constraint
+    }, 'Unhandled error')
+
+    const status = error.statusCode || error.status || 500
+
+    // Errores de negocio ya formateados con { error: { codigo, mensaje } }
+    if (error.error?.codigo) {
+      return reply.status(status).send({ error: error.error })
+    }
+
+    // Errores de validacion de schema de Fastify
+    if (error.validation) {
+      return reply.status(400).send({
+        error: {
+          codigo:  'validacion_invalida',
+          mensaje: 'Revise los datos ingresados.'
+        }
+      })
+    }
+
+    // 401 con mensaje de servicio
+    if (status === 401) {
+      return reply.status(401).send({
+        error: {
+          codigo:  'credenciales_invalidas',
+          mensaje: 'Usuario o contrasena incorrectos.'
+        }
+      })
+    }
+
+    // 403
+    if (status === 403) {
+      return reply.status(403).send({
+        error: {
+          codigo:  'sin_permiso',
+          mensaje: 'No tiene permiso para esta accion.'
+        }
+      })
+    }
+
+    // 500 y otros — nunca exponer detalles internos
+    return reply.status(500).send({
+      error: {
+        codigo:  'error_interno',
+        mensaje: `No pudimos completar la accion. Intente de nuevo. Codigo: ${correlationId}`
+      }
     })
   })
 
