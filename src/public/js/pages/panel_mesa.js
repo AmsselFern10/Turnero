@@ -412,11 +412,13 @@ export function panelMesaView() {
 
     /**
      * Atajos de teclado para evitar fatiga motriz en jornadas continuas
-     * - Barra Espaciadora: Llamar Siguiente
-     * - Tecla N: No se presentó
-     * - Tecla R: Re-llamar
+     * - Barra Espaciadora o Enter: Llamar Siguiente
+     * - Tecla R: Re-llamar a TV
+     * - Tecla N o Escape: No se presentó
+     * - Tecla P: Pausar o Reanudar Mesa
      */
     _initKeyboardShortcuts() {
+      // Manejar keydown para disparo inmediato
       window.addEventListener('keydown', (e) => {
         // Ignorar si el usuario está escribiendo en un input, textarea o select
         const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
@@ -424,9 +426,19 @@ export function panelMesaView() {
           return;
         }
 
-        // Barra Espaciadora o Enter -> Llamar Siguiente (coincide exactamente con el botón [ESPACIO])
-        if (e.code === 'Space' || e.code === 'Enter') {
+        const isSpace = (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.keyCode === 32);
+        const isEnter = (e.code === 'Enter' || e.code === 'NumpadEnter' || e.key === 'Enter' || e.keyCode === 13);
+
+        // Barra Espaciadora o Enter -> Llamar Siguiente (ambos ejecutan exclusivamente llamar siguiente)
+        if (isSpace || isEnter) {
           e.preventDefault();
+          e.stopPropagation();
+
+          // Desenfocar cualquier elemento activo para evitar clicks nativos del navegador en botones enfocados
+          if (document.activeElement && typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur();
+          }
+
           this.llamarSiguiente();
           return;
         }
@@ -434,6 +446,10 @@ export function panelMesaView() {
         // Tecla R -> Re-llamar a TV (coincide con el botón [R])
         if (e.key === 'r' || e.key === 'R') {
           e.preventDefault();
+          e.stopPropagation();
+          if (document.activeElement && typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur();
+          }
           this.rellamarTurno();
           return;
         }
@@ -441,6 +457,10 @@ export function panelMesaView() {
         // Tecla N o Escape -> No se presentó (coincide con el botón [N])
         if (e.key === 'n' || e.key === 'N' || e.key === 'Escape') {
           e.preventDefault();
+          e.stopPropagation();
+          if (document.activeElement && typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur();
+          }
           this.cancelarTurno();
           return;
         }
@@ -448,12 +468,26 @@ export function panelMesaView() {
         // Tecla P -> Pausar o Reanudar Mesa
         if (e.key === 'p' || e.key === 'P') {
           e.preventDefault();
+          e.stopPropagation();
+          if (document.activeElement && typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur();
+          }
           if (this.mesaPausada) {
             this.reanudarMesa();
           } else {
             this.pausarMesa();
           }
           return;
+        }
+      });
+
+      // Prevenir acción por defecto en keyup para Space/Enter (evita clicks residuales en botones del navegador)
+      window.addEventListener('keyup', (e) => {
+        const isSpace = (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.keyCode === 32);
+        const isEnter = (e.code === 'Enter' || e.code === 'NumpadEnter' || e.key === 'Enter' || e.keyCode === 13);
+        if (isSpace || isEnter) {
+          e.preventDefault();
+          e.stopPropagation();
         }
       });
     },
