@@ -1,5 +1,7 @@
 'use strict'
 
+const fp = require('fastify-plugin')
+
 /**
  * WebSocket Hub — Centro de difusión en tiempo real
  *
@@ -139,8 +141,8 @@ module.exports.broadcast   = broadcast
 module.exports.suscribir   = suscribir
 module.exports.desuscribir = desuscribir
 
-// Plugin de Fastify
-module.exports = async function hubPlugin (fastify) {
+// Plugin de Fastify envuelto con fastify-plugin para exponer decorate('broadcast') globalmente
+async function hubPlugin (fastify) {
   const HEARTBEAT_INTERVAL = 30_000  // 30s (RF-WS-06)
   const DEAD_TIMEOUT       = 60_000  // 60s sin pong → cerrar
 
@@ -156,14 +158,21 @@ module.exports = async function hubPlugin (fastify) {
 
     // ── Autenticación en el handshake (RF-WS-03) ──────────────────────────
     let user
+    const canalSolicitado = request.query.canal || 'tv:global'
     try {
       const token = request.query.token
-      if (!token) throw new Error('Token requerido')
-      user = fastify.jwt.verify(token)
+      if (token) {
+        user = fastify.jwt.verify(token)
 
-      // Verificar blacklist
-      const bl = await fastify.redis.get(`bl:${user.jti}`)
-      if (bl) throw new Error('Token revocado')
+        // Verificar blacklist
+        const bl = await fastify.redis.get(`bl:${user.jti}`)
+        if (bl) throw new Error('Token revocado')
+      } else if (canalSolicitado === 'tv:global') {
+        // Display público pasivo 1080p para Smart TVs / Proyectores en auditorio (RF-TV-04)
+        user = { id: 0, rol: 'tv', canal: 'tv:global' }
+      } else {
+        throw new Error('Token requerido')
+      }
     } catch {
       ws.send(JSON.stringify({ tipo: 'error', payload: { message: 'No autorizado' } }))
       ws.close(1008, 'No autorizado')
@@ -226,3 +235,9 @@ module.exports = async function hubPlugin (fastify) {
     await fastify.redis.publish('ws:broadcast', JSON.stringify({ canal, tipo, payload }))
   })
 }
+
+module.exports = fp(hubPlugin, { name: 'ws-hub' })
+module.exports.broadcast   = broadcast
+module.exports.suscribir   = suscribir
+module.exports.desuscribir = desuscribir
+

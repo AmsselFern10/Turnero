@@ -4,901 +4,206 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Administración y Supervisión — Turnero 2026</title>
-  
-  <!-- Estilos Centrales Institucionales -->
-  <link rel="stylesheet" href="./css/base.css">
-  <link rel="stylesheet" href="./css/animations.css">
-
-  <!-- Tailwind CSS CDN -->
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/animations.css">
   <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Google Fonts: Inter & JetBrains Mono -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-  <!-- Controlador Modular ES6 y Alpine.js -->
-  <script type="module" src="./js/pages/admin.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
 </head>
+<body x-data="adminView()" x-init="init()" x-cloak class="min-h-full flex flex-col bg-app antialiased text-slate-800">
 
-<body x-data="adminView()" x-init="init()" x-cloak class="min-h-full flex flex-col bg-[#EEF2F6] antialiased text-slate-800 selection:bg-blue-100 selection:text-blue-900">
-
-  <!-- ================= ENCABEZADO INSTITUCIONAL COMPACTO (h-14) ================= -->
-  <header class="sticky top-0 z-40 bg-white border-b border-[#CBD5E1] shadow-xs">
+  <!-- ── 1. ENCABEZADO Y TABS ── -->
+  <header class="bg-white border-b border-[#CBD5E1] sticky top-0 z-30 shadow-xs">
     <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
-      
-      <!-- Izquierda: Identidad Institucional y Estado WS -->
       <div class="flex items-center space-x-3">
-        <div class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-[#1D4ED8]">
-          <svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-          </svg>
-        </div>
-        <div class="flex items-center space-x-2">
-          <span class="text-sm font-semibold tracking-tight text-slate-900">Turnero 2026</span>
-          <span class="text-slate-300">|</span>
-          <span class="text-xs text-slate-500 font-medium">Panel de Supervisión</span>
-        </div>
-        
-        <!-- Pill de Conexión WebSocket -->
-        <div class="hidden sm:inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border"
-             :class="wsConnected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'">
-          <span class="w-1.5 h-1.5 rounded-full" :class="wsConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'"></span>
-          <span x-text="wsConnected ? 'En línea' : 'Reconectando'"></span>
-        </div>
+        <div class="w-8 h-8 rounded-lg bg-[#1D4ED8] text-white flex items-center justify-center font-bold text-xs">ADM</div>
+        <span class="font-bold text-slate-900 text-sm">Supervisión Turnero 2026</span>
+        <span class="text-xs px-2 py-0.5 rounded-full font-semibold" :class="wsConnected ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'" x-text="wsConnected ? 'En vivo' : 'Reconectando'"></span>
       </div>
-
-      <!-- Centro: 4 Pestañas de Navegación -->
-      <nav aria-label="Pestañas de Administración" class="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
-        <button type="button" @click="tab = 'monitoreo'"
-                :class="tab === 'monitoreo' ? 'bg-white text-[#1D4ED8] shadow-xs border border-slate-200 font-semibold' : 'text-slate-600 hover:text-slate-900 font-medium'"
-                class="px-3.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer">
-          Monitoreo
-        </button>
-        <button type="button" @click="tab = 'lotes'"
-                :class="tab === 'lotes' ? 'bg-white text-[#1D4ED8] shadow-xs border border-slate-200 font-semibold' : 'text-slate-600 hover:text-slate-900 font-medium'"
-                class="px-3.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer">
-          Lotes
-        </button>
-        <button type="button" @click="tab = 'mesas'"
-                :class="tab === 'mesas' ? 'bg-white text-[#1D4ED8] shadow-xs border border-slate-200 font-semibold' : 'text-slate-600 hover:text-slate-900 font-medium'"
-                class="px-3.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer">
-          Mesas
-        </button>
-        <button type="button" @click="tab = 'configuracion'"
-                :class="tab === 'configuracion' ? 'bg-white text-[#1D4ED8] shadow-xs border border-slate-200 font-semibold' : 'text-slate-600 hover:text-slate-900 font-medium'"
-                class="px-3.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer">
-          Configuración
-        </button>
+      <nav class="flex space-x-1" aria-label="Navegación del panel">
+        <button type="button" @click="tab = 'monitoreo'" :class="tab === 'monitoreo' ? 'bg-blue-50 text-[#1D4ED8] font-bold' : 'text-slate-600 hover:bg-slate-50'" class="px-3 py-1.5 rounded-xl text-xs transition-colors cursor-pointer">1. Monitoreo</button>
+        <button type="button" @click="tab = 'lotes'" :class="tab === 'lotes' ? 'bg-blue-50 text-[#1D4ED8] font-bold' : 'text-slate-600 hover:bg-slate-50'" class="px-3 py-1.5 rounded-xl text-xs transition-colors cursor-pointer">2. Lotes</button>
+        <button type="button" @click="tab = 'mesas'" :class="tab === 'mesas' ? 'bg-blue-50 text-[#1D4ED8] font-bold' : 'text-slate-600 hover:bg-slate-50'" class="px-3 py-1.5 rounded-xl text-xs transition-colors cursor-pointer">3. Mesas</button>
+        <button type="button" @click="tab = 'config'" :class="tab === 'config' ? 'bg-blue-50 text-[#1D4ED8] font-bold' : 'text-slate-600 hover:bg-slate-50'" class="px-3 py-1.5 rounded-xl text-xs transition-colors cursor-pointer">4. Config & Usuarios</button>
       </nav>
-
-      <!-- Derecha: Acciones Rápidas y Cierre de Sesión -->
-      <div class="flex items-center space-x-2.5">
-        <a class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:text-[#1D4ED8] hover:bg-blue-50/60 border border-slate-200 transition-colors"
-           href="tv.html" target="_blank">
-          <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 20.25h12m-7.5-3v3m3-3v3m-10.125-3h17.25c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125z" />
-          </svg>
-          <span class="hidden md:inline">Pantalla TV</span>
-        </a>
-
-        <button type="button" @click="logout()"
-                class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-rose-700 hover:bg-rose-50 border border-slate-200 transition-colors cursor-pointer">
-          <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
-          </svg>
-          <span>Salir</span>
-        </button>
+      <div class="flex items-center space-x-3">
+        <span class="font-mono-num text-xs font-bold text-slate-700 hidden sm:inline" x-text="relojHora"></span>
+        <button type="button" @click="logout()" title="Cerrar sesión" class="text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-1 rounded-lg hover:bg-rose-50 cursor-pointer">Salir</button>
       </div>
-
     </div>
   </header>
 
-  <!-- ================= CUERPO PRINCIPAL ================= -->
-  <main class="flex-1 max-w-7xl w-full mx-auto px-6 py-6 space-y-6">
+  <!-- ── 2. CONTENIDO PRINCIPAL POR PESTAÑAS ── -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
 
-    <!-- ─────────────────────────────────────────────────────────────────────── -->
-    <!-- PESTAÑA 1: MONITOREO FULL-WIDTH (Sobrio y Limpio)                       -->
-    <!-- ─────────────────────────────────────────────────────────────────────── -->
+    <!-- PESTAÑA 1: MONITOREO (4 KPIs + Tabla Mesas) -->
     <section x-show="tab === 'monitoreo'" class="space-y-6">
-      
-      <!-- 4 KPIs Superiores -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        
-        <!-- KPI 1: Atendidos Hoy -->
-        <div class="bg-white border border-[#CBD5E1] rounded-2xl p-5 shadow-xs flex flex-col justify-between">
-          <div class="flex items-center justify-between text-slate-500 mb-2">
-            <span class="text-xs font-medium uppercase tracking-wider">Atendidos Hoy</span>
-            <svg class="w-4 h-4 text-slate-400 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div>
-            <div class="text-3xl font-bold text-slate-900 font-mono-num" x-text="kpis.atendidos_hoy">0</div>
-            <p class="text-xs text-slate-500 mt-1">Total de turnos finalizados</p>
-          </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-white border border-[#CBD5E1] rounded-2xl p-4 shadow-xs">
+          <span class="text-xs font-semibold text-slate-500 block uppercase">Atendidos Hoy</span>
+          <span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.atendidos_hoy">0</span>
         </div>
-
-        <!-- KPI 2: Tiempo Promedio -->
-        <div class="bg-white border border-[#CBD5E1] rounded-2xl p-5 shadow-xs flex flex-col justify-between">
-          <div class="flex items-center justify-between text-slate-500 mb-2">
-            <span class="text-xs font-medium uppercase tracking-wider">Tiempo Promedio</span>
-            <svg class="w-4 h-4 text-slate-400 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div>
-            <div class="text-3xl font-bold text-slate-900 font-mono-num" x-text="formatearTiempo(kpis.promedio_seg)">--:--</div>
-            <p class="text-xs text-slate-500 mt-1">Duración media de atención</p>
-          </div>
+        <div class="bg-white border border-[#CBD5E1] rounded-2xl p-4 shadow-xs">
+          <span class="text-xs font-semibold text-slate-500 block uppercase">Espera Promedio</span>
+          <span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.espera_promedio_min + ' min'">0 min</span>
         </div>
-
-        <!-- KPI 3: Mesas Activas -->
-        <div class="bg-white border border-[#CBD5E1] rounded-2xl p-5 shadow-xs flex flex-col justify-between">
-          <div class="flex items-center justify-between text-slate-500 mb-2">
-            <span class="text-xs font-medium uppercase tracking-wider">Mesas Activas</span>
-            <svg class="w-4 h-4 text-slate-400 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
-            </svg>
-          </div>
-          <div>
-            <div class="text-3xl font-bold text-slate-900 font-mono-num">
-              <span x-text="kpis.mesas_activas">0</span>
-              <span class="text-lg font-normal text-slate-400">/ <span x-text="mesas.length">0</span></span>
-            </div>
-            <p class="text-xs text-slate-500 mt-1">Operativas en ventanilla</p>
-          </div>
+        <div class="bg-white border border-[#CBD5E1] rounded-2xl p-4 shadow-xs">
+          <span class="text-xs font-semibold text-slate-500 block uppercase">Mesas Activas</span>
+          <span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.mesas_activas">0</span>
         </div>
-
-        <!-- KPI 4: Turnos Restantes -->
-        <div class="bg-white border border-[#CBD5E1] rounded-2xl p-5 shadow-xs flex flex-col justify-between">
-          <div class="flex items-center justify-between text-slate-500 mb-2">
-            <span class="text-xs font-medium uppercase tracking-wider">Turnos Restantes</span>
-            <svg class="w-4 h-4 text-slate-400 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 010 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 010-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375z" />
-            </svg>
-          </div>
-          <div>
-            <div class="text-3xl font-bold text-slate-900 font-mono-num" x-text="kpis.vouchers_restantes || 0">0</div>
-            <p class="text-xs text-slate-500 mt-1" x-text="loteActivo ? ('Lote ' + loteActivo.numero_lote) : 'Sin lote activo'"></p>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- Tabla de Mesas (Sin semáforos estridentes de color — Tiempos Neutros) -->
-      <div class="bg-white border border-[#CBD5E1] rounded-2xl shadow-xs overflow-hidden">
-        <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-          <div>
-            <h2 class="text-sm font-semibold text-slate-900">Estado de Mesas de Atención</h2>
-            <p class="text-xs text-slate-500">Supervisión en vivo de las ventanillas universitarias</p>
-          </div>
-          <button type="button" @click="cargarTodo()"
-                  class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer">
-            <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-            </svg>
-            <span>Actualizar</span>
-          </button>
-        </div>
-
-        <div class="overflow-x-auto">
-          <table class="w-full text-left border-collapse">
-            <thead>
-              <tr class="bg-slate-50/75 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                <th class="px-6 py-3">Mesa</th>
-                <th class="px-6 py-3">Operador</th>
-                <th class="px-6 py-3">Estado</th>
-                <th class="px-6 py-3 text-center">Turno Actual</th>
-                <th class="px-6 py-3 text-center">Atendidos Hoy</th>
-                <th class="px-6 py-3 text-right">Tiempo Medio</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-200 text-xs text-slate-700">
-              <template x-for="m in mesas" :key="m.id">
-                <tr class="hover:bg-slate-50/50 transition-colors">
-                  <!-- Mesa -->
-                  <td class="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">
-                    <span x-text="'Mesa ' + m.numero"></span>
-                    <span class="block text-[11px] font-normal text-slate-400" x-text="m.nombre"></span>
-                  </td>
-
-                  <!-- Operador -->
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="flex items-center space-x-2">
-                      <span class="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 font-mono-num"
-                            x-text="m.operador_nombre ? m.operador_nombre.charAt(0).toUpperCase() : '-'"></span>
-                      <span class="font-medium" :class="m.operador_nombre ? 'text-slate-800' : 'text-slate-400 italic'"
-                            x-text="m.operador_nombre || 'Sin asignar'"></span>
-                    </div>
-                  </td>
-
-                  <!-- Estado -->
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border"
-                          :class="{
-                            'bg-emerald-50 text-emerald-700 border-emerald-200': m.estado === 'activa' && m.turno_actual,
-                            'bg-blue-50 text-blue-700 border-blue-200': m.estado === 'activa' && !m.turno_actual,
-                            'bg-slate-100 text-slate-600 border-slate-200': m.estado === 'pausada',
-                            'bg-rose-50 text-rose-700 border-rose-200': m.estado === 'inactiva'
-                          }">
-                      <span class="w-1.5 h-1.5 rounded-full mr-1.5"
-                            :class="{
-                              'bg-emerald-500 animate-pulse': m.estado === 'activa' && m.turno_actual,
-                              'bg-blue-500': m.estado === 'activa' && !m.turno_actual,
-                              'bg-slate-400': m.estado === 'pausada',
-                              'bg-rose-400': m.estado === 'inactiva'
-                            }"></span>
-                      <span x-text="m.estado === 'activa' ? (m.turno_actual ? 'En atención' : 'Libre') : (m.estado === 'pausada' ? 'Pausada' : 'Inactiva')"></span>
-                    </span>
-                  </td>
-
-                  <!-- Turno Actual -->
-                  <td class="px-6 py-4 text-center whitespace-nowrap">
-                    <template x-if="m.turno_actual">
-                      <span class="inline-block px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-900 font-bold font-mono-num text-xs tracking-wider"
-                            x-text="'#' + String(m.turno_actual).padStart(3, '0')"></span>
-                    </template>
-                    <template x-if="!m.turno_actual">
-                      <span class="text-slate-400 font-mono-num">--</span>
-                    </template>
-                  </td>
-
-                  <!-- Atendidos Hoy -->
-                  <td class="px-6 py-4 text-center whitespace-nowrap font-mono-num font-semibold text-slate-800"
-                      x-text="m.atendidos_hoy || 0">
-                  </td>
-
-                  <!-- Tiempo Medio (Gris institucional neutro, sin semáforos) -->
-                  <td class="px-6 py-4 text-right whitespace-nowrap font-mono-num text-slate-500"
-                      x-text="formatearTiempo(m.tiempo_promedio_seg)">
-                  </td>
-                </tr>
-              </template>
-
-              <!-- Empty state si no hay mesas -->
-              <tr x-show="mesas.length === 0">
-                <td colspan="6" class="px-6 py-10 text-center text-slate-400">
-                  No hay mesas registradas en el sistema.
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="bg-white border border-[#CBD5E1] rounded-2xl p-4 shadow-xs" :class="kpis.vouchers_restantes <= 20 ? 'border-amber-400 bg-amber-50/50' : ''">
+          <span class="text-xs font-semibold text-slate-500 block uppercase">Vouchers Restantes</span>
+          <span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.vouchers_restantes">0</span>
         </div>
       </div>
 
+      <div class="bg-white border border-[#CBD5E1] rounded-2xl overflow-hidden shadow-xs">
+        <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+          <h2 class="font-bold text-sm text-slate-900">Estado de Ventanillas en Tiempo Real</h2>
+          <button type="button" @click="cargarDashboard()" class="text-xs text-[#1D4ED8] font-semibold hover:underline cursor-pointer">Actualizar</button>
+        </div>
+        <table class="w-full text-xs text-left">
+          <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+            <tr><th class="p-3">Mesa</th><th class="p-3">Operador</th><th class="p-3">Estado</th><th class="p-3">Turno Actual</th><th class="p-3">Atendidos</th><th class="p-3">Tiempo Medio</th><th class="p-3">Eficiencia</th></tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <template x-for="mesa in mesas" :key="mesa.id">
+              <tr class="hover:bg-slate-50/80">
+                <td class="p-3 font-mono-num font-bold text-slate-900" x-text="'MESA ' + mesa.numero"></td>
+                <td class="p-3 text-slate-700" x-text="mesa.operador_nombre || 'Sin asignar'"></td>
+                <td class="p-3"><span class="px-2 py-0.5 rounded-full font-semibold uppercase text-[10px]" :class="mesa.estado === 'activa' ? 'bg-emerald-50 text-emerald-700' : (mesa.estado === 'pausada' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500')" x-text="mesa.estado"></span></td>
+                <td class="p-3 font-mono-num font-bold text-slate-900" x-text="mesa.turno_actual ? ('#' + String(mesa.turno_actual).padStart(3, '0')) : '--'"></td>
+                <td class="p-3 font-mono-num" x-text="mesa.atendidos_hoy || 0"></td>
+                <td class="p-3 font-mono-num" x-text="(mesa.tiempo_promedio_min || 0) + ' min'"></td>
+                <td class="p-3"><span class="w-2.5 h-2.5 rounded-full inline-block" :class="(mesa.tiempo_promedio_min || 0) < 4 ? 'bg-emerald-500' : ((mesa.tiempo_promedio_min || 0) < 7 ? 'bg-amber-500' : 'bg-rose-500')"></span></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
     </section>
 
-    <!-- ─────────────────────────────────────────────────────────────────────── -->
-    <!-- PESTAÑA 2: GESTIÓN DE LOTES DE TURNOS                                  -->
-    <!-- ─────────────────────────────────────────────────────────────────────── -->
+    <!-- PESTAÑA 2: LOTES DE VOUCHERS -->
     <section x-show="tab === 'lotes'" class="space-y-6">
-      
-      <!-- Encabezado de la pestaña -->
-      <div class="flex items-center justify-between">
+      <div class="bg-white border border-[#CBD5E1] rounded-2xl p-6 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 class="text-base font-bold text-slate-900">Control de Lotes de Vouchers</h2>
-          <p class="text-xs text-slate-500">Gestión de numeración física, extensión en caliente y apertura de jornadas</p>
+          <span class="text-xs uppercase font-bold text-slate-400">Lote Activo Actual</span>
+          <h2 class="text-2xl font-black text-slate-900 font-mono-num mt-1" x-text="loteActivo ? ('Lote ' + loteActivo.numero_lote) : 'Sin Lote Activo'"></h2>
+          <p class="text-xs text-slate-500 mt-1" x-text="loteActivo ? ('Progreso: ' + loteActivo.ultimo_numero_llamado + ' de ' + loteActivo.numero_hasta + ' vouchers') : 'Cree o active un lote para despachar turnos'"></p>
         </div>
-        <button type="button" @click="showNewLotModal = true"
-                class="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-[#1D4ED8] hover:bg-blue-800 shadow-xs transition-all cursor-pointer">
-          <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          <span>Nuevo Lote</span>
-        </button>
+        <div class="flex flex-wrap gap-2" x-show="loteActivo">
+          <button type="button" @click="loteActivo.estado === 'activo' ? pausarLote(loteActivo.id) : activarLote(loteActivo.id)" class="px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer" x-text="loteActivo?.estado === 'activo' ? 'Pausar Jornada' : 'Reanudar Lote'"></button>
+          <div class="flex items-center space-x-1.5">
+            <input type="number" x-model.number="extensionVouchers" min="1" placeholder="+Extender" title="Vouchers a extender" class="w-24 h-8 px-2 border border-slate-300 rounded-xl text-xs font-mono-num">
+            <button type="button" @click="extenderLote(loteActivo.id)" class="h-8 px-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs cursor-pointer">Extender</button>
+          </div>
+          <button type="button" @click="cerrarLote(loteActivo.id)" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 cursor-pointer">Cerrar Definitivo</button>
+        </div>
+        <button type="button" @click="modalLote = true" class="px-4 py-2 bg-[#1D4ED8] hover:bg-blue-800 text-white rounded-xl text-xs font-bold cursor-pointer">+ Nuevo Lote</button>
       </div>
 
-      <!-- Tarjeta del Lote Activo -->
-      <div class="bg-white border border-[#CBD5E1] rounded-2xl p-6 shadow-xs space-y-6">
-        
-        <template x-if="loteActivo">
-          <div class="space-y-6">
-            <!-- Header de Lote Activo -->
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-200">
-              <div class="space-y-1">
-                <div class="flex items-center space-x-2">
-                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-[#1D4ED8] border border-blue-200"
-                        x-text="'Lote ' + loteActivo.numero_lote"></span>
-                  <span class="text-sm font-semibold text-slate-900">
-                    Rango: <span class="font-mono-num" x-text="'#' + (loteActivo.numero_desde || 1) + ' al #' + loteActivo.numero_hasta"></span>
-                  </span>
-                </div>
-                <p class="text-xs text-slate-500">Lote en operación activa para llamados de ventanilla</p>
-              </div>
-
-              <!-- Botones de Control de Jornada -->
-              <div class="flex items-center space-x-2">
-                <button type="button" @click="pausarLote()"
-                        class="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors cursor-pointer">
-                  Pausar Lote (Fin de Día)
-                </button>
-                <button type="button" @click="cerrarLote()"
-                        class="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer">
-                  Cerrar Definitivamente
-                </button>
-              </div>
-            </div>
-
-            <!-- Progreso y Números Clave -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div class="bg-slate-50 rounded-xl p-4 border border-slate-200/80">
-                <span class="text-[11px] font-medium uppercase text-slate-500">Último Número Llamado</span>
-                <div class="text-2xl font-bold text-slate-900 font-mono-num mt-1"
-                     x-text="'#' + (loteActivo.ultimo_numero_llamado || 0)"></div>
-              </div>
-              <div class="bg-slate-50 rounded-xl p-4 border border-slate-200/80">
-                <span class="text-[11px] font-medium uppercase text-slate-500">Turnos Restantes</span>
-                <div class="text-2xl font-bold font-mono-num mt-1"
-                     :class="(loteActivo.vouchers_restantes <= config.alerta_vouchers_restantes) ? 'text-amber-700' : 'text-slate-900'"
-                     x-text="loteActivo.vouchers_restantes"></div>
-              </div>
-              <div class="bg-slate-50 rounded-xl p-4 border border-slate-200/80">
-                <span class="text-[11px] font-medium uppercase text-slate-500">Progreso del Lote</span>
-                <div class="text-2xl font-bold text-slate-900 font-mono-num mt-1"
-                     x-text="(loteActivo.progreso_pct || 0) + '%'"></div>
-              </div>
-            </div>
-
-            <!-- Barra de Progreso Visual -->
-            <div class="space-y-1.5">
-              <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden border border-slate-200">
-                <div class="bg-[#1D4ED8] h-full transition-all duration-500"
-                     :style="'width: ' + Math.min(loteActivo.progreso_pct || 0, 100) + '%'"></div>
-              </div>
-            </div>
-
-            <!-- Extensión de Turnos en Caliente (Campo Libre) -->
-            <div class="bg-blue-50/50 border border-blue-200 rounded-xl p-5 space-y-3">
-              <div class="flex items-center justify-between">
-                <div>
-                  <h3 class="text-xs font-bold uppercase tracking-wider text-[#1D4ED8]">Extensión de Turnos en Caliente</h3>
-                  <p class="text-xs text-slate-600 mt-0.5">Habilite más vouchers al lote actual sin reiniciar el sistema ni interrumpir la atención.</p>
-                </div>
-              </div>
-
-              <div class="flex flex-col sm:flex-row sm:items-center gap-3 pt-1">
-                <div class="w-full sm:w-48">
-                  <label class="block text-[11px] font-semibold text-slate-700 mb-1">Cantidad a agregar:</label>
-                  <input type="number" min="1" step="1"
-                         x-model.number="extensionCantidad"
-                         class="w-full px-3 py-2 bg-white border border-[#CBD5E1] rounded-xl text-xs font-mono-num text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/25"
-                         placeholder="Ej: 100">
-                </div>
-
-                <div class="sm:self-end">
-                  <button type="button" @click="extenderLote()" :disabled="loadingAction"
-                          class="w-full sm:w-auto px-4 py-2 bg-[#1D4ED8] hover:bg-blue-800 active:scale-[0.98] text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-50">
-                    <span x-show="!loadingAction">Extender Lote</span>
-                    <span x-show="loadingAction">Procesando...</span>
-                  </button>
-                </div>
-
-                <div class="sm:self-end text-xs text-slate-500 pb-2">
-                  <template x-if="extensionCantidad > 0">
-                    <span>
-                      Nuevo tope proyectado:
-                      <strong class="font-mono-num text-slate-900" x-text="'#' + (loteActivo.numero_hasta + extensionCantidad)"></strong>
-                    </span>
-                  </template>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </template>
-
-        <!-- Estado vacío si no hay lote activo -->
-        <template x-if="!loteActivo">
-          <div class="py-10 text-center space-y-3">
-            <div class="w-12 h-12 mx-auto rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600">
-              <svg class="w-6 h-6 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-              </svg>
-            </div>
-            <h3 class="text-sm font-bold text-slate-900">No hay un lote de vouchers activo</h3>
-            <p class="text-xs text-slate-500 max-w-sm mx-auto">
-              Para que los operadores puedan llamar alumnos en ventanilla, debe activar un lote pausado del historial o crear un nuevo lote.
-            </p>
-            <div class="pt-2">
-              <button type="button" @click="showNewLotModal = true"
-                      class="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-[#1D4ED8] hover:bg-blue-800 shadow-xs transition-all cursor-pointer">
-                Crear Lote Nuevo
-              </button>
-            </div>
-          </div>
-        </template>
-
-      </div>
-
-      <!-- Historial de Lotes Anteriores -->
-      <div class="bg-white border border-[#CBD5E1] rounded-2xl shadow-xs overflow-hidden">
-        <div class="px-6 py-4 border-b border-slate-200">
-          <h3 class="text-sm font-semibold text-slate-900">Historial de Lotes</h3>
-          <p class="text-xs text-slate-500">Registro histórico de secuencias de turnos impresos</p>
-        </div>
-
-        <div class="overflow-x-auto">
-          <table class="w-full text-left border-collapse">
-            <thead>
-              <tr class="bg-slate-50/75 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                <th class="px-6 py-3">Lote</th>
-                <th class="px-6 py-3">Rango</th>
-                <th class="px-6 py-3">Estado</th>
-                <th class="px-6 py-3 text-center">Progreso</th>
-                <th class="px-6 py-3 text-center">Último Llamado</th>
-                <th class="px-6 py-3 text-right">Acción</th>
+      <div class="bg-white border border-[#CBD5E1] rounded-2xl overflow-hidden shadow-xs">
+        <div class="p-4 border-b border-slate-200 font-bold text-xs uppercase text-slate-700">Historial de Lotes</div>
+        <table class="w-full text-xs text-left">
+          <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200"><tr><th class="p-3">Lote</th><th class="p-3">Rango</th><th class="p-3">Progreso</th><th class="p-3">Estado</th><th class="p-3">Acción</th></tr></thead>
+          <tbody class="divide-y divide-slate-100">
+            <template x-for="lote in lotes" :key="lote.id">
+              <tr class="hover:bg-slate-50/80">
+                <td class="p-3 font-bold font-mono-num" x-text="'Lote ' + lote.numero_lote"></td>
+                <td class="p-3 font-mono-num" x-text="lote.numero_desde + ' → ' + lote.numero_hasta"></td>
+                <td class="p-3 font-mono-num" x-text="lote.ultimo_numero_llamado + ' llamados'"></td>
+                <td class="p-3"><span class="px-2 py-0.5 rounded-full font-bold uppercase text-[10px]" :class="lote.estado === 'activo' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'" x-text="lote.estado"></span></td>
+                <td class="p-3"><button type="button" x-show="lote.estado !== 'activo' && lote.estado !== 'cerrado'" @click="activarLote(lote.id)" class="text-[#1D4ED8] font-bold hover:underline cursor-pointer">Activar</button></td>
               </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-200 text-xs text-slate-700">
-              <template x-for="l in lotesHistorial" :key="l.id">
-                <tr class="hover:bg-slate-50/50 transition-colors">
-                  <td class="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">
-                    <span x-text="'Lote ' + l.numero_lote"></span>
-                  </td>
-                  <td class="px-6 py-4 font-mono-num whitespace-nowrap"
-                      x-text="'#' + (l.numero_desde || 1) + ' al #' + l.numero_hasta">
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border"
-                          :class="{
-                            'bg-emerald-50 text-emerald-700 border-emerald-200': l.estado === 'activo',
-                            'bg-amber-50 text-amber-700 border-amber-200': l.estado === 'pausado',
-                            'bg-slate-100 text-slate-600 border-slate-200': l.estado === 'cerrado' || l.estado === 'agotado'
-                          }">
-                      <span x-text="l.estado"></span>
-                    </span>
-                  </td>
-                  <td class="px-6 py-4 text-center whitespace-nowrap font-mono-num"
-                      x-text="(l.progreso_pct || 0) + '%'">
-                  </td>
-                  <td class="px-6 py-4 text-center whitespace-nowrap font-mono-num"
-                      x-text="'#' + (l.ultimo_numero_llamado || 0)">
-                  </td>
-                  <td class="px-6 py-4 text-right whitespace-nowrap">
-                    <template x-if="l.estado === 'pausado' || l.estado === 'preparado'">
-                      <button type="button" @click="activarLote(l.id)"
-                              class="px-2.5 py-1 rounded-lg text-xs font-semibold text-[#1D4ED8] bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors cursor-pointer">
-                        Activar
-                      </button>
-                    </template>
-                    <template x-if="l.estado === 'activo'">
-                      <span class="text-emerald-600 font-semibold text-[11px]">En curso</span>
-                    </template>
-                    <template x-if="l.estado === 'cerrado'">
-                      <span class="text-slate-400 text-[11px]">Archivado</span>
-                    </template>
-                  </td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
+            </template>
+          </tbody>
+        </table>
       </div>
-
     </section>
 
-    <!-- ─────────────────────────────────────────────────────────────────────── -->
-    <!-- PESTAÑA 3: CONFIGURACIÓN DIARIA DE MESAS                              -->
-    <!-- ─────────────────────────────────────────────────────────────────────── -->
+    <!-- PESTAÑA 3: CONFIGURACIÓN DIARIA DE MESAS -->
     <section x-show="tab === 'mesas'" class="space-y-6">
-      
-      <!-- Encabezado de la pestaña -->
-      <div class="flex items-center justify-between">
-        <div>
-          <h2 class="text-base font-bold text-slate-900">Configuración Diaria de Mesas</h2>
-          <p class="text-xs text-slate-500">Asignación directa de operadores de ventanilla y control de actividad</p>
-        </div>
-        <button type="button" @click="showNewMesaModal = true"
-                class="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-[#1D4ED8] hover:bg-blue-800 shadow-xs transition-all cursor-pointer">
-          <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          <span>Nueva Mesa</span>
-        </button>
+      <div class="flex justify-between items-center">
+        <div><h2 class="font-bold text-base text-slate-900">Ventanillas y Asignación de Operadores</h2><p class="text-xs text-slate-500">Configure las mesas habilitadas para la jornada de hoy</p></div>
+        <button type="button" @click="crearMesa()" class="px-4 py-2 bg-[#1D4ED8] hover:bg-blue-800 text-white rounded-xl text-xs font-bold cursor-pointer">+ Nueva Mesa</button>
       </div>
-
-      <!-- Grilla de Mesas de Trabajo -->
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <template x-for="m in mesas" :key="m.id">
-          <div class="bg-white border border-[#CBD5E1] rounded-2xl p-5 shadow-xs space-y-4">
-            
-            <!-- Encabezado de Card -->
-            <div class="flex items-start justify-between">
-              <div>
-                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-800 font-mono-num"
-                      x-text="'MESA ' + m.numero"></span>
-                <h3 class="text-sm font-bold text-slate-900 mt-1" x-text="m.nombre"></h3>
-              </div>
-              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border"
-                    :class="{
-                      'bg-emerald-50 text-emerald-700 border-emerald-200': m.estado === 'activa',
-                      'bg-slate-100 text-slate-600 border-slate-200': m.estado === 'pausada',
-                      'bg-rose-50 text-rose-700 border-rose-200': m.estado === 'inactiva'
-                    }">
-                <span x-text="m.estado"></span>
-              </span>
+        <template x-for="mesa in mesas" :key="mesa.id">
+          <div class="bg-white border border-[#CBD5E1] rounded-2xl p-4 shadow-xs flex flex-col justify-between h-40">
+            <div class="flex justify-between items-center">
+              <span class="font-mono-num font-bold text-base text-slate-900" x-text="'MESA ' + mesa.numero"></span>
+              <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full" :class="mesa.estado === 'activa' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'" x-text="mesa.estado"></span>
             </div>
-
-            <!-- Selector de Operador Directo -->
             <div class="space-y-1">
-              <label class="block text-[11px] font-semibold text-slate-600">Operador asignado:</label>
-              <select @change="asignarOperadorAMesa(m.id, $event)"
-                      class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600/25">
-                <option value="" :selected="!m.operador_id">-- Sin Asignar --</option>
-                <template x-for="op in usuarios.filter(u => u.rol === 'operador' && u.activo)" :key="op.id">
-                  <option :value="op.id"
-                          :selected="m.operador_id === op.id"
-                          x-text="op.nombre_completo + ' (' + op.username + ')'"></option>
-                </template>
+              <label :for="'op-select-' + mesa.id" class="text-[11px] font-semibold text-slate-500">Operador asignado:</label>
+              <select :id="'op-select-' + mesa.id" @change="asignarOperador(mesa.id, $event.target.value)" class="w-full text-xs p-2 border border-slate-300 rounded-xl bg-slate-50">
+                <option value="">-- Sin asignar --</option>
+                <template x-for="op in operadoresDisponibles" :key="op.id"><option :value="op.id" :selected="mesa.operador_id === op.id" x-text="op.nombre_completo"></option></template>
               </select>
             </div>
-
-            <!-- Métricas rápidas de la mesa -->
-            <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-xs">
-              <div>
-                <span class="text-slate-400 block text-[10px]">Turno en curso:</span>
-                <span class="font-mono-num font-bold text-slate-900"
-                      x-text="m.turno_actual ? '#' + m.turno_actual : 'Ninguno'"></span>
-              </div>
-              <div class="text-right">
-                <span class="text-slate-400 block text-[10px]">Atendidos hoy:</span>
-                <span class="font-mono-num font-bold text-slate-900" x-text="m.atendidos_hoy || 0"></span>
-              </div>
+            <div class="pt-2 border-t border-slate-100 text-xs">
+              <button type="button" @click="mesa.estado === 'activa' ? pausarMesaAdmin(mesa.id) : activarMesaAdmin(mesa.id)" class="text-slate-600 font-semibold hover:text-slate-900 cursor-pointer" x-text="mesa.estado === 'activa' ? 'Pausar mesa' : 'Activar mesa'"></button>
             </div>
-
-            <!-- Botones de Acción en Caliente -->
-            <div class="pt-2">
-              <button type="button" @click="toggleEstadoMesa(m)"
-                      class="w-full py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer"
-                      :class="m.estado === 'activa' ? 'bg-slate-50 hover:bg-slate-100 border-slate-300 text-slate-700' : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-800'">
-                <span x-text="m.estado === 'activa' ? 'Pausar Mesa' : 'Reactivar Mesa'"></span>
-              </button>
-            </div>
-
           </div>
         </template>
       </div>
-
     </section>
 
-    <!-- ─────────────────────────────────────────────────────────────────────── -->
-    <!-- PESTAÑA 4: AJUSTES, USUARIOS Y REPORTES                                -->
-    <!-- ─────────────────────────────────────────────────────────────────────── -->
-    <section x-show="tab === 'configuracion'" class="space-y-6">
-      
-      <!-- Sección: CRUD de Usuarios -->
-      <div class="bg-white border border-[#CBD5E1] rounded-2xl shadow-xs overflow-hidden">
-        <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-          <div>
-            <h3 class="text-sm font-semibold text-slate-900">Usuarios del Sistema</h3>
-            <p class="text-xs text-slate-500">Gestión de cuentas para operadores, supervisores y administradores</p>
-          </div>
-          <button type="button" @click="showNewUserModal = true"
-                  class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-white bg-[#1D4ED8] hover:bg-blue-800 shadow-xs transition-all cursor-pointer">
-            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            <span>Nuevo Usuario</span>
-          </button>
-        </div>
-
-        <div class="overflow-x-auto">
-          <table class="w-full text-left border-collapse">
-            <thead>
-              <tr class="bg-slate-50/75 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                <th class="px-6 py-3">Usuario</th>
-                <th class="px-6 py-3">Nombre Completo</th>
-                <th class="px-6 py-3">Rol</th>
-                <th class="px-6 py-3 text-center">Estado</th>
-                <th class="px-6 py-3 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-200 text-xs text-slate-700">
-              <template x-for="u in usuarios" :key="u.id">
-                <tr class="hover:bg-slate-50/50 transition-colors">
-                  <td class="px-6 py-4 font-mono-num font-semibold text-slate-900" x-text="u.username"></td>
-                  <td class="px-6 py-4 text-slate-800" x-text="u.nombre_completo"></td>
-                  <td class="px-6 py-4 capitalize" x-text="u.rol"></td>
-                  <td class="px-6 py-4 text-center">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border"
-                          :class="u.activo ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'">
-                      <span x-text="u.activo ? 'Activo' : 'Inactivo'"></span>
-                    </span>
-                  </td>
-                  <td class="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                    <button type="button" @click="abrirEditarUsuario(u)"
-                            class="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors cursor-pointer">
-                      Editar
-                    </button>
-                    <button type="button" @click="toggleUsuarioActivo(u)"
-                            class="px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors cursor-pointer"
-                            :class="u.activo ? 'text-rose-700 bg-rose-50 hover:bg-rose-100 border-rose-200' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200'">
-                      <span x-text="u.activo ? 'Desactivar' : 'Activar'"></span>
-                    </button>
-                  </td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-        </div>
+    <!-- PESTAÑA 4: CONFIGURACIÓN, USUARIOS & REPORTES -->
+    <section x-show="tab === 'config'" class="space-y-6">
+      <div class="bg-white border border-[#CBD5E1] rounded-2xl p-5 shadow-xs flex justify-between items-center">
+        <div><h2 class="font-bold text-sm text-slate-900">Reporte Diario de Matrículas</h2><p class="text-xs text-slate-500">Descargue el registro completo en formato CSV</p></div>
+        <button type="button" @click="exportarCSV()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold cursor-pointer">Exportar CSV</button>
       </div>
 
-      <!-- Sección: Switches y Parámetros del Sistema -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
-        <!-- Tarjeta de Switches -->
-        <div class="bg-white border border-[#CBD5E1] rounded-2xl p-6 shadow-xs space-y-5">
-          <h3 class="text-sm font-semibold text-slate-900">Parámetros Operativos</h3>
-
-          <div class="space-y-4">
-            <!-- Switch Kiosko Web -->
-            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div class="pr-4">
-                <span class="text-xs font-bold text-slate-800">Kiosko Web / Autoservicio QR</span>
-                <p class="text-[11px] text-slate-500">Habilita la toma de turnos mediante tablet en portería o celular del estudiante.</p>
-              </div>
-              <button type="button" @click="actualizarConfig('kiosko_web_activo', !config.kiosko_web_activo)"
-                      aria-label="Alternar activación de Kiosko Web"
-                      title="Alternar activación de Kiosko Web"
-                      class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-                      :class="config.kiosko_web_activo ? 'bg-[#1D4ED8]' : 'bg-slate-300'">
-                <span class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                      :class="config.kiosko_web_activo ? 'translate-x-5' : 'translate-x-0'"></span>
-              </button>
-            </div>
-
-            <!-- Switch Voz TV -->
-            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div class="pr-4">
-                <span class="text-xs font-bold text-slate-800">Anuncios de Voz en Pantalla TV</span>
-                <p class="text-[11px] text-slate-500">Reproducir timbre institucional y síntesis de voz al anunciar turnos en auditorio.</p>
-              </div>
-              <button type="button" @click="actualizarConfig('voz_habilitada', !config.voz_habilitada)"
-                      aria-label="Alternar anuncios de voz en pantalla TV"
-                      title="Alternar anuncios de voz en pantalla TV"
-                      class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-                      :class="config.voz_habilitada ? 'bg-[#1D4ED8]' : 'bg-slate-300'">
-                <span class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                      :class="config.voz_habilitada ? 'translate-x-5' : 'translate-x-0'"></span>
-              </button>
-            </div>
-
-            <!-- Alerta Vouchers Restantes -->
-            <div class="flex items-center justify-between">
-              <div class="pr-4">
-                <label for="input-alerta-vouchers" class="block text-xs font-bold text-slate-800">Alerta de Lote Agotándose</label>
-                <p class="text-[11px] text-slate-500">Notificar al panel de administración cuando queden N vouchers.</p>
-              </div>
-              <div class="w-20">
-                <input id="input-alerta-vouchers" type="number" min="5" step="5"
-                       x-model.number="config.alerta_vouchers_restantes"
-                       @change="actualizarConfig('alerta_vouchers_restantes', config.alerta_vouchers_restantes)"
-                       title="Cantidad de vouchers restantes para alerta"
-                       aria-label="Cantidad de vouchers restantes para alerta"
-                       placeholder="20"
-                       class="w-full px-2 py-1 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono-num text-center">
-              </div>
-            </div>
-          </div>
+      <div class="bg-white border border-[#CBD5E1] rounded-2xl p-5 shadow-xs space-y-4">
+        <h3 class="font-bold text-sm text-slate-900">Ajustes Operativos en Caliente</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div><label for="cfg-tiempo-atencion" class="font-semibold block mb-1">Tiempo máx atención (min):</label><input id="cfg-tiempo-atencion" type="number" x-model.number="config.tiempo_max_atencion_min" class="w-full p-2 border border-slate-300 rounded-xl font-mono-num"></div>
+          <div><label for="cfg-alerta-vouchers" class="font-semibold block mb-1">Alerta vouchers restantes:</label><input id="cfg-alerta-vouchers" type="number" x-model.number="config.alerta_vouchers_restantes" class="w-full p-2 border border-slate-300 rounded-xl font-mono-num"></div>
+          <div class="flex items-center space-x-2 pt-5"><input id="cfg-kiosko-activo" type="checkbox" x-model="config.kiosko_web_activo" class="rounded border-slate-300 text-blue-600"><label for="cfg-kiosko-activo" class="font-semibold">Kiosko Web Activo</label></div>
         </div>
-
-        <!-- Tarjeta de Exportación de Reporte -->
-        <div class="bg-white border border-[#CBD5E1] rounded-2xl p-6 shadow-xs flex flex-col justify-between space-y-4">
-          <div>
-            <h3 class="text-sm font-semibold text-slate-900">Reporte Diario de Matrículas</h3>
-            <p class="text-xs text-slate-500 mt-1">
-              Descargue la trazabilidad completa de la jornada con tiempos de espera, duración de atención por ventanilla y registro de operadores.
-            </p>
-            <div class="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
-              <p>• Formato: CSV compatible con Microsoft Excel y Google Sheets</p>
-              <p>• Incluye: Turno, Mesa, Operador, Lote, Llamado en, Finalizado en y Duraciones en segundos</p>
-            </div>
-          </div>
-
-          <button type="button" @click="descargarCSV()"
-                  class="w-full inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition-colors shadow-xs cursor-pointer">
-            <svg class="w-4 h-4 text-slate-600 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-            </svg>
-            <span>Descargar CSV de Hoy</span>
-          </button>
-        </div>
-
+        <button type="button" @click="guardarConfiguracion()" class="px-4 py-2 bg-[#1D4ED8] text-white rounded-xl text-xs font-bold hover:bg-blue-800 cursor-pointer">Guardar Ajustes</button>
       </div>
 
+      <div class="bg-white border border-[#CBD5E1] rounded-2xl p-5 shadow-xs space-y-4">
+        <div class="flex justify-between items-center"><h3 class="font-bold text-sm text-slate-900">Usuarios y Operadores</h3><button type="button" @click="modalUsuario = true" class="text-xs font-bold text-[#1D4ED8] hover:underline cursor-pointer">+ Nuevo Usuario</button></div>
+        <table class="w-full text-xs text-left">
+          <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200"><tr><th class="p-2.5">Nombre</th><th class="p-2.5">Usuario</th><th class="p-2.5">Rol</th><th class="p-2.5">Estado</th></tr></thead>
+          <tbody class="divide-y divide-slate-100">
+            <template x-for="usr in usuarios" :key="usr.id">
+              <tr><td class="p-2.5 font-medium" x-text="usr.nombre_completo"></td><td class="p-2.5 font-mono-num" x-text="usr.username"></td><td class="p-2.5 uppercase font-bold text-[10px]" x-text="usr.rol"></td><td class="p-2.5"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold" :class="usr.activo ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'" x-text="usr.activo ? 'Activo' : 'Inactivo'"></span></td></tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
     </section>
 
   </main>
 
-  <!-- ================= PIE DE PÁGINA DISCRETO ================= -->
-  <footer class="mt-auto bg-white border-t border-[#CBD5E1] py-3 px-6 text-center text-xs text-slate-400">
-    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-      <span>Turnero de Matrículas 2026 • Versión 2.1 Institucional</span>
-      <span class="font-mono-num text-[11px]">Sistema Local Autónomo (LAN)</span>
-    </div>
-  </footer>
-
-  <!-- ========================================================================= -->
-  <!-- MODALES FLOTANTES (Accesibles, sobrios y sin emojis)                     -->
-  <!-- ========================================================================= -->
-
-  <!-- Modal 1: Nuevo Lote -->
-  <div x-show="showNewLotModal" x-cloak
-       class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4"
-       @keydown.escape.window="showNewLotModal = false">
-    <div class="bg-white border border-[#CBD5E1] rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4"
-         @click.outside="showNewLotModal = false">
-      <h3 class="text-base font-bold text-slate-900">Habilitar Nuevo Lote de Vouchers</h3>
-      <p class="text-xs text-slate-500">
-        El sistema creará una nueva secuencia correlativa comenzando en el voucher <strong>#1</strong>.
-      </p>
-
-      <div class="space-y-1">
-        <label class="block text-xs font-semibold text-slate-700">Total de turnos a habilitar (hasta):</label>
-        <input type="number" min="1" step="50"
-               x-model.number="nuevoLote.cantidad"
-               class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono-num text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/25"
-               placeholder="Ej: 500">
-        <p class="text-[11px] text-slate-400">Rango resultante: #1 al #<span x-text="nuevoLote.cantidad || 0"></span></p>
-      </div>
-
-      <div class="flex items-center justify-end space-x-2 pt-2">
-        <button type="button" @click="showNewLotModal = false"
-                class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer">
-          Cancelar
-        </button>
-        <button type="button" @click="crearNuevoLote()"
-                class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#1D4ED8] hover:bg-blue-800 shadow-xs transition-all cursor-pointer">
-          Crear Lote
-        </button>
-      </div>
+  <!-- ── 3. MODALES DE ACCIÓN ── -->
+  <div x-show="modalLote" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+    <div class="bg-white border border-[#CBD5E1] rounded-2xl max-w-sm w-full p-6 shadow-xl space-y-4">
+      <h3 class="text-base font-bold text-slate-900">Crear Nuevo Lote</h3>
+      <form @submit.prevent="crearLoteSubmit" class="space-y-3 text-xs">
+        <div><label for="nuevo-lote-hasta" class="font-semibold block mb-1">Número hasta:</label><input id="nuevo-lote-hasta" type="number" x-model.number="nuevoLoteHasta" required min="1" class="w-full p-2.5 border border-slate-300 rounded-xl font-mono-num"></div>
+        <div class="flex justify-end space-x-2 pt-2"><button type="button" @click="modalLote = false" class="px-3 py-2 border border-slate-300 rounded-xl cursor-pointer">Cancelar</button><button type="submit" class="px-4 py-2 bg-[#1D4ED8] text-white rounded-xl font-bold cursor-pointer">Crear y Activar</button></div>
+      </form>
     </div>
   </div>
 
-  <!-- Modal 2: Nueva Mesa -->
-  <div x-show="showNewMesaModal" x-cloak
-       class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4"
-       @keydown.escape.window="showNewMesaModal = false">
-    <div class="bg-white border border-[#CBD5E1] rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4"
-         @click.outside="showNewMesaModal = false">
-      <h3 class="text-base font-bold text-slate-900">Crear Nueva Mesa de Ventanilla</h3>
-      <p class="text-xs text-slate-500">Registre un nuevo puesto de atención física para el proceso.</p>
-
-      <div class="space-y-3">
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">Número de Mesa:</label>
-          <input type="number" min="1"
-                 x-model.number="nuevaMesa.numero"
-                 class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono-num text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/25"
-                 placeholder="Ej: 5">
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">Nombre o Ubicación:</label>
-          <input type="text"
-                 x-model="nuevaMesa.nombre"
-                 class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/25"
-                 placeholder="Ej: Ventanilla Secundaria - Bloque B">
-        </div>
-      </div>
-
-      <div class="flex items-center justify-end space-x-2 pt-2">
-        <button type="button" @click="showNewMesaModal = false"
-                class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer">
-          Cancelar
-        </button>
-        <button type="button" @click="crearMesa()"
-                class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#1D4ED8] hover:bg-blue-800 shadow-xs transition-all cursor-pointer">
-          Guardar Mesa
-        </button>
-      </div>
+  <div x-show="modalUsuario" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+    <div class="bg-white border border-[#CBD5E1] rounded-2xl max-w-sm w-full p-6 shadow-xl space-y-4">
+      <h3 class="text-base font-bold text-slate-900">Crear Usuario</h3>
+      <form @submit.prevent="crearUsuarioSubmit" class="space-y-3 text-xs">
+        <div><label for="usr-nombre" class="font-semibold block mb-1">Nombre:</label><input id="usr-nombre" type="text" x-model="nuevoUsuario.nombre_completo" required class="w-full p-2 border border-slate-300 rounded-xl"></div>
+        <div><label for="usr-username" class="font-semibold block mb-1">Usuario / DNI:</label><input id="usr-username" type="text" x-model="nuevoUsuario.username" required class="w-full p-2 border border-slate-300 rounded-xl"></div>
+        <div><label for="usr-password" class="font-semibold block mb-1">Contraseña:</label><input id="usr-password" type="password" x-model="nuevoUsuario.password" required class="w-full p-2 border border-slate-300 rounded-xl"></div>
+        <div><label for="usr-rol" class="font-semibold block mb-1">Rol:</label><select id="usr-rol" x-model="nuevoUsuario.rol" class="w-full p-2 border border-slate-300 rounded-xl"><option value="operador">Operador</option><option value="supervisor">Supervisor</option><option value="admin">Admin</option></select></div>
+        <div class="flex justify-end space-x-2 pt-2"><button type="button" @click="modalUsuario = false" class="px-3 py-2 border border-slate-300 rounded-xl cursor-pointer">Cancelar</button><button type="submit" class="px-4 py-2 bg-[#1D4ED8] text-white rounded-xl font-bold cursor-pointer">Guardar</button></div>
+      </form>
     </div>
   </div>
 
-  <!-- Modal 3: Nuevo Usuario -->
-  <div x-show="showNewUserModal" x-cloak
-       class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4"
-       @keydown.escape.window="showNewUserModal = false">
-    <div class="bg-white border border-[#CBD5E1] rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4"
-         @click.outside="showNewUserModal = false">
-      <h3 class="text-base font-bold text-slate-900">Registrar Nuevo Usuario</h3>
-      <p class="text-xs text-slate-500">Cree credenciales institucionales para un operador o supervisor.</p>
-
-      <div class="space-y-3">
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">Usuario (Login):</label>
-          <input type="text"
-                 x-model="nuevoUsuario.username"
-                 class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono-num text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/25"
-                 placeholder="Ej: mgonzalez">
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">Nombre Completo:</label>
-          <input type="text"
-                 x-model="nuevoUsuario.nombre_completo"
-                 class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/25"
-                 placeholder="Ej: María González">
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">Contraseña (Mínimo 8 caracteres):</label>
-          <input type="password"
-                 x-model="nuevoUsuario.password"
-                 class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/25"
-                 placeholder="••••••••">
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">Rol de Acceso:</label>
-          <select x-model="nuevoUsuario.rol"
-                  class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/25">
-            <option value="operador">Operador (Atención en ventanilla)</option>
-            <option value="supervisor">Supervisor (Monitoreo)</option>
-            <option value="admin">Administrador (Total)</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="flex items-center justify-end space-x-2 pt-2">
-        <button type="button" @click="showNewUserModal = false"
-                class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer">
-          Cancelar
-        </button>
-        <button type="button" @click="crearUsuario()"
-                class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#1D4ED8] hover:bg-blue-800 shadow-xs transition-all cursor-pointer">
-          Crear Usuario
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal 4: Editar Usuario -->
-  <div x-show="showEditUserModal" x-cloak
-       class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4"
-       @keydown.escape.window="showEditUserModal = false">
-    <div class="bg-white border border-[#CBD5E1] rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4"
-         @click.outside="showEditUserModal = false">
-      <h3 class="text-base font-bold text-slate-900">Editar Usuario</h3>
-      <p class="text-xs text-slate-500">
-        Modifique los datos o restablezca la contraseña para <strong x-text="usuarioAEditar.username"></strong>.
-      </p>
-
-      <div class="space-y-3">
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">Nombre Completo:</label>
-          <input type="text"
-                 x-model="usuarioAEditar.nombre_completo"
-                 class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/25">
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">Rol de Acceso:</label>
-          <select x-model="usuarioAEditar.rol"
-                  class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/25">
-            <option value="operador">Operador</option>
-            <option value="supervisor">Supervisor</option>
-            <option value="admin">Administrador</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">Nueva Contraseña (Opcional):</label>
-          <input type="password"
-                 x-model="usuarioAEditar.password"
-                 class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/25"
-                 placeholder="Dejar en blanco para conservar actual">
-        </div>
-      </div>
-
-      <div class="flex items-center justify-end space-x-2 pt-2">
-        <button type="button" @click="showEditUserModal = false"
-                class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer">
-          Cancelar
-        </button>
-        <button type="button" @click="guardarEdicionUsuario()"
-                class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#1D4ED8] hover:bg-blue-800 shadow-xs transition-all cursor-pointer">
-          Guardar Cambios
-        </button>
-      </div>
-    </div>
-  </div>
-
+  <script type="module" src="/js/pages/admin.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
 </body>
 </html>

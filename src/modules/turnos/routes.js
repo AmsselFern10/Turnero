@@ -53,10 +53,11 @@ module.exports = async function turnosRoutes (fastify) {
     await Promise.all([
       // TV: anuncia el nuevo número
       fastify.broadcast('tv:global', 'nuevo_llamado', {
-        turno:       turno.numero,
-        mesa_numero: turno.mesa_numero,
-        mesa_nombre: turno.mesa_nombre,
-        lote_numero: turno.lote_numero
+        turno:          turno.numero,
+        mesa_numero:    turno.mesa_numero,
+        mesa_nombre:    turno.mesa_nombre,
+        lote_numero:    turno.lote_numero,
+        proximo_numero: proximo_numero
       }),
       // Panel del operador: actualiza su panel
       fastify.broadcast(`mesa:${mesa_id}`, 'turno_llamado', {
