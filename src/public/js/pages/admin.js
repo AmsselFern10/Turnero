@@ -25,6 +25,7 @@ export function adminView() {
     tab: 'monitoreo',
     relojHora: '--:--:--',
     _clockTimer: null,
+    _pollTimer:  null,
 
     kpis: {
       atendidos_hoy:       0,
@@ -92,10 +93,17 @@ export function adminView() {
       await this.cargarTodo();
       this._actualizarAlertaLote();
       this.initWebSocket();
+
+      // Sincronización pasiva en segundo plano cada 5 minutos (resiliencia óptima)
+      this._pollTimer = setInterval(async () => {
+        await Promise.allSettled([this.cargarDashboard(), this.cargarLotes()]);
+        this._actualizarAlertaLote();
+      }, 5 * 60 * 1000);
     },
 
     destroy() {
       if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
+      if (this._pollTimer)  { clearInterval(this._pollTimer);  this._pollTimer = null; }
       if (this.ws) { this.ws.disconnect(); this.ws = null; }
     },
 
@@ -125,13 +133,19 @@ export function adminView() {
 
     async cargarKPIs() {
       const data = await api.get('/admin/kpis');
+      const lote = data.lote || null;
+      const hasta = lote ? (parseInt(lote.numero_hasta, 10) || 0) : 0;
+      const llamados = lote ? (parseInt(lote.ultimo_numero_llamado, 10) || 0) : 0;
       this.kpis = {
-        atendidos_hoy:       data.atendidos_hoy || 0,
+        atendidos_hoy:       parseInt(data.atendidos_hoy, 10) || 0,
         espera_promedio_min: data.promedio_seg != null ? (data.promedio_seg / 60).toFixed(1) : '--',
-        mesas_activas:       data.mesas_activas || 0,
-        vouchers_restantes:  data.lote ? (data.lote.numero_hasta - data.lote.ultimo_numero_llamado) : 0
+        mesas_activas:       parseInt(data.mesas_activas, 10) || 0,
+        vouchers_restantes:  lote ? Math.max(0, hasta - llamados) : 0
       };
-      if (data.lote) this.loteActivo = data.lote;
+      if (lote) {
+        if (!lote.numero_desde) lote.numero_desde = 1;
+        this.loteActivo = lote;
+      }
     },
 
     async cargarMesas() {
@@ -142,7 +156,13 @@ export function adminView() {
     async cargarLotes() {
       const [rL, rA] = await Promise.allSettled([api.get('/lotes'), api.get('/lotes/activo')]);
       if (rL.status === 'fulfilled') this.lotes = rL.value.lotes || [];
-      this.loteActivo = (rA.status === 'fulfilled' && rA.value.lote) ? rA.value.lote : null;
+      if (rA.status === 'fulfilled' && rA.value.lote) {
+        const la = rA.value.lote;
+        if (!la.numero_desde) la.numero_desde = 1;
+        this.loteActivo = la;
+      } else if (rA.status === 'fulfilled' && !rA.value.lote) {
+        this.loteActivo = null;
+      }
     },
 
     async cargarUsuarios() {
@@ -197,20 +217,40 @@ export function adminView() {
 
     calcularProgresoLote() {
       if (!this.loteActivo) return 0;
-      const total = (this.loteActivo.numero_hasta - this.loteActivo.numero_desde + 1);
-      const llamados = (this.loteActivo.ultimo_numero_llamado - this.loteActivo.numero_desde + 1);
+      const hasta = parseInt(this.loteActivo.numero_hasta, 10);
+      const desde = parseInt(this.loteActivo.numero_desde, 10) || 1;
+      const llamados = parseInt(this.loteActivo.ultimo_numero_llamado, 10) || 0;
+      if (isNaN(hasta) || hasta <= 0) return 0;
+      const total = hasta - desde + 1;
       if (total <= 0) return 0;
-      return Math.min(100, Math.max(0, Math.round((llamados / total) * 100)));
+      const emitidos = Math.max(0, llamados >= desde ? (llamados - desde + 1) : 0);
+      const pct = Math.round((emitidos / total) * 100);
+      return isNaN(pct) ? 0 : Math.min(100, Math.max(0, pct));
+    },
+
+    calcularTurnosEmitidos() {
+      if (!this.loteActivo) return 0;
+      const desde = parseInt(this.loteActivo.numero_desde, 10) || 1;
+      const llamados = parseInt(this.loteActivo.ultimo_numero_llamado, 10) || 0;
+      if (llamados < desde) return 0;
+      const emitidos = llamados - desde + 1;
+      return isNaN(emitidos) ? 0 : Math.max(0, emitidos);
     },
 
     calcularVouchersEmitidos() {
+      return this.calcularTurnosEmitidos();
+    },
+
+    calcularTurnosRestantesLote() {
       if (!this.loteActivo) return 0;
-      return Math.max(0, this.loteActivo.ultimo_numero_llamado - this.loteActivo.numero_desde + 1);
+      const hasta = parseInt(this.loteActivo.numero_hasta, 10) || 0;
+      const llamados = parseInt(this.loteActivo.ultimo_numero_llamado, 10) || 0;
+      const rest = hasta - llamados;
+      return isNaN(rest) ? 0 : Math.max(0, rest);
     },
 
     calcularVouchersRestantesLote() {
-      if (!this.loteActivo) return 0;
-      return Math.max(0, this.loteActivo.numero_hasta - this.loteActivo.ultimo_numero_llamado);
+      return this.calcularTurnosRestantesLote();
     },
 
     abrirModalExtender() {
@@ -237,7 +277,7 @@ export function adminView() {
         this.loteActivo = res.lote;
         this.loteAgotadoAlerta = false;
         this.modalExtender = false;
-        showToast({ message: `Lote extendido +${cantidad} vouchers (Nuevo límite: #${nuevoHasta})`, type: 'success' });
+        showToast({ message: `Lote extendido +${cantidad} turnos (Nuevo límite: #${nuevoHasta})`, type: 'success' });
         await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
       } catch (err) {
         showToast({ message: err.status === 409 ? 'El lote cambió. Vista actualizada.' : (err.mensaje || 'Error al extender lote'), type: err.status === 409 ? 'warning' : 'danger' });
@@ -465,33 +505,36 @@ export function adminView() {
 
       this.ws.on('snapshot', async () => { await this.cargarTodo(); this._actualizarAlertaLote(); });
 
-      let _kpiPending = false;
-      const recargarKPIs = async () => {
-        if (_kpiPending) return;
-        _kpiPending = true;
-        await Promise.allSettled([this.cargarKPIs(), this.cargarMesas()]);
-        _kpiPending = false;
+      let _syncPending = false;
+      const recargarEnVivo = async () => {
+        if (_syncPending) return;
+        _syncPending = true;
+        try {
+          await Promise.allSettled([this.cargarKPIs(), this.cargarMesas(), this.cargarLotes()]);
+          this._actualizarAlertaLote();
+        } finally {
+          _syncPending = false;
+        }
       };
 
-      this.ws.on('kpi_update',       recargarKPIs);
-      this.ws.on('turno_llamado',    recargarKPIs);
-      this.ws.on('mesa_actualizada', recargarKPIs);
+      this.ws.on('kpi_update',       recargarEnVivo);
+      this.ws.on('turno_llamado',    recargarEnVivo);
+      this.ws.on('mesa_actualizada', recargarEnVivo);
 
       this.ws.on('lote_agotado', async () => {
         this.loteAgotadoAlerta = true;
-        showToast({ message: 'Lote agotado. Extiendalo o cree uno nuevo.', type: 'danger', duration: 0 });
-        await this.cargarKPIs();
+        showToast({ message: 'Lote agotado. Extiéndalo o cree uno nuevo.', type: 'danger', duration: 0 });
+        await recargarEnVivo();
       });
 
       this.ws.on('alerta_vouchers_restantes', (p) => {
-        showToast({ message: `ALERTA: Quedan solo ${p?.vouchers_restantes ?? '?'} vouchers`, type: 'warning', duration: 7000 });
+        showToast({ message: `ALERTA: Quedan solo ${p?.vouchers_restantes ?? '?'} turnos`, type: 'warning', duration: 7000 });
       });
 
-      const recargarLotes = async () => { await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]); };
-      this.ws.on('lote_extendido', async () => { this.loteAgotadoAlerta = false; await recargarLotes(); });
-      this.ws.on('lote_pausado',   recargarLotes);
-      this.ws.on('lote_activado',  recargarLotes);
-      this.ws.on('lote_cerrado',   async () => { this.loteAgotadoAlerta = false; await recargarLotes(); });
+      this.ws.on('lote_extendido', async () => { this.loteAgotadoAlerta = false; await recargarEnVivo(); });
+      this.ws.on('lote_pausado',   recargarEnVivo);
+      this.ws.on('lote_activado',  recargarEnVivo);
+      this.ws.on('lote_cerrado',   async () => { this.loteAgotadoAlerta = false; await recargarEnVivo(); });
       this.ws.on('config_actualizada', () => this.cargarConfiguracion());
 
       this.ws.connect();

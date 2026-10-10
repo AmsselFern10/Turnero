@@ -19,10 +19,10 @@ module.exports = async function adminRoutes (fastify) {
           COUNT(*) FILTER (WHERE estado = 'en_atencion')                     AS en_atencion_ahora,
           ROUND(AVG(duracion_atencion_seg) FILTER (WHERE estado = 'atendido' AND duracion_atencion_seg IS NOT NULL)) AS promedio_seg
         FROM turnos
-        WHERE creado_en::date = CURRENT_DATE
+        WHERE creado_en >= date_trunc('day', NOW())
       `),
       fastify.db.query(`
-        SELECT id, numero_lote, numero_hasta, ultimo_numero_llamado, estado,
+        SELECT id, numero_lote, numero_desde, numero_hasta, ultimo_numero_llamado, estado,
                numero_hasta - ultimo_numero_llamado AS vouchers_restantes,
                ROUND((ultimo_numero_llamado::numeric / NULLIF(numero_hasta,0)) * 100, 1) AS progreso_pct
         FROM lotes_voucher WHERE estado = 'activo' LIMIT 1
@@ -183,8 +183,8 @@ module.exports = async function adminRoutes (fastify) {
        LEFT JOIN mesas m ON al.mesa_id = m.id
        LEFT JOIN turnos t ON al.turno_id = t.id
        LEFT JOIN lotes_voucher lv ON al.lote_id = lv.id
-       WHERE al.timestamp::date = $1
-       ORDER BY al.timestamp DESC
+       WHERE al.timestamp >= ($1::date)::timestamptz AND al.timestamp < (($1::date + 1)::timestamptz)
+       ORDER BY al.timestamp DESC, al.id DESC
        LIMIT $2 OFFSET $3`,
       [fecha, limite, offset]
     )
@@ -216,7 +216,7 @@ module.exports = async function adminRoutes (fastify) {
        LEFT JOIN mesas m ON t.mesa_id = m.id
        LEFT JOIN usuarios u ON t.operador_id = u.id
        LEFT JOIN lotes_voucher lv ON t.lote_id = lv.id
-       WHERE t.creado_en::date = $1
+       WHERE t.creado_en >= ($1::date)::timestamptz AND t.creado_en < (($1::date + 1)::timestamptz)
        ORDER BY t.llamado_en ASC NULLS LAST`,
       [fecha]
     )
