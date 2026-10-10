@@ -640,6 +640,8 @@
                 <p class="text-[11px] text-slate-500">Habilita la toma de turnos mediante tablet en portería o celular del estudiante.</p>
               </div>
               <button type="button" @click="actualizarConfig('kiosko_web_activo', !config.kiosko_web_activo)"
+                      aria-label="Alternar activación de Kiosko Web"
+                      title="Alternar activación de Kiosko Web"
                       class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
                       :class="config.kiosko_web_activo ? 'bg-[#1D4ED8]' : 'bg-slate-300'">
                 <span class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
@@ -654,6 +656,8 @@
                 <p class="text-[11px] text-slate-500">Reproducir timbre institucional y síntesis de voz al anunciar turnos en auditorio.</p>
               </div>
               <button type="button" @click="actualizarConfig('voz_habilitada', !config.voz_habilitada)"
+                      aria-label="Alternar anuncios de voz en pantalla TV"
+                      title="Alternar anuncios de voz en pantalla TV"
                       class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
                       :class="config.voz_habilitada ? 'bg-[#1D4ED8]' : 'bg-slate-300'">
                 <span class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
@@ -664,13 +668,16 @@
             <!-- Alerta Vouchers Restantes -->
             <div class="flex items-center justify-between">
               <div class="pr-4">
-                <span class="text-xs font-bold text-slate-800">Alerta de Lote Agotándose</span>
+                <label for="input-alerta-vouchers" class="block text-xs font-bold text-slate-800">Alerta de Lote Agotándose</label>
                 <p class="text-[11px] text-slate-500">Notificar al panel de administración cuando queden N vouchers.</p>
               </div>
               <div class="w-20">
-                <input type="number" min="5" step="5"
+                <input id="input-alerta-vouchers" type="number" min="5" step="5"
                        x-model.number="config.alerta_vouchers_restantes"
                        @change="actualizarConfig('alerta_vouchers_restantes', config.alerta_vouchers_restantes)"
+                       title="Cantidad de vouchers restantes para alerta"
+                       aria-label="Cantidad de vouchers restantes para alerta"
+                       placeholder="20"
                        class="w-full px-2 py-1 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono-num text-center">
               </div>
             </div>
@@ -718,7 +725,7 @@
   <!-- ========================================================================= -->
 
   <!-- Modal 1: Nuevo Lote -->
-  <div x-show="showNewLotModal" style="display: none;"
+  <div x-show="showNewLotModal" x-cloak
        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4"
        @keydown.escape.window="showNewLotModal = false">
     <div class="bg-white border border-[#CBD5E1] rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4"
@@ -751,7 +758,7 @@
   </div>
 
   <!-- Modal 2: Nueva Mesa -->
-  <div x-show="showNewMesaModal" style="display: none;"
+  <div x-show="showNewMesaModal" x-cloak
        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4"
        @keydown.escape.window="showNewMesaModal = false">
     <div class="bg-white border border-[#CBD5E1] rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4"
@@ -790,7 +797,7 @@
   </div>
 
   <!-- Modal 3: Nuevo Usuario -->
-  <div x-show="showNewUserModal" style="display: none;"
+  <div x-show="showNewUserModal" x-cloak
        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4"
        @keydown.escape.window="showNewUserModal = false">
     <div class="bg-white border border-[#CBD5E1] rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4"
@@ -845,7 +852,7 @@
   </div>
 
   <!-- Modal 4: Editar Usuario -->
-  <div x-show="showEditUserModal" style="display: none;"
+  <div x-show="showEditUserModal" x-cloak
        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4"
        @keydown.escape.window="showEditUserModal = false">
     <div class="bg-white border border-[#CBD5E1] rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4"
