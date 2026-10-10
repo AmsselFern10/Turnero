@@ -342,24 +342,46 @@ export function panelMesaView() {
           return;
         }
 
-        // Barra Espaciadora -> Llamar Siguiente
-        if (e.code === 'Space') {
+        // Enter -> Llamar Siguiente
+        if (e.code === 'Enter') {
           e.preventDefault();
           this.llamarSiguiente();
           return;
         }
 
-        // Tecla N -> No se presentó
-        if (e.key === 'n' || e.key === 'N') {
+        // Barra Espaciadora: Re-llamar a TV si hay turno activo, o Llamar Siguiente si no hay turno
+        if (e.code === 'Space') {
+          e.preventDefault();
+          if (this.turnoActual) {
+            this.rellamarTurno();
+          } else {
+            this.llamarSiguiente();
+          }
+          return;
+        }
+
+        // Tecla R -> Re-llamar a TV
+        if (e.key === 'r' || e.key === 'R') {
+          e.preventDefault();
+          this.rellamarTurno();
+          return;
+        }
+
+        // Tecla Escape o N -> No se presentó
+        if (e.key === 'Escape' || e.key === 'n' || e.key === 'N') {
           e.preventDefault();
           this.cancelarTurno();
           return;
         }
 
-        // Tecla R -> Re-llamar
-        if (e.key === 'r' || e.key === 'R') {
+        // Tecla P -> Pausar o Reanudar Mesa
+        if (e.key === 'p' || e.key === 'P') {
           e.preventDefault();
-          this.rellamarTurno();
+          if (this.mesaPausada) {
+            this.reanudarMesa();
+          } else {
+            this.pausarMesa();
+          }
           return;
         }
       });
@@ -404,9 +426,12 @@ export function panelMesaView() {
         this.wsConnected = status === 'CONECTADO';
       });
 
-      // Evento de turno llamado para esta mesa
+      // Evento de turno llamado para esta mesa (idempotente)
       this.ws.on('turno_llamado', (payload) => {
         if (payload && payload.turno) {
+          if (this.turnoActual && this.turnoActual.id === payload.turno.id) {
+            return; // Ya procesado
+          }
           this.turnoActual = payload.turno;
           this.proximoNumero = payload.proximo_numero;
           this.vouchersRestantes = payload.vouchers_restantes;
@@ -455,8 +480,4 @@ if (window.Alpine) {
   registerPanelMesaWithAlpine();
 } else {
   document.addEventListener('alpine:init', registerPanelMesaWithAlpine);
-}
-
-if (typeof window !== 'undefined') {
-  window.panelMesaView = panelMesaView;
 }

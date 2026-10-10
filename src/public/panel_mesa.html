@@ -50,54 +50,71 @@
     </div>
   </header>
 
-  <!-- ── 2. CANVAS CENTRAL (2 COLUMNAS ERGONÓMICAS) ── -->
+  <!-- ── 2. CANVAS CENTRAL (2 COLUMNAS ERGONÓMICAS — BOCETO IMAGEN 2) ── -->
   <main class="flex-1 w-full max-w-7xl mx-auto p-6 flex flex-col md:flex-row gap-6 overflow-hidden">
     
     <!-- COLUMNA HERO (~65% Ancho): TURNO ACTUAL Y ACCIÓN DOMINANTE -->
     <section class="card-hero flex-1 md:w-[65%] flex flex-col justify-between p-7">
+      
+      <!-- Barra Superior de Estado y Cronómetro (Boceto Imagen 2) -->
       <div class="flex items-center justify-between pb-4 border-b border-slate-100">
-        <div class="flex items-center space-x-2">
-          <span class="w-2.5 h-2.5 rounded-full" :class="turnoActual ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'"></span>
-          <span class="text-xs font-bold uppercase tracking-wider text-slate-500" x-text="turnoActual ? 'Turno en Atención' : 'Ventanilla Libre (Sin Turno)'"></span>
+        <div class="pill text-xs font-semibold px-3 py-1"
+             :class="turnoActual ? 'pill-success' : 'pill-neutral'">
+          <span class="w-2 h-2 rounded-full" :class="turnoActual ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'"></span>
+          <span x-text="turnoActual ? 'TURNO ACTUAL • EN ATENCIÓN' : 'VENTANILLA LIBRE (DISPONIBLE)'"></span>
         </div>
-        <div class="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
-          <svg class="w-4 h-4 text-slate-500 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-          <span class="font-mono-num font-bold text-lg text-slate-900 tracking-tight" x-text="cronometro">00:00</span>
+
+        <div class="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500">
+          <svg class="w-4 h-4 text-slate-400 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          <span class="font-mono-num font-bold text-slate-800 text-base" x-text="cronometro">00:00</span>
+          <span class="hidden sm:inline">en ventanilla</span>
         </div>
       </div>
 
-      <!-- Turno Gigante Central -->
+      <!-- Turno Gigante Central (Sin '#' tal como en el boceto Imagen 2) -->
       <div class="flex-1 flex flex-col items-center justify-center py-6 text-center">
         <template x-if="turnoActual">
-          <div class="animate-glow-cobalt">
-            <div class="font-mono-num text-[110px] sm:text-[136px] lg:text-[148px] font-extrabold text-slate-900 leading-none tracking-tighter"
-                 x-text="'#' + String(turnoActual.numero).padStart(3, '0')"></div>
-            <p class="text-xs font-medium text-slate-400 mt-2">Voucher físico en ventanilla</p>
+          <div class="animate-glow-cobalt flex flex-col items-center">
+            <div class="font-mono-num text-[110px] sm:text-[136px] lg:text-[148px] font-black text-slate-900 leading-none tracking-tight"
+                 x-text="String(turnoActual.numero).padStart(3, '0')"></div>
+            <p class="text-xs font-medium text-slate-500 mt-3">Sonando en la TV pública • Esperando que el alumno tome asiento</p>
+            
+            <div class="mt-4 inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-600">
+              <svg class="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+              <span>Atendidos hoy en esta mesa:</span>
+              <span class="font-bold text-slate-900 font-mono-num" x-text="atendidosHoy + ' turnos'"></span>
+            </div>
           </div>
         </template>
+
         <template x-if="!turnoActual">
-          <div class="space-y-1">
-            <div class="font-mono-num text-[110px] sm:text-[136px] font-bold text-slate-300 leading-none tracking-tight">--</div>
+          <div class="flex flex-col items-center space-y-2">
+            <div class="font-mono-num text-[110px] sm:text-[136px] font-bold text-slate-300 leading-none tracking-tight">---</div>
             <p class="text-xs font-medium text-slate-400">Presione el botón para despachar al siguiente alumno</p>
+            <div class="mt-3 inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-600">
+              <svg class="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+              <span>Atendidos hoy en esta mesa:</span>
+              <span class="font-bold text-slate-900 font-mono-num" x-text="atendidosHoy + ' turnos'"></span>
+            </div>
           </div>
         </template>
       </div>
 
-      <!-- Barra de Acciones del Operador -->
+      <!-- Barra de Acciones del Operador (Igual a la Imagen 1 como pidió el usuario) -->
       <div class="space-y-3 pt-4 border-t border-slate-100">
-        <button type="button" @click="llamarSiguiente()" :disabled="loadingAction || mesaPausada" title="Llamar al siguiente voucher del lote (Espacio)" aria-label="Llamar siguiente turno" class="btn-call flex items-center justify-center space-x-3">
+        <button type="button" @click="llamarSiguiente()" :disabled="loadingAction || mesaPausada" title="Llamar al siguiente voucher del lote (Enter o Espacio)" aria-label="Llamar siguiente turno" class="btn-call flex items-center justify-center space-x-3">
           <svg class="w-6 h-6 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" /></svg>
           <span x-text="loadingAction ? 'Llamando...' : 'LLAMAR SIGUIENTE'">LLAMAR SIGUIENTE</span>
           <span class="text-[11px] font-mono-num font-semibold uppercase bg-white/20 text-white px-2 py-0.5 rounded-md ml-2 hidden sm:inline">Espacio</span>
         </button>
 
         <div class="grid grid-cols-2 gap-3" x-show="turnoActual !== null">
-          <button type="button" @click="cancelarTurno()" :disabled="loadingAction" title="Marcar como ausente (N)" aria-label="No se presentó" class="btn-danger h-11 w-full text-xs">
+          <button type="button" @click="cancelarTurno()" :disabled="loadingAction" title="Marcar como ausente (N / Esc)" aria-label="No se presentó" class="btn-danger h-11 w-full text-xs">
             <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
             <span>No se presentó</span>
             <span class="text-[10px] font-mono-num bg-rose-200/60 px-1.5 py-0.5 rounded text-rose-800 hidden sm:inline">N</span>
           </button>
-          <button type="button" @click="rellamarTurno()" :disabled="loadingAction" title="Re-anunciar en TV (R)" aria-label="Re-llamar turno" class="btn-ghost h-11 w-full text-xs text-[#1D4ED8] border-blue-200 bg-blue-50/50 hover:bg-blue-100">
+          <button type="button" @click="rellamarTurno()" :disabled="loadingAction" title="Re-anunciar en TV (R / Espacio)" aria-label="Re-llamar turno" class="btn-ghost h-11 w-full text-xs text-[#1D4ED8] border-blue-200 bg-blue-50/50 hover:bg-blue-100">
             <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.757 3.63 8.25 4.51 8.25H6.75z" /></svg>
             <span>Re-llamar a TV</span>
             <span class="text-[10px] font-mono-num bg-blue-200/60 px-1.5 py-0.5 rounded text-blue-800 hidden sm:inline">R</span>
@@ -106,58 +123,81 @@
       </div>
     </section>
 
-    <!-- COLUMNA LATERAL (~35% Ancho): PRÓXIMO EN FILA Y MÉTRICAS -->
-    <aside class="w-full md:w-[35%] flex flex-col gap-4">
-      <div class="card p-5">
-        <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Próximo en Cola</span>
-        <div class="mt-2 flex items-baseline space-x-2">
-          <span class="font-mono-num text-3xl font-bold text-slate-900" x-text="proximoNumero ? ('#' + String(proximoNumero).padStart(3, '0')) : '--'">--</span>
-          <span class="text-xs text-slate-400">esperando llamado</span>
-        </div>
-        <p class="text-[11px] text-slate-500 mt-2">Siguiente número en orden de llegada del lote físico activo.</p>
+    <!-- COLUMNA LATERAL (~35% Ancho): PRÓXIMO TURNO DISPONIBLE Y LLAMADO EMITIDO (Boceto Imagen 2) -->
+    <aside class="w-full md:w-[35%] card p-6 flex flex-col justify-between">
+      <div>
+        <span class="text-xs font-bold uppercase tracking-wider text-slate-500">PRÓXIMO TURNO DISPONIBLE</span>
       </div>
 
-      <div class="card p-5 space-y-4">
-        <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Métricas de la Jornada</span>
-        <div class="grid grid-cols-2 gap-3 pt-1">
-          <div class="card-subtle p-3">
-            <span class="text-[11px] text-slate-500 block">Atendidos hoy</span>
-            <span class="font-mono-num text-2xl font-bold text-slate-900 mt-1 block" x-text="atendidosHoy">0</span>
-          </div>
-          <div class="card-subtle p-3">
-            <span class="text-[11px] text-slate-500 block">Vouchers en lote</span>
-            <span class="font-mono-num text-2xl font-bold text-slate-900 mt-1 block" x-text="vouchersRestantes">0</span>
-          </div>
-        </div>
-        <div class="pt-2 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
-          <span>Lote Activo:</span>
-          <span class="font-semibold text-slate-800" x-text="loteActivo ? ('Lote ' + loteActivo.numero_lote) : 'Sin lote activo'"></span>
+      <!-- Tarjeta Interior Centrada con el Turno Siguiente -->
+      <div class="rounded-2xl border border-slate-200 bg-slate-50/60 p-7 flex flex-col items-center justify-center text-center my-auto">
+        <span class="text-xs font-bold uppercase tracking-wider text-slate-400">TURNO SIGUIENTE</span>
+        <div class="font-mono-num text-7xl lg:text-8xl font-black text-slate-900 tracking-tight my-3"
+             x-text="proximoNumero ? String(proximoNumero).padStart(3, '0') : '---'"></div>
+        <p class="text-xs text-slate-500 max-w-xs leading-relaxed">
+          Se llamará automáticamente a tu mesa al presionar "Llamar Siguiente".
+        </p>
+        
+        <div class="mt-4 pt-3 border-t border-slate-200/80 w-full flex items-center justify-between text-[11px] text-slate-400">
+          <span x-text="loteActivo ? ('Lote ' + loteActivo.numero_lote) : 'Sin lote activo'"></span>
+          <span x-text="vouchersRestantes + ' vouchers restantes'"></span>
         </div>
       </div>
 
-      <div class="card p-5 space-y-2.5 mt-auto">
-        <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Atajos de Teclado</span>
-        <div class="space-y-1.5 text-xs text-slate-600">
-          <div class="flex items-center justify-between py-1 border-b border-slate-100"><span>Llamar Siguiente</span><kbd class="px-2 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-700">Espacio</kbd></div>
-          <div class="flex items-center justify-between py-1 border-b border-slate-100"><span>No se presentó</span><kbd class="px-2 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-700">N</kbd></div>
-          <div class="flex items-center justify-between py-1"><span>Re-llamar Turno</span><kbd class="px-2 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-700">R</kbd></div>
+      <!-- Callout Inferior de Confirmación / Estado del Llamado -->
+      <div class="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 flex items-start space-x-3 text-xs" x-show="turnoActual">
+        <div class="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z" /></svg>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="font-bold text-emerald-900 tracking-wide uppercase text-[11px]">LLAMADO EMITIDO CON ÉXITO</div>
+          <div class="text-emerald-700 text-xs mt-0.5">
+            Turno <span class="font-bold font-mono-num" x-text="String(turnoActual.numero).padStart(3, '0')"></span> convocado a Mesa <span class="font-bold font-mono-num" x-text="mesa.numero || '-'"></span> • Sonando en pantalla TV
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 flex items-start space-x-3 text-xs" x-show="!turnoActual">
+        <div class="w-6 h-6 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="font-bold text-slate-700 tracking-wide uppercase text-[11px]">VENTANILLA DISPONIBLE</div>
+          <div class="text-slate-500 text-xs mt-0.5">Listo para convocar al siguiente estudiante.</div>
         </div>
       </div>
     </aside>
 
   </main>
 
-  <!-- ── 3. PIE DE PÁGINA COMPACTO ── -->
-  <footer class="app-footer h-9 px-6 flex items-center justify-between text-xs">
-    <div class="flex items-center space-x-2">
-      <span class="font-semibold text-slate-700">Turnero 2026 • v2.1</span>
-      <span class="text-slate-300">|</span>
-      <span>Red Local Universitaria</span>
+  <!-- ── 3. BARRA HORIZONTAL DE ATAJOS OPERATIVOS (Boceto Imagen 2) ── -->
+  <footer class="app-footer h-11 px-6 flex items-center justify-between text-xs select-none">
+    <div class="flex items-center space-x-4 overflow-x-auto py-1">
+      <span class="font-bold text-slate-700 flex items-center gap-1.5 whitespace-nowrap">
+        <svg class="w-3.5 h-3.5 text-slate-500 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" /></svg>
+        <span>Atajos de Teclado Operativo:</span>
+      </span>
+      <span class="flex items-center gap-1.5 whitespace-nowrap">
+        <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">Enter</kbd>
+        <span class="text-slate-600">Llamar Siguiente</span>
+      </span>
+      <span class="flex items-center gap-1.5 whitespace-nowrap">
+        <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">Espacio</kbd>
+        <span class="text-slate-600">Re-llamar Turno</span>
+      </span>
+      <span class="flex items-center gap-1.5 whitespace-nowrap">
+        <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">Esc</kbd>
+        <span class="text-slate-600">No Presentado</span>
+      </span>
+      <span class="flex items-center gap-1.5 whitespace-nowrap">
+        <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">P</kbd>
+        <span class="text-slate-600">Pausar Mesa</span>
+      </span>
     </div>
-    <div class="flex items-center space-x-3 font-mono-num text-[11px]">
-      <span x-text="'Mesa ID: ' + (mesa.id || '-')"></span>
-      <span class="text-slate-300">•</span>
-      <span>1 Clic por Atención</span>
+    
+    <div class="hidden lg:flex items-center space-x-2 text-slate-500 whitespace-nowrap">
+      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+      <span class="text-[11px]">Sincronizado con Nodo Central de Admisiones</span>
     </div>
   </footer>
 
