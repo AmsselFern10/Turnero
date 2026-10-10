@@ -45,6 +45,14 @@ export function panelMesaView() {
     motivoPausa: 'Descanso programado / Almuerzo',
     loadingAction: false,
 
+    // Estado de micro-animaciones y feedback temporal (5 segundos — Stitch)
+    feedbackEstado: 'idle', // 'idle' | 'llamando' | 'rellamando' | 'ausente'
+    feedbackTimer: null,
+    feedbackData: {
+      titulo: 'VENTANILLA DISPONIBLE',
+      detalle: 'Listo para convocar al siguiente estudiante.'
+    },
+
     // Conectividad y reloj
     ws: null,
     wsConnected: false,
@@ -127,8 +135,17 @@ export function panelMesaView() {
 
           if (this.turnoActual && this.turnoActual.llamado_en) {
             this.iniciarCronometro(this.turnoActual.llamado_en);
+            const numFormatted = String(this.turnoActual.numero).padStart(3, '0');
+            this.feedbackData = {
+              titulo: 'LLAMADO EMITIDO CON ÉXITO',
+              detalle: `Turno ${numFormatted} convocado a Mesa ${this.mesa.numero || '-'} • Sonando en pantalla TV`
+            };
           } else {
             this.detenerCronometro();
+            this.feedbackData = {
+              titulo: 'VENTANILLA DISPONIBLE',
+              detalle: 'Listo para convocar al siguiente estudiante.'
+            };
           }
         }
 
@@ -142,6 +159,69 @@ export function panelMesaView() {
         }
       } catch (err) {
         console.error('[MESA] Error al cargar estado inicial:', err);
+      }
+    },
+
+    /**
+     * Microinteracciones y transiciones temporales de 5 segundos (Stitch)
+     */
+    triggerCallNext(turno) {
+      if (this.feedbackTimer) clearTimeout(this.feedbackTimer);
+
+      this.feedbackEstado = 'llamando';
+      const numFormatted = turno ? String(turno.numero).padStart(3, '0') : '--';
+      this.feedbackData = {
+        titulo: 'LLAMADO EMITIDO CON ÉXITO',
+        detalle: `Turno ${numFormatted} convocado a Mesa ${this.mesa.numero || '-'} • Sonando en pantalla TV (hace un momento)`
+      };
+
+      this.feedbackTimer = setTimeout(() => {
+        this.resetFeedbackState();
+      }, 5000);
+    },
+
+    triggerRecall(turno) {
+      if (this.feedbackTimer) clearTimeout(this.feedbackTimer);
+
+      this.feedbackEstado = 'rellamando';
+      const numFormatted = turno ? String(turno.numero).padStart(3, '0') : '--';
+      this.feedbackData = {
+        titulo: 'RE-LLAMADO EMITIDO (2º AVISO)',
+        detalle: `Turno ${numFormatted} re-convocado a Mesa ${this.mesa.numero || '-'} • Sonando en pantalla TV (hace un momento)`
+      };
+
+      this.feedbackTimer = setTimeout(() => {
+        this.resetFeedbackState();
+      }, 5000);
+    },
+
+    triggerAbsent() {
+      if (this.feedbackTimer) clearTimeout(this.feedbackTimer);
+
+      this.feedbackEstado = 'ausente';
+      this.feedbackData = {
+        titulo: 'TURNO NO PRESENTADO REGISTRADO',
+        detalle: 'El turno actual fue marcado como ausente (hace un momento)'
+      };
+
+      this.feedbackTimer = setTimeout(() => {
+        this.resetFeedbackState();
+      }, 5000);
+    },
+
+    resetFeedbackState() {
+      this.feedbackEstado = 'idle';
+      if (this.turnoActual) {
+        const numFormatted = String(this.turnoActual.numero).padStart(3, '0');
+        this.feedbackData = {
+          titulo: 'LLAMADO EMITIDO CON ÉXITO',
+          detalle: `Turno ${numFormatted} convocado a Mesa ${this.mesa.numero || '-'} • Sonando en pantalla TV`
+        };
+      } else {
+        this.feedbackData = {
+          titulo: 'VENTANILLA DISPONIBLE',
+          detalle: 'Listo para convocar al siguiente estudiante.'
+        };
       }
     },
 
@@ -165,6 +245,9 @@ export function panelMesaView() {
 
         // Iniciar cronómetro desde la marca temporal devuelta por la BD
         this.iniciarCronometro(turno.llamado_en);
+
+        // Activar micro-animación de destello y banner en Card B de 5 segundos
+        this.triggerCallNext(turno);
 
         showToast({
           message: `Llamando al Turno #${turno.numero} en Mesa ${this.mesa.numero}`,
@@ -245,6 +328,7 @@ export function panelMesaView() {
 
         this.turnoActual = null;
         this.detenerCronometro();
+        this.triggerAbsent();
         await this.cargarEstado();
       } catch (err) {
         console.error('[MESA] Error al cancelar turno:', err);
@@ -265,6 +349,8 @@ export function panelMesaView() {
         await api.post(`/turnos/${this.turnoActual.id}/rellamar`, {
           mesa_id: this.mesa.id
         });
+
+        this.triggerRecall(this.turnoActual);
 
         showToast({
           message: `Turno #${this.turnoActual.numero} re-llamado en pantalla TV`,

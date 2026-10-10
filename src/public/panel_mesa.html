@@ -40,10 +40,6 @@
         <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path x-show="!mesaPausada" stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" /><path x-show="mesaPausada" stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" /></svg>
         <span x-text="mesaPausada ? 'Reanudar' : 'Pausar Mesa'">Pausar Mesa</span>
       </button>
-      <button type="button" @click="cambiarMesa()" title="Cambiar de ventanilla" aria-label="Cambiar de ventanilla" class="btn-ghost btn-sm">
-        <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
-        <span class="hidden md:inline">Cambiar Mesa</span>
-      </button>
       <button type="button" @click="logout()" title="Cerrar sesión" aria-label="Cerrar sesión" class="btn-ghost btn-sm text-slate-500 hover:text-rose-700 hover:bg-rose-50">
         <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" /></svg>
       </button>
@@ -54,14 +50,48 @@
   <main class="flex-1 w-full max-w-7xl mx-auto p-6 flex flex-col md:flex-row gap-6 overflow-hidden">
     
     <!-- COLUMNA HERO (~65% Ancho): TURNO ACTUAL Y ACCIÓN DOMINANTE -->
-    <section class="card-hero flex-1 md:w-[65%] flex flex-col justify-between p-7">
+    <section class="card-hero flex-1 md:w-[65%] flex flex-col justify-between p-7 transition-all duration-300 relative"
+             :class="{
+               'ring-4 ring-blue-500/30 border-blue-500 bg-blue-50/10 animate-pulse-call': feedbackEstado === 'llamando',
+               'ring-4 ring-amber-500/30 border-amber-500 bg-amber-50/15 animate-pulse-call': feedbackEstado === 'rellamando',
+               'border-slate-300 bg-white': feedbackEstado === 'idle' || feedbackEstado === 'ausente'
+             }">
       
-      <!-- Barra Superior de Estado y Cronómetro (Boceto Imagen 2) -->
+      <!-- Barra Superior de Estado y Cronómetro (Boceto Imagen 2 + Stitch) -->
       <div class="flex items-center justify-between pb-4 border-b border-slate-100">
-        <div class="pill text-xs font-semibold px-3 py-1"
-             :class="turnoActual ? 'pill-success' : 'pill-neutral'">
-          <span class="w-2 h-2 rounded-full" :class="turnoActual ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'"></span>
-          <span x-text="turnoActual ? 'TURNO ACTUAL • EN ATENCIÓN' : 'VENTANILLA LIBRE (DISPONIBLE)'"></span>
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold tracking-wide transition-all"
+             :class="{
+               'bg-blue-50 border border-blue-200 text-blue-700': feedbackEstado === 'llamando',
+               'bg-amber-50 border border-amber-200 text-amber-700': feedbackEstado === 'rellamando',
+               'bg-emerald-50 border border-emerald-200 text-emerald-700': feedbackEstado === 'idle' && turnoActual,
+               'bg-slate-100 border border-slate-200 text-slate-500': (feedbackEstado === 'idle' && !turnoActual) || feedbackEstado === 'ausente'
+             }">
+          
+          <!-- Icono Megáfono animado para Llamar Siguiente -->
+          <template x-if="feedbackEstado === 'llamando'">
+            <svg class="w-3.5 h-3.5 text-blue-600 animate-bounce stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+          </template>
+
+          <!-- Icono Campana animada para Re-llamar -->
+          <template x-if="feedbackEstado === 'rellamando'">
+            <svg class="w-3.5 h-3.5 text-amber-600 animate-bounce stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" /></svg>
+          </template>
+
+          <!-- Punto verde pulsante para En Atención normal -->
+          <template x-if="feedbackEstado === 'idle' && turnoActual">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          </template>
+
+          <!-- Punto gris para Ventanilla libre o ausente -->
+          <template x-if="(!turnoActual || feedbackEstado === 'ausente') && feedbackEstado !== 'llamando' && feedbackEstado !== 'rellamando'">
+            <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+          </template>
+
+          <span x-text="
+            feedbackEstado === 'llamando' ? 'LLAMANDO ALUMNO...' :
+            feedbackEstado === 'rellamando' ? 'RE-LLAMANDO (2º AVISO)' :
+            (turnoActual ? 'TURNO ACTUAL • EN ATENCIÓN' : 'VENTANILLA LIBRE (DISPONIBLE)')
+          "></span>
         </div>
 
         <div class="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500">
@@ -144,26 +174,54 @@
         </div>
       </div>
 
-      <!-- Callout Inferior de Confirmación / Estado del Llamado -->
-      <div class="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 flex items-start space-x-3 text-xs" x-show="turnoActual">
-        <div class="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0 mt-0.5">
-          <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z" /></svg>
+      <!-- Callout Inferior de Confirmación / Estado del Llamado (Stitch Dynamic Feedback) -->
+      <div class="rounded-xl border p-4 flex items-start gap-3 transition-all duration-300 text-xs"
+           :class="{
+             'bg-emerald-50/80 border-emerald-200 text-emerald-800': feedbackEstado === 'llamando' || (feedbackEstado === 'idle' && turnoActual),
+             'bg-amber-50/80 border-amber-200 text-amber-800': feedbackEstado === 'rellamando',
+             'bg-rose-50/80 border-rose-200 text-rose-800': feedbackEstado === 'ausente',
+             'bg-slate-50/70 border-slate-200 text-slate-700': feedbackEstado === 'idle' && !turnoActual
+           }">
+        
+        <div class="flex-shrink-0 mt-0.5"
+             :class="{
+               'text-emerald-600': feedbackEstado === 'llamando' || (feedbackEstado === 'idle' && turnoActual),
+               'text-amber-600': feedbackEstado === 'rellamando',
+               'text-rose-600': feedbackEstado === 'ausente',
+               'text-slate-400': feedbackEstado === 'idle' && !turnoActual
+             }">
+          <template x-if="feedbackEstado === 'llamando' || (feedbackEstado === 'idle' && turnoActual)">
+            <svg class="w-5 h-5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"></circle><path stroke-linecap="round" stroke-linejoin="round" d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"></path></svg>
+          </template>
+          <template x-if="feedbackEstado === 'rellamando'">
+            <svg class="w-5 h-5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path stroke-linecap="round" stroke-linejoin="round" d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+          </template>
+          <template x-if="feedbackEstado === 'ausente'">
+            <svg class="w-5 h-5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="17" y1="8" x2="22" y2="13"></line><line x1="22" y1="8" x2="17" y2="13"></line></svg>
+          </template>
+          <template x-if="feedbackEstado === 'idle' && !turnoActual">
+            <svg class="w-5 h-5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline stroke-linecap="round" stroke-linejoin="round" points="12 6 12 12 16 14"></polyline></svg>
+          </template>
         </div>
-        <div class="flex-1 min-w-0">
-          <div class="font-bold text-emerald-900 tracking-wide uppercase text-[11px]">LLAMADO EMITIDO CON ÉXITO</div>
-          <div class="text-emerald-700 text-xs mt-0.5">
-            Turno <span class="font-bold font-mono-num" x-text="String(turnoActual.numero).padStart(3, '0')"></span> convocado a Mesa <span class="font-bold font-mono-num" x-text="mesa.numero || '-'"></span> • Sonando en pantalla TV
-          </div>
-        </div>
-      </div>
 
-      <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 flex items-start space-x-3 text-xs" x-show="!turnoActual">
-        <div class="w-6 h-6 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-          <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="font-bold text-slate-700 tracking-wide uppercase text-[11px]">VENTANILLA DISPONIBLE</div>
-          <div class="text-slate-500 text-xs mt-0.5">Listo para convocar al siguiente estudiante.</div>
+        <div class="text-left flex-1 min-w-0">
+          <div class="text-xs font-bold uppercase tracking-wider"
+               :class="{
+                 'text-emerald-800': feedbackEstado === 'llamando' || (feedbackEstado === 'idle' && turnoActual),
+                 'text-amber-800': feedbackEstado === 'rellamando',
+                 'text-rose-800': feedbackEstado === 'ausente',
+                 'text-slate-700': feedbackEstado === 'idle' && !turnoActual
+               }"
+               x-text="feedbackData.titulo"></div>
+          
+          <div class="text-xs font-medium mt-0.5 leading-relaxed"
+               :class="{
+                 'text-emerald-700': feedbackEstado === 'llamando' || (feedbackEstado === 'idle' && turnoActual),
+                 'text-amber-700': feedbackEstado === 'rellamando',
+                 'text-rose-700': feedbackEstado === 'ausente',
+                 'text-slate-500': feedbackEstado === 'idle' && !turnoActual
+               }"
+               x-text="feedbackData.detalle"></div>
         </div>
       </div>
     </aside>
