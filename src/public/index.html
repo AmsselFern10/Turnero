@@ -45,7 +45,9 @@
         <p class="text-xs text-slate-500 mt-1">Ingrese sus credenciales de usuario asignadas</p>
       </div>
 
-      <div x-show="errorMessage" x-cloak class="alert-danger mb-4 flex items-start gap-2.5">
+      <div x-show="errorMessage" x-cloak
+           class="alert-danger mb-4 flex items-start gap-2.5"
+           role="alert" aria-live="assertive" aria-atomic="true">
         <svg class="w-4 h-4 text-rose-600 stroke-[2] shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
         <span class="font-medium" x-text="errorMessage"></span>
       </div>
@@ -121,53 +123,119 @@
       </div>
     </div>
 
-    <!-- Caso C: Grilla de Selección de Mesas -->
+    <!-- Caso B: Modal — Operador ya tiene mesa asignada (INC-3) -->
+    <div x-show="step === 'mesa_asignada'" x-cloak class="card w-full max-w-lg p-8">
+      <div class="text-center mb-6">
+        <div class="w-12 h-12 mx-auto mb-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center">
+          <svg class="w-6 h-6 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect width="18" height="12" x="3" y="4" rx="2" /><path d="M7 16v4m10-4v4" /></svg>
+        </div>
+        <h2 class="text-xl font-bold text-slate-900 tracking-tight">Usted tiene una mesa asignada</h2>
+        <p class="text-xs text-slate-500 mt-1">
+          Mesa <strong class="font-mono-num text-slate-800" x-text="mesaPreAsignada?.numero"></strong>
+          — <span x-text="mesaPreAsignada?.nombre || 'Ventanilla'"></span>
+        </p>
+      </div>
+
+      <div class="space-y-3">
+        <button id="btn-continuar-mesa" type="button" @click="continuarMesaAsignada()" :disabled="loading"
+                title="Continuar en mi mesa" aria-label="Continuar en mi mesa"
+                class="btn-primary w-full h-12 text-sm flex items-center justify-center gap-2">
+          <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" /></svg>
+          <span>Continuar en mi mesa</span>
+        </button>
+        <button type="button" @click="liberarMesa()" :disabled="loading"
+                title="Cambiar de mesa" aria-label="Cambiar de mesa"
+                class="btn-ghost w-full h-11 text-sm flex items-center justify-center gap-2">
+          <svg class="w-4 h-4 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" /></svg>
+          <span x-text="loading ? 'Liberando mesa...' : 'Cambiar de mesa'">Cambiar de mesa</span>
+        </button>
+      </div>
+
+      <div class="mt-5 pt-4 border-t border-slate-100 text-center">
+        <button type="button" @click="volverLogin" :disabled="loading" title="Cerrar sesión y volver" aria-label="Cerrar sesión y volver" class="text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer">
+          Cerrar sesion y volver
+        </button>
+      </div>
+    </div>
+
+    <!-- Caso C: Grilla de Seleccion de Mesas Disponibles (INC-2) -->
     <div x-show="step === 'mesas_grid'" x-cloak class="card w-full max-w-4xl p-8">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-slate-200 gap-4 mb-6">
         <div>
           <h2 class="text-xl font-bold text-slate-900 tracking-tight">Seleccione su Mesa de Trabajo</h2>
-          <p class="text-xs text-slate-500 mt-1">Haga clic en una ventanilla disponible para iniciar su turno de atención</p>
+          <p class="text-xs text-slate-500 mt-1">Solo se muestran mesas activas y disponibles</p>
         </div>
         <div class="flex items-center space-x-3">
-          <button @click="cargarMesas" :disabled="loadingMesas" class="btn-ghost btn-sm flex items-center gap-1.5">
+          <button type="button" @click="cargarMesas" :disabled="loadingMesas" title="Actualizar lista de mesas" aria-label="Actualizar lista de mesas" class="btn-ghost btn-sm flex items-center gap-1.5">
             <svg :class="loadingMesas ? 'animate-spin' : ''" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
             <span>Actualizar</span>
           </button>
-          <button @click="volverLogin" class="text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer">Volver</button>
+          <button type="button" @click="volverLogin" :disabled="loading" title="Cerrar sesión" aria-label="Cerrar sesión" class="text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer">Cerrar sesion</button>
         </div>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <!-- Estado de error en la grilla -->
+      <div x-show="errorMessage" x-cloak
+           class="alert-danger mb-4 flex items-start gap-2.5"
+           role="alert" aria-live="polite" aria-atomic="true">
+        <svg class="w-4 h-4 text-rose-600 stroke-[2] shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+        <span class="font-medium" x-text="errorMessage"></span>
+      </div>
+
+      <!-- Estado cargando -->
+      <div x-show="loadingMesas" x-cloak class="flex items-center justify-center py-16 text-slate-500 gap-3">
+        <svg class="w-5 h-5 animate-spin stroke-[2]" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+        <span class="text-sm font-medium">Cargando mesas disponibles...</span>
+      </div>
+
+      <!-- Estado vacio: no hay mesas disponibles (INC-2 decision) -->
+      <div x-show="!loadingMesas && mesas.length === 0 && !errorMessage" x-cloak
+           class="flex flex-col items-center justify-center py-16 text-center gap-3">
+        <div class="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400">
+          <svg class="w-6 h-6 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        </div>
+        <p class="text-sm font-semibold text-slate-700">No hay mesas disponibles</p>
+        <p class="text-xs text-slate-500 max-w-xs">Todas las mesas activas ya tienen un operador asignado. Contacte al administrador.</p>
+        <button type="button" @click="cargarMesas" title="Actualizar mesas disponibles" aria-label="Actualizar mesas disponibles" class="btn-ghost btn-sm mt-2 flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+          Actualizar
+        </button>
+      </div>
+
+      <!-- Grilla de mesas disponibles (solo activas y sin operador, filtrado en backend) -->
+      <div x-show="!loadingMesas && mesas.length > 0" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         <template x-for="mesa in mesas" :key="mesa.id">
-          <div @click="seleccionarMesa(mesa)"
-               :class="{
-                 'border-slate-300 hover:border-[#1D4ED8] hover:shadow-md cursor-pointer active:scale-[0.98] bg-white': !mesa.operador_nombre && mesa.estado !== 'inactiva',
-                 'border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed': mesa.operador_nombre || mesa.estado === 'inactiva'
-               }"
-               class="p-4 rounded-xl border transition-all flex flex-col justify-between h-36">
+          <button type="button"
+                  @click="seleccionarMesa(mesa)"
+                  :disabled="seleccionando"
+                  :title="'Tomar mesa ' + mesa.numero"
+                  :aria-label="'Tomar mesa ' + mesa.numero"
+                  class="p-4 rounded-xl border border-slate-300 bg-white hover:border-[#1D4ED8] hover:shadow-md cursor-pointer active:scale-[0.98] transition-all flex flex-col justify-between h-36 text-left focus:outline-none focus:ring-2 focus:ring-blue-600/25 select-none"
+                  :class="{ 'opacity-50 cursor-not-allowed': seleccionando }">
             <div class="flex items-center justify-between">
               <span class="font-mono-num font-bold text-lg text-slate-900" x-text="'MESA ' + mesa.numero"></span>
-              <span :class="mesa.operador_nombre ? 'pill pill-neutral' : 'pill pill-success'" class="text-[10px] uppercase" x-text="mesa.operador_nombre ? 'Ocupada' : 'Disponible'"></span>
+              <span class="pill pill-success text-[10px] uppercase">Disponible</span>
             </div>
             <div class="my-2">
-              <span class="block text-xs font-medium text-slate-700 truncate" x-text="mesa.nombre || ('Ventanilla ' + mesa.numero)"></span>
-              <span x-show="mesa.operador_nombre" class="block text-[11px] text-slate-500 truncate" x-text="'Por: ' + mesa.operador_nombre"></span>
+              <!-- Solo el area como subtitulo, sin repetir el numero (INC-2 visual) -->
+              <span class="block text-xs font-medium text-slate-700 truncate"
+                    x-text="mesa.nombre ? mesa.nombre.replace(/Mesa \d+ — /, '') : 'Ventanilla '"></span>
             </div>
-            <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
-              <span :class="mesa.operador_nombre ? 'text-slate-400' : 'text-[#1D4ED8] font-semibold'" x-text="mesa.operador_nombre ? 'No disponible' : 'Tomar mesa →'"></span>
+            <div class="pt-2 border-t border-slate-100">
+              <span class="text-[#1D4ED8] font-semibold text-[11px]" x-text="seleccionando ? 'Asignando...' : 'Tomar esta mesa'"></span>
             </div>
-          </div>
+          </button>
         </template>
       </div>
     </div>
 
-    <!-- Transición Suave -->
+    <!-- Transicion Suave -->
     <div x-show="step === 'redirecting'" x-cloak class="card w-full max-w-md p-8 text-center">
       <div class="w-12 h-12 mx-auto mb-4 rounded-2xl bg-blue-50 border border-blue-200 text-[#1D4ED8] flex items-center justify-center">
         <svg class="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
       </div>
       <h3 class="text-lg font-bold text-slate-900" x-text="redirectText"></h3>
-      <p class="text-xs text-slate-500 mt-1">Cargando consola de atención...</p>
+      <p class="text-xs text-slate-500 mt-1">Cargando consola de atencion...</p>
     </div>
 
   </main>

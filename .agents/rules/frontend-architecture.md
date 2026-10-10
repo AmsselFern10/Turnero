@@ -43,7 +43,7 @@ src/public/
 │   │   └── bell.mp3               (Tono institucional discreto para anuncio de llamado en TV)
 │   └── icons/                     (Iconografía vectorial SVG reusable con trazo fino 1.5px/2.0px)
 │
-│  ──► VISTAS LIMPIAS (Solo estructura HTML5 semántica y declarativa, < 200 líneas)
+│  ──► VISTAS LIMPIAS (Solo estructura HTML5 semántica y declarativa, sin lógica JS ni estilos inline)
 ├── index.html                     (Pantalla de Login + Grilla Dinámica de Mesas)
 ├── panel_mesa.html                (Consola de Trabajo del Operador de Ventanilla)
 ├── tv.html                        (Pantalla Pública para TV de Auditorio 1080p)
@@ -55,9 +55,9 @@ src/public/
 
 ## 2. Principios y Reglas de Implementación
 
-### 2.1 Cero JavaScript Inline en Vistas HTML
-- **Prohibido:** Colocar bloques `<script>` extensos con lógica de negocio o manipulación de estado embebida en los archivos `.html`.
-- **Estándar:** Toda la lógica reside en su controlador correspondiente dentro de `src/public/js/pages/<nombre_vista>.js`. Los archivos HTML deben contener únicamente estructura semántica y directivas declarativas.
+### 2.1 Pureza Estructural en Vistas HTML (Cero Lógica Embebida)
+- **Prohibido:** Colocar bloques `<script>` con lógica de negocio, funciones auxiliares, manipulación de estado, bloques `<style>` o atributos `style="..."` embebidos en los archivos `.html`.
+- **Aclaración sobre el tamaño de los HTML:** El estándar de vistas limpias no impone un límite numérico rígido (ej. 200 líneas) sobre interfaces que requieren modales, estados vacíos y accesibilidad completa; lo que exige estrictamente es que **el 100% de las líneas del archivo pertenezcan a estructura HTML5 semántica y directivas declarativas**. Toda lógica de negocio, control de flujo complejo, llamadas a APIs, WebSockets y cálculos temporales residen exclusivamente en su controlador modular en `src/public/js/pages/<nombre_vista>.js`.
 
 ### 2.2 Módulos ES6 Nativos (`type="module"`)
 - Cada controlador de página se importa en su HTML como módulo estándar:
@@ -144,7 +144,7 @@ src/public/
 ## 5. Checklist de Calidad para Cada Pantalla
 
 Antes de dar por finalizada una vista o refactorización:
-- [ ] ¿El archivo HTML contiene menos de 200 líneas y cero JavaScript inline?
+- [ ] ¿El archivo HTML es puramente estructural (cero JavaScript inline, cero estilos inline o bloques `<style>`)?
 - [ ] ¿El controlador está modularizado en `src/public/js/pages/<vista>.js` con `type="module"`?
 - [ ] ¿Las peticiones HTTP utilizan exclusivamente el cliente centralizado `api.js`?
 - [ ] ¿Las llamadas en tiempo real utilizan `ws-client.js` con manejo visual de reconexión?
