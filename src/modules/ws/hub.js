@@ -152,7 +152,7 @@ module.exports = async function hubPlugin (fastify) {
    *   canal  → 'mesa:<id>' | 'tv:global' | 'admin:all'
    */
   fastify.get('/ws', { websocket: true }, async (connection, request) => {
-    const ws = connection.socket
+    const ws = connection.socket || connection
 
     // ── Autenticación en el handshake (RF-WS-03) ──────────────────────────
     let user

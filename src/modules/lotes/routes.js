@@ -41,11 +41,7 @@ module.exports = async function lotesRoutes (fastify) {
        FROM lotes_voucher WHERE estado = 'activo' LIMIT 1`
     )
 
-    if (!lote) {
-      return reply.status(404).send({ error: 'No hay lote activo' })
-    }
-
-    return reply.send({ lote })
+    return reply.send({ lote: lote || null })
   })
 
   // ── POST /lotes — Crear nuevo lote (RF-LOTE-01) ───────────────────────────

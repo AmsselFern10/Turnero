@@ -234,6 +234,20 @@ module.exports = async function adminRoutes (fastify) {
       .send(csv)
   })
 
+  // ── GET /admin/configuracion — Obtener parámetros (RF-ADM-07) ─────────────
+  fastify.get('/configuracion', {
+    preHandler: [fastify.authorizeRol('admin', 'supervisor')]
+  }, async (request, reply) => {
+    const { rows } = await fastify.db.query(
+      `SELECT clave, valor, descripcion, actualizado_en FROM configuracion ORDER BY clave`
+    )
+    const configMap = {}
+    for (const r of rows) {
+      configMap[r.clave] = r.valor
+    }
+    return reply.send({ configuracion: configMap, lista: rows })
+  })
+
   // ── PATCH /admin/configuracion — Actualizar parámetro (RF-ADM-07) ─────────
   fastify.patch('/configuracion/:clave', {
     preHandler: [fastify.authorizeRol('admin')],
