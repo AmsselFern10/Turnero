@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 
 # Especificación de Módulos — Turnero de Matrículas 2026 (v2.1)
 
@@ -219,6 +223,7 @@ DÍA 1:
 DÍA 2:
   Admin reactiva Lote 1
   Operadores continúan del 301 al 500
+
   Al llegar al 500 → ALERTA al admin: "Lote agotado"
   Admin extiende a 700 (imprime vouchers 501-700)
   Operadores continúan del 501...

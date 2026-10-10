@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Administración y Supervisión — Turnero de Matrículas 2026</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Alpine.js v3 CDN (Reactividad ligera sin build step para tabs y modales) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            cobalt: {
+              DEFAULT: '#1D4ED8',
+              hover: '#1E40AF',
+              light: '#EFF4FF',
+              border: '#BFDBFE',
+            },
+            app: {
+              bg: '#EEF2F6',
+              card: '#FFFFFF',
+              border: '#CBD5E1',
+            }
+          },
+          boxShadow: {
+            'xs': '0 1px 2px 0 rgba(15, 23, 42, 0.05)',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #EEF2F6;
+      color: #0F172A;
+      font-family: 'Inter', sans-serif;
+    }
+    .font-mono-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-feature-settings: "tnum" 1;
+    }
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body x-data="{
+  tab: 'monitoreo',
+  showNewLotModal: false,
+  showNewUserModal: false,
+  showNewMesaModal: false,
+  lotExtended: false,
+  lotPaused: false,
+  voiceEnabled: true,
+  kioskoEnabled: false
+}" class="min-h-full flex flex-col bg-[#EEF2F6] antialiased text-slate-800 selection:bg-blue-100 selection:text-blue-900">
+
+  <!-- ================= ENCABEZADO INSTITUCIONAL COMPACTO (h-14) ================= -->
+  <header class="sticky top-0 z-40 bg-white border-b border-[#CBD5E1] shadow-xs">
+    <div class="max-w-7xl mx-auto px-8 h-14 flex items-center justify-between">
+      
+      <!-- Izquierda: Identidad Institucional sutil -->
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-[#1D4ED8]">
+          <svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+          </svg>
+        </div>
+        <span class="text-sm font-semibold tracking-tight text-slate-900">Turnero 2026 • Admin</span>
+      </div>
+
+      <!-- Centro: 4 pestañas de navegación ultra limpias con Alpine.js -->
+      <nav aria-label="Navegación Admin" class="flex items-center space-x-1 bg-[#F1F5F9] p-1 rounded-xl border border-slate-200">
+        <button type="button" @click="tab = 'monitoreo'" :class="tab === 'monitoreo' ? 'bg-white text-[#1D4ED8] shadow-xs border border-slate-200 font-semibold' : 'text-slate-600 hover:text-slate-900 font-medium'" class="px-3.5 py-1 rounded-lg text-xs transition-all">
+          Monitoreo
+        </button>
+        <button type="button" @click="tab = 'lotes'" :class="tab === 'lotes' ? 'bg-white text-[#1D4ED8] shadow-xs border border-slate-200 font-semibold' : 'text-slate-600 hover:text-slate-900 font-medium'" class="px-3.5 py-1 rounded-lg text-xs transition-all">
+          Lotes
+        </button>
+        <button type="button" @click="tab = 'mesas'" :class="tab === 'mesas' ? 'bg-white text-[#1D4ED8] shadow-xs border border-slate-200 font-semibold' : 'text-slate-600 hover:text-slate-900 font-medium'" class="px-3.5 py-1 rounded-lg text-xs transition-all">
+          Mesas
+        </button>
+        <button type="button" @click="tab = 'configuracion'" :class="tab === 'configuracion' ? 'bg-white text-[#1D4ED8] shadow-xs border border-slate-200 font-semibold' : 'text-slate-600 hover:text-slate-900 font-medium'" class="px-3.5 py-1 rounded-lg text-xs transition-all">
+          Configuración
+        </button>
+      </nav>
+
+      <!-- Derecha: Pantalla TV y Cerrar Sesión -->
+      <div class="flex items-center space-x-2.5">
+        <a class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:text-[#1D4ED8] hover:bg-blue-50/60 border border-slate-200 transition-colors" href="tv.html" target="_blank">
+          <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <rect x="2" y="4" width="20" height="13" rx="2" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M8 21h8m-4-4v4" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span>Pantalla TV</span>
+        </a>
+        <a href="index.html" class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-red-700 hover:bg-red-50 border border-slate-200 transition-colors">
+          <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+          </svg>
+          <span>Salir</span>
+        </a>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ================= CONTENIDO CENTRAL MODULAR ================= -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-8 py-6 space-y-6">
+
+    <!-- ────────────────────────────────────────────────────────────────────────── -->
+    <!-- 1. PESTAÑA: MONITOREO EN VIVO (FULL-WIDTH, CERO BARRAS LATERALES)        -->
+    <!-- ────────────────────────────────────────────────────────────────────────── -->
+    <div x-show="tab === 'monitoreo'" x-cloak class="space-y-6">
+      
+      <!-- 4 TARJETAS KPI SUPERIORES DIRECTAS Y LIMPIAS -->
+      <section aria-label="Métricas Operativas" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- KPI 1: Atendidos Hoy -->
+        <div class="bg-white rounded-2xl border border-[#CBD5E1] p-5 shadow-xs flex flex-col justify-between hover:border-slate-400 transition-colors">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Atendidos Hoy</span>
+            <div class="w-7 h-7 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-[#1D4ED8]">
+              <svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+              </svg>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="text-3xl font-bold font-mono-num tracking-tight text-slate-900">342</div>
+            <p class="text-xs text-slate-500 mt-1 font-medium">alumnos recibidos • +18% vs ayer</p>
+          </div>
+        </div>
+
+        <!-- KPI 2: Tiempo Promedio -->
+        <div class="bg-white rounded-2xl border border-[#CBD5E1] p-5 shadow-xs flex flex-col justify-between hover:border-slate-400 transition-colors">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Tiempo Promedio</span>
+            <div class="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-700">
+              <svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="9" stroke-linecap="round" stroke-linejoin="round" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 7v5l3 2" />
+              </svg>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="flex items-baseline space-x-1.5">
+              <span class="text-3xl font-bold font-mono-num tracking-tight text-slate-900">03:45</span>
+              <span class="text-xs font-medium text-slate-500 font-mono-num">min</span>
+            </div>
+            <div class="mt-1">
+              <span class="inline-flex items-center text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                Rango Óptimo (&lt; 5m)
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- KPI 3: Mesas Activas -->
+        <div class="bg-white rounded-2xl border border-[#CBD5E1] p-5 shadow-xs flex flex-col justify-between hover:border-slate-400 transition-colors">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Mesas Activas</span>
+            <div class="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+              <svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+              </svg>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="text-3xl font-bold font-mono-num tracking-tight text-slate-900">8 / 10</div>
+            <p class="text-xs text-slate-500 mt-1 font-medium">80% de capacidad operativa</p>
+          </div>
+        </div>
+
+        <!-- KPI 4: Vouchers Restantes -->
+        <div class="bg-white rounded-2xl border border-[#CBD5E1] p-5 shadow-xs flex flex-col justify-between hover:border-slate-400 transition-colors">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Vouchers Restantes</span>
+            <div class="w-7 h-7 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-700">
+              <svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 010 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 010-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375z" />
+              </svg>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="text-3xl font-bold font-mono-num tracking-tight text-slate-900">158</div>
+            <p class="text-xs text-slate-500 mt-1 font-medium">en cola • Lote 2 (#301 al #700)</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- TABLA DE MESAS A TODO EL ANCHO (W-FULL) -->
+      <section aria-label="Estado de Mesas" class="bg-white rounded-2xl border border-[#CBD5E1] shadow-xs overflow-hidden flex flex-col">
+        <!-- Encabezado de la Tarjeta con Sincronización en Vivo -->
+        <div class="p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900 tracking-tight">Estado de Mesas en Vivo</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Despacho y asignación de atención en tiempo real.</p>
+          </div>
+          <div class="inline-flex items-center space-x-2 px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-medium text-slate-600">
+            <span class="relative flex h-2 w-2">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span class="font-semibold text-slate-700">Nodo Central Sincronizado</span>
+            <span class="text-slate-300">•</span>
+            <span class="font-mono-num text-[11px] text-slate-500 font-semibold">12ms latencia</span>
+          </div>
+        </div>
+
+        <!-- Tabla a Ancho Completo -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm border-collapse">
+            <thead>
+              <tr class="bg-slate-50/80 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                <th class="py-3.5 px-6">Mesa</th>
+                <th class="py-3.5 px-4">Operador</th>
+                <th class="py-3.5 px-4">Estado</th>
+                <th class="py-3.5 px-4">Turno Actual</th>
+                <th class="py-3.5 px-4 text-right">Atendidos Hoy</th>
+                <th class="py-3.5 px-4 text-right">Tiempo Medio</th>
+                <th class="py-3.5 px-6 text-center">Semáforo</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 font-normal">
+              
+              <!-- Mesa 1 -->
+              <tr class="hover:bg-slate-50/60 transition-colors">
+                <td class="py-4 px-6">
+                  <span class="font-mono-num font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 text-xs">MESA 1</span>
+                </td>
+                <td class="py-4 px-4">
+                  <div class="flex items-center space-x-2.5">
+                    <span class="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">CM</span>
+                    <span class="text-xs font-semibold text-slate-800">Lic. Carlos Mendoza</span>
+                  </div>
+                </td>
+                <td class="py-4 px-4">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+                    Atendiendo
+                  </span>
+                </td>
+                <td class="py-4 px-4">
+                  <span class="font-mono-num font-bold text-sm text-[#1D4ED8] bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200/80">041</span>
+                </td>
+                <td class="py-4 px-4 text-right font-mono-num text-xs font-semibold text-slate-800">46</td>
+                <td class="py-4 px-4 text-right font-mono-num text-xs text-slate-700">03:20 min</td>
+                <td class="py-4 px-6 text-center">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    &lt; 4m Óptimo
+                  </span>
+                </td>
+              </tr>
+
+              <!-- Mesa 2 -->
+              <tr class="hover:bg-slate-50/60 transition-colors">
+                <td class="py-4 px-6">
+                  <span class="font-mono-num font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 text-xs">MESA 2</span>
+                </td>
+                <td class="py-4 px-4">
+                  <div class="flex items-center space-x-2.5">
+                    <span class="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">LG</span>
+                    <span class="text-xs font-semibold text-slate-800">Lic. Laura Gómez</span>
+                  </div>
+                </td>
+                <td class="py-4 px-4">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+                    Atendiendo
+                  </span>
+                </td>
+                <td class="py-4 px-4">
+                  <span class="font-mono-num font-bold text-sm text-[#1D4ED8] bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200/80">039</span>
+                </td>
+                <td class="py-4 px-4 text-right font-mono-num text-xs font-semibold text-slate-800">42</td>
+                <td class="py-4 px-4 text-right font-mono-num text-xs text-slate-700">03:48 min</td>
+                <td class="py-4 px-6 text-center">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    &lt; 4m Óptimo
+                  </span>
+                </td>
+              </tr>
+
+              <!-- Mesa 3 (Lead) -->
+              <tr class="bg-blue-50/20 hover:bg-blue-50/50 transition-colors">
+                <td class="py-4 px-6">
+                  <span class="font-mono-num font-bold text-[#1D4ED8] bg-blue-100/70 px-2.5 py-1 rounded-lg border border-blue-200 text-xs">MESA 3</span>
+                </td>
+                <td class="py-4 px-4">
+                  <div class="flex items-center space-x-2.5">
+                    <span class="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-bold text-white shadow-xs">RM</span>
+                    <div class="flex items-center space-x-1.5">
+                      <span class="text-xs font-bold text-slate-900">Lic. Roberto Morales</span>
+                      <span class="text-[10px] font-medium px-1.5 py-0.2 bg-blue-100 text-blue-700 rounded">Lead</span>
+                    </div>
+                  </div>
+                </td>
+                <td class="py-4 px-4">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+                    Atendiendo
+                  </span>
+                </td>
+                <td class="py-4 px-4">
+                  <span class="font-mono-num font-bold text-sm text-[#1D4ED8] bg-white px-2.5 py-1 rounded-lg border border-blue-300 shadow-xs">042</span>
+                </td>
+                <td class="py-4 px-4 text-right font-mono-num text-xs font-bold text-slate-900">48</td>
+                <td class="py-4 px-4 text-right font-mono-num text-xs text-slate-700">03:42 min</td>
+                <td class="py-4 px-6 text-center">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    &lt; 4m Óptimo
+                  </span>
+                </td>
+              </tr>
+
+              <!-- Mesa 4 -->
+              <tr class="hover:bg-slate-50/60 transition-colors">
+                <td class="py-4 px-6">
+                  <span class="font-mono-num font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 text-xs">MESA 4</span>
+                </td>
+                <td class="py-4 px-4">
+                  <div class="flex items-center space-x-2.5">
+                    <span class="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">RM</span>
+                    <span class="text-xs font-semibold text-slate-800">Lic. Rosa Morales</span>
+                  </div>
+                </td>
+                <td class="py-4 px-4">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+                    Atendiendo
+                  </span>
+                </td>
+                <td class="py-4 px-4">
+                  <span class="font-mono-num font-bold text-sm text-[#1D4ED8] bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200/80">040</span>
+                </td>
+                <td class="py-4 px-4 text-right font-mono-num text-xs font-semibold text-slate-800">44</td>
+                <td class="py-4 px-4 text-right font-mono-num text-xs text-slate-700">03:55 min</td>
+                <td class="py-4 px-6 text-center">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    &lt; 4m Óptimo
+                  </span>
+                </td>
+              </tr>
+
+              <!-- Mesa 5 (Alerta) -->
+              <tr class="hover:bg-slate-50/60 transition-colors">
+                <td class="py-4 px-6">
+                  <span class="font-mono-num font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 text-xs">MESA 5</span>
+                </td>
+                <td class="py-4 px-4">
+                  <div class="flex items-center space-x-2.5">
+                    <span class="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">FR</span>
+                    <span class="text-xs font-semibold text-slate-800">Lic. Felipe Rivas</span>
+                  </div>
+                </td>
+                <td class="py-4 px-4">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+                    Atendiendo
+                  </span>
+                </td>
+                <td class="py-4 px-4">
+                  <span class="font-mono-num font-bold text-sm text-[#1D4ED8] bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200/80">038</span>
+                </td>
+                <td class="py-4 px-4 text-right font-mono-num text-xs font-semibold text-slate-800">39</td>
+                <td class="py-4 px-4 text-right font-mono-num text-xs text-slate-700">04:12 min</td>
+                <td class="py-4 px-6 text-center">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                    4-7m Alerta
+                  </span>
+                </td>
+              </tr>
+
+              <!-- Mesa 6 (Pausada) -->
+              <tr class="hover:bg-slate-50/60 transition-colors">
+                <td class="py-4 px-6">
+                  <span class="font-mono-num font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 text-xs">MESA 6</span>
+                </td>
+                <td class="py-4 px-4">
+                  <div class="flex items-center space-x-2.5">
+                    <span class="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">AV</span>
+                    <span class="text-xs font-semibold text-slate-800">Dra. Andrea Valdivia</span>
+                  </div>
+                </td>
+                <td class="py-4 px-4">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span>
+                    Pausada
+                  </span>
+                </td>
+                <td class="py-4 px-4">
+                  <span class="font-mono-num font-medium text-xs text-slate-400">— En Pausa —</span>
+                </td>
+                <td class="py-4 px-4 text-right font-mono-num text-xs font-semibold text-slate-800">38</td>
+                <td class="py-4 px-4 text-right font-mono-num text-xs text-slate-700">03:30 min</td>
+                <td class="py-4 px-6 text-center">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                    Pausada
+                  </span>
+                </td>
+              </tr>
+
+              <!-- Mesa 7 -->
+              <tr class="hover:bg-slate-50/60 transition-colors">
+                <td class="py-4 px-6">
+                  <span class="font-mono-num font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 text-xs">MESA 7</span>
+                </td>
+                <td class="py-4 px-4">
+                  <div class="flex items-center space-x-2.5">
+                    <span class="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">JT</span>
+                    <span class="text-xs font-semibold text-slate-800">Lic. Jorge Torres</span>
+                  </div>
+                </td>
+                <td class="py-4 px-4">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+                    Atendiendo
+                  </span>
+                </td>
+                <td class="py-4 px-4">
+                  <span class="font-mono-num font-bold text-sm text-[#1D4ED8] bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200/80">037</span>
+                </td>
+                <td class="py-4 px-4 text-right font-mono-num text-xs font-semibold text-slate-800">41</td>
+                <td class="py-4 px-4 text-right font-mono-num text-xs text-slate-700">03:50 min</td>
+                <td class="py-4 px-6 text-center">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    &lt; 4m Óptimo
+                  </span>
+                </td>
+              </tr>
+
+              <!-- Mesa 8 -->
+              <tr class="hover:bg-slate-50/60 transition-colors">
+                <td class="py-4 px-6">
+                  <span class="font-mono-num font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 text-xs">MESA 8</span>
+                </td>
+                <td class="py-4 px-4">
+                  <div class="flex items-center space-x-2.5">
+                    <span class="w-6 h-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">MA</span>
+                    <span class="text-xs font-semibold text-slate-800">Lic. Mónica Arce</span>
+                  </div>
+                </td>
+                <td class="py-4 px-4">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+                    Atendiendo
+                  </span>
+                </td>
+                <td class="py-4 px-4">
+                  <span class="font-mono-num font-bold text-sm text-[#1D4ED8] bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200/80">036</span>
+                </td>
+                <td class="py-4 px-4 text-right font-mono-num text-xs font-semibold text-slate-800">44</td>
+                <td class="py-4 px-4 text-right font-mono-num text-xs text-slate-700">03:38 min</td>
+                <td class="py-4 px-6 text-center">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    &lt; 4m Óptimo
+                  </span>
+                </td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Barra de Leyenda de Semáforo -->
+        <div class="p-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between text-xs text-slate-500 px-6">
+          <div class="flex items-center space-x-4">
+            <span class="font-semibold text-slate-600">Semáforo:</span>
+            <span class="inline-flex items-center space-x-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              <span>&lt; 04:00 min (Óptimo)</span>
+            </span>
+            <span class="inline-flex items-center space-x-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+              <span>04:00 - 07:00 min (Alerta)</span>
+            </span>
+            <span class="inline-flex items-center space-x-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+              <span>&gt; 07:00 min (Crítico)</span>
+            </span>
+          </div>
+          <div class="text-[11px] font-mono-num text-slate-400">
+            Sincronización automática de sala
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ────────────────────────────────────────────────────────────────────────── -->
+    <!-- 2. PESTAÑA: GESTIÓN DE LOTES DE VOUCHERS (PANTALLA DEDICADA STITCH)      -->
+    <!-- ────────────────────────────────────────────────────────────────────────── -->
+    <div x-show="tab === 'lotes'" x-cloak class="space-y-6">
+
+      <!-- Encabezado de la Sección de Lotes -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1">
+        <div>
+          <div class="flex items-center space-x-2 mb-1.5">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider font-semibold bg-blue-50 text-[#1D4ED8] border border-blue-200">Lotes Físicos</span>
+            <span class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>1 lote activo</span>
+            </span>
+          </div>
+          <h1 class="text-2xl font-bold tracking-tight text-slate-900">Gestión de Lotes de Vouchers</h1>
+          <p class="text-sm text-slate-500 mt-0.5">Control de rangos correlativos de papel entregados en portón.</p>
+        </div>
+        <div>
+          <button @click="showNewLotModal = true" type="button" class="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-[#1D4ED8] hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-all active:scale-[0.99]">
+            <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M12 4.5v15m7.5-7.5h-15" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+            <span>+ Nuevo Lote</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tarjeta Destacada de Lote Activo en Emisión -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 relative overflow-hidden">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div class="space-y-3">
+            <div class="flex items-center space-x-3">
+              <span class="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-[#1D4ED8] text-white shadow-xs tracking-wide">LOTE 02</span>
+              <div class="flex items-center space-x-2">
+                <h2 class="text-lg font-bold text-slate-900">Jornada Regular de Matrícula</h2>
+                <span class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200" x-show="!lotPaused">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                  <span>Activo en Sala / TV</span>
+                </span>
+                <span class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200" x-show="lotPaused">
+                  <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                  <span>Lote Pausado</span>
+                </span>
+              </div>
+            </div>
+            <p class="text-xs text-slate-500">Correlativo físico emitido en portón hacia las ventanillas de atención 1 al 8</p>
+            <div class="flex flex-wrap items-center gap-6 pt-1">
+              <div>
+                <span class="text-[11px] uppercase tracking-wider text-slate-600 font-semibold block">Rango Correlativo</span>
+                <span class="text-base font-mono font-bold text-slate-900" x-text="lotExtended ? '#301 — #750' : '#301 — #700'">#301 — #700</span>
+              </div>
+              <div class="h-8 w-px bg-slate-200 hidden sm:block"></div>
+              <div>
+                <span class="text-[11px] uppercase tracking-wider text-slate-600 font-semibold block">Vouchers Emitidos</span>
+                <span class="text-base font-mono font-bold text-[#1D4ED8]">142 / <span x-text="lotExtended ? '450' : '400'">400</span> <span class="text-xs font-normal text-slate-500">(35.5%)</span></span>
+              </div>
+              <div class="h-8 w-px bg-slate-200 hidden sm:block"></div>
+              <div>
+                <span class="text-[11px] uppercase tracking-wider text-slate-600 font-semibold block">Horario de Jornada</span>
+                <span class="text-base font-mono font-medium text-slate-700">08:00 — 18:00</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Acciones Rápidas del Lote Activo (Extender, Pausar, Cerrar) -->
+          <div class="flex flex-wrap items-center gap-2.5 lg:self-center border-t lg:border-t-0 pt-4 lg:pt-0 border-slate-100">
+            <button type="button" @click="lotPaused = !lotPaused" class="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors shadow-xs">
+              <svg class="w-4 h-4 stroke-[1.8] text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M15.75 5.25v13.5m-7.5-13.5v13.5" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+              <span x-text="lotPaused ? 'Reanudar Lote' : 'Pausar Lote'">Pausar Lote</span>
+            </button>
+
+            <button type="button" @click="lotExtended = true" class="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-[#1D4ED8] text-xs font-semibold transition-colors shadow-xs">
+              <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M12 4.5v15m7.5-7.5h-15" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+              <span x-text="lotExtended ? '✓ +50 Añadidos' : 'Extender Rango (+50)'">Extender Rango (+50)</span>
+            </button>
+
+            <button type="button" @click="alert('Para cerrar el lote definitivamente, use el botón de confirmación en producción.')" class="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100 text-rose-700 text-xs font-medium transition-colors shadow-xs">
+              <svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+              <span>Cerrar Lote</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Barra de progreso visual compacta -->
+        <div class="mt-5 pt-3 border-t border-slate-100 flex items-center space-x-3">
+          <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+            <div class="bg-[#1D4ED8] h-full rounded-full transition-all duration-500" style="width: 35.5%"></div>
+          </div>
+          <span class="text-[11px] font-mono text-slate-500 whitespace-nowrap">Restan 258 vouchers</span>
+        </div>
+      </div>
+
+      <!-- Tabla Principal de Lotes de Vouchers -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div class="p-5 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100">
+          <div class="flex items-center space-x-2">
+            <h3 class="text-sm font-semibold text-slate-900">Historial y Registro de Lotes</h3>
+            <span class="px-2 py-0.5 rounded-full text-xs font-mono font-medium bg-slate-100 text-slate-600">4 registrados</span>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-50/80 text-[11px] font-mono uppercase tracking-wider text-slate-600 border-b border-slate-200">
+                <th class="py-3.5 px-6 font-semibold">Lote</th>
+                <th class="py-3.5 px-6 font-semibold">Descripción / Modalidad</th>
+                <th class="py-3.5 px-6 font-semibold">Rango Correlativo</th>
+                <th class="py-3.5 px-6 font-semibold">Emisión / Progreso</th>
+                <th class="py-3.5 px-6 font-semibold">Estado</th>
+                <th class="py-3.5 px-6 font-semibold text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 text-xs text-slate-700">
+              <!-- Lote 01: Finalizado -->
+              <tr class="hover:bg-slate-50/60 transition-colors">
+                <td class="py-4 px-6 whitespace-nowrap">
+                  <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-mono font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                    LOTE 01
+                  </span>
+                </td>
+                <td class="py-4 px-6">
+                  <div class="font-medium text-slate-900">Admisión Regular Matutina</div>
+                  <div class="text-[11px] text-slate-600 mt-0.5">Día 1 • 08:00 — 13:00</div>
+                </td>
+                <td class="py-4 px-6 whitespace-nowrap">
+                  <span class="font-mono text-xs px-2 py-1 rounded bg-slate-100 text-slate-700 font-medium">#001 — #300</span>
+                </td>
+                <td class="py-4 px-6 min-w-[180px]">
+                  <div class="flex items-center justify-between text-xs mb-1">
+                    <span class="font-mono text-slate-600">300 / 300</span>
+                    <span class="font-mono text-slate-600 font-semibold">100%</span>
+                  </div>
+                  <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                    <div class="bg-slate-400 h-full rounded-full" style="width: 100%"></div>
+                  </div>
+                </td>
+                <td class="py-4 px-6 whitespace-nowrap">
+                  <span class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                    <span>Finalizado</span>
+                  </span>
+                </td>
+                <td class="py-4 px-6 text-right whitespace-nowrap">
+                  <button class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors" type="button">Ver Detalle</button>
+                </td>
+              </tr>
+
+              <!-- Lote 02: Activo -->
+              <tr class="bg-blue-50/20 hover:bg-blue-50/40 transition-colors">
+                <td class="py-4 px-6 whitespace-nowrap">
+                  <span class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-[#1D4ED8] text-white shadow-xs">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span>LOTE 02</span>
+                  </span>
+                </td>
+                <td class="py-4 px-6">
+                  <div class="font-semibold text-slate-900 flex items-center space-x-2">
+                    <span>Jornada Regular de Matrícula</span>
+                    <span class="px-1.5 py-0.2 rounded text-[10px] font-mono uppercase bg-blue-100 text-[#1D4ED8] font-semibold">En Sala</span>
+                  </div>
+                  <div class="text-[11px] text-slate-600 mt-0.5">Día 2 • Continuación correlativa activa</div>
+                </td>
+                <td class="py-4 px-6 whitespace-nowrap">
+                  <span class="font-mono text-xs px-2 py-1 rounded bg-blue-50 border border-blue-200 text-[#1D4ED8] font-bold">#301 — #700</span>
+                </td>
+                <td class="py-4 px-6 min-w-[180px]">
+                  <div class="flex items-center justify-between text-xs mb-1">
+                    <span class="font-mono text-slate-800 font-medium">142 / 400</span>
+                    <span class="font-mono text-[#1D4ED8] font-bold">35.5%</span>
+                  </div>
+                  <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                    <div class="bg-[#1D4ED8] h-full rounded-full" style="width: 35.5%"></div>
+                  </div>
+                </td>
+                <td class="py-4 px-6 whitespace-nowrap">
+                  <span class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>Activo</span>
+                  </span>
+                </td>
+                <td class="py-4 px-6 text-right whitespace-nowrap">
+                  <div class="flex items-center justify-end space-x-1.5">
+                    <button @click="lotPaused = !lotPaused" class="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 shadow-xs" type="button">Pausar</button>
+                    <button @click="lotExtended = true" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[#1D4ED8] bg-blue-50 hover:bg-blue-100 border border-blue-200 shadow-xs" type="button">Extender</button>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Lote 03: En Espera -->
+              <tr class="hover:bg-slate-50/60 transition-colors">
+                <td class="py-4 px-6 whitespace-nowrap">
+                  <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-mono font-semibold bg-slate-100 text-slate-700 border border-slate-200">LOTE 03</span>
+                </td>
+                <td class="py-4 px-6">
+                  <div class="font-medium text-slate-900">Revalidación y Casos Especiales</div>
+                  <div class="text-[11px] text-slate-600 mt-0.5">Programado tras finalización del Lote 02</div>
+                </td>
+                <td class="py-4 px-6 whitespace-nowrap">
+                  <span class="font-mono text-xs px-2 py-1 rounded bg-slate-100 text-slate-700 font-medium">#701 — #850</span>
+                </td>
+                <td class="py-4 px-6 min-w-[180px]">
+                  <div class="flex items-center justify-between text-xs mb-1">
+                    <span class="font-mono text-slate-600">0 / 150</span>
+                    <span class="font-mono text-slate-600 font-medium">0%</span>
+                  </div>
+                  <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                    <div class="bg-slate-300 h-full rounded-full" style="width: 0%"></div>
+                  </div>
+                </td>
+                <td class="py-4 px-6 whitespace-nowrap">
+                  <span class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                    <span>En Espera</span>
+                  </span>
+                </td>
+                <td class="py-4 px-6 text-right whitespace-nowrap">
+                  <button class="px-3 py-1.5 rounded-lg text-xs font-semibold text-[#1D4ED8] bg-blue-50/70 hover:bg-blue-100 border border-blue-200 transition-colors shadow-xs" type="button">Activar Ahora</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ────────────────────────────────────────────────────────────────────────── -->
+    <!-- 3. PESTAÑA: CONFIGURACIÓN DE MESAS Y ASIGNACIÓN                          -->
+    <!-- ────────────────────────────────────────────────────────────────────────── -->
+    <div x-show="tab === 'mesas'" x-cloak class="space-y-6">
+      
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1">
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight text-slate-900">Mesas y Asignación de Operadores</h1>
+          <p class="text-sm text-slate-500 mt-0.5">Active ventanillas para el día y asigne qué operador atiende en cada puesto.</p>
+        </div>
+        <button @click="showNewMesaModal = true" type="button" class="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-[#1D4ED8] hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-all active:scale-[0.99]">
+          <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path d="M12 4.5v15m7.5-7.5h-15" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+          <span>+ Nueva Mesa</span>
+        </button>
+      </div>
+
+      <!-- Tabla de Mesas con Dropdowns de Asignación Diaria -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm border-collapse">
+            <thead>
+              <tr class="bg-slate-50/80 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                <th class="py-3.5 px-6">Identificador</th>
+                <th class="py-3.5 px-6">Nombre de Ventanilla</th>
+                <th class="py-3.5 px-6">Operador Asignado (Hoy)</th>
+                <th class="py-3.5 px-6">Estado Operativo</th>
+                <th class="py-3.5 px-6 text-right">Acción</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              
+              <!-- Mesa 1 -->
+              <tr class="hover:bg-slate-50/60 transition-colors">
+                <td class="py-4 px-6 font-mono-num font-bold text-slate-900">MESA 1</td>
+                <td class="py-4 px-6 text-xs text-slate-700 font-medium">Ventanilla 1 • Sector Regular</td>
+                <td class="py-4 px-6">
+                  <select class="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 font-medium text-slate-800 focus:outline-none focus:border-blue-500">
+                    <option selected>Lic. Carlos Mendoza</option>
+                    <option>Lic. Laura Gómez</option>
+                    <option>Lic. Roberto Morales</option>
+                    <option>— Sin Asignar —</option>
+                  </select>
+                </td>
+                <td class="py-4 px-6">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+                    Activa
+                  </span>
+                </td>
+                <td class="py-4 px-6 text-right">
+                  <button class="text-xs text-slate-600 hover:text-slate-900 font-medium px-2 py-1" type="button">Editar</button>
+                </td>
+              </tr>
+
+              <!-- Mesa 2 -->
+              <tr class="hover:bg-slate-50/60 transition-colors">
+                <td class="py-4 px-6 font-mono-num font-bold text-slate-900">MESA 2</td>
+                <td class="py-4 px-6 text-xs text-slate-700 font-medium">Ventanilla 2 • Sector Regular</td>
+                <td class="py-4 px-6">
+                  <select class="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 font-medium text-slate-800 focus:outline-none focus:border-blue-500">
+                    <option>Lic. Carlos Mendoza</option>
+                    <option selected>Lic. Laura Gómez</option>
+                    <option>Lic. Roberto Morales</option>
+                    <option>— Sin Asignar —</option>
+                  </select>
+                </td>
+                <td class="py-4 px-6">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+                    Activa
+                  </span>
+                </td>
+                <td class="py-4 px-6 text-right">
+                  <button class="text-xs text-slate-600 hover:text-slate-900 font-medium px-2 py-1" type="button">Editar</button>
+                </td>
+              </tr>
+
+              <!-- Mesa 3 -->
+              <tr class="hover:bg-slate-50/60 transition-colors">
+                <td class="py-4 px-6 font-mono-num font-bold text-[#1D4ED8]">MESA 3</td>
+                <td class="py-4 px-6 text-xs text-slate-700 font-medium">Ventanilla 3 • Supervisión y Lead</td>
+                <td class="py-4 px-6">
+                  <select class="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 font-medium text-slate-800 focus:outline-none focus:border-blue-500">
+                    <option>Lic. Carlos Mendoza</option>
+                    <option>Lic. Laura Gómez</option>
+                    <option selected>Lic. Roberto Morales (Lead)</option>
+                    <option>— Sin Asignar —</option>
+                  </select>
+                </td>
+                <td class="py-4 px-6">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+                    Activa
+                  </span>
+                </td>
+                <td class="py-4 px-6 text-right">
+                  <button class="text-xs text-slate-600 hover:text-slate-900 font-medium px-2 py-1" type="button">Editar</button>
+                </td>
+              </tr>
+
+              <!-- Mesa 4 -->
+              <tr class="hover:bg-slate-50/60 transition-colors">
+                <td class="py-4 px-6 font-mono-num font-bold text-slate-900">MESA 4</td>
+                <td class="py-4 px-6 text-xs text-slate-700 font-medium">Ventanilla 4 • Sector Regular</td>
+                <td class="py-4 px-6">
+                  <select class="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 font-medium text-slate-800 focus:outline-none focus:border-blue-500">
+                    <option selected>Lic. Rosa Morales</option>
+                    <option>Lic. Felipe Rivas</option>
+                    <option>— Sin Asignar —</option>
+                  </select>
+                </td>
+                <td class="py-4 px-6">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+                    Activa
+                  </span>
+                </td>
+                <td class="py-4 px-6 text-right">
+                  <button class="text-xs text-slate-600 hover:text-slate-900 font-medium px-2 py-1" type="button">Editar</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ────────────────────────────────────────────────────────────────────────── -->
+    <!-- 4. PESTAÑA: USUARIOS, CONFIGURACIÓN & PERIFÉRICOS                        -->
+    <!-- ────────────────────────────────────────────────────────────────────────── -->
+    <div x-show="tab === 'configuracion'" x-cloak class="space-y-6">
+      
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1">
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight text-slate-900">Usuarios & Configuración del Sistema</h1>
+          <p class="text-sm text-slate-500 mt-0.5">Gestión de cuentas de operadores, conmutadores de periféricos y reportes.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        <!-- Columna Izquierda: Directorio de Usuarios (lg:col-span-7) -->
+        <div class="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h3 class="text-base font-bold text-slate-900">Personal de Atención y Roles</h3>
+              <p class="text-xs text-slate-500">Cuentas con acceso a ventanilla y supervisión</p>
+            </div>
+            <button @click="showNewUserModal = true" type="button" class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#1D4ED8] hover:bg-blue-700 text-white text-xs font-semibold shadow-xs">
+              <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M12 4.5v15m7.5-7.5h-15" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+              <span>+ Nuevo Usuario</span>
+            </button>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr class="bg-slate-50 text-[11px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                  <th class="py-2.5 px-3">Nombre</th>
+                  <th class="py-2.5 px-3">Usuario</th>
+                  <th class="py-2.5 px-3">Rol</th>
+                  <th class="py-2.5 px-3">Estado</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                <tr class="hover:bg-slate-50/60">
+                  <td class="py-3 px-3 font-medium text-slate-900">Lic. Carlos Mendoza</td>
+                  <td class="py-3 px-3 font-mono text-slate-600">cmendoza</td>
+                  <td class="py-3 px-3"><span class="px-2 py-0.5 rounded text-[10px] bg-blue-50 text-blue-700 font-semibold">Operador</span></td>
+                  <td class="py-3 px-3"><span class="text-emerald-700 font-medium">Activo</span></td>
+                </tr>
+                <tr class="hover:bg-slate-50/60">
+                  <td class="py-3 px-3 font-medium text-slate-900">Lic. Laura Gómez</td>
+                  <td class="py-3 px-3 font-mono text-slate-600">lgomez</td>
+                  <td class="py-3 px-3"><span class="px-2 py-0.5 rounded text-[10px] bg-blue-50 text-blue-700 font-semibold">Operador</span></td>
+                  <td class="py-3 px-3"><span class="text-emerald-700 font-medium">Activo</span></td>
+                </tr>
+                <tr class="hover:bg-slate-50/60">
+                  <td class="py-3 px-3 font-medium text-slate-900">Lic. Roberto Morales</td>
+                  <td class="py-3 px-3 font-mono text-slate-600">rmorales</td>
+                  <td class="py-3 px-3"><span class="px-2 py-0.5 rounded text-[10px] bg-indigo-50 text-indigo-700 font-semibold">Supervisor</span></td>
+                  <td class="py-3 px-3"><span class="text-emerald-700 font-medium">Activo</span></td>
+                </tr>
+                <tr class="hover:bg-slate-50/60">
+                  <td class="py-3 px-3 font-medium text-slate-900">Dirección Académica</td>
+                  <td class="py-3 px-3 font-mono text-slate-600">admin</td>
+                  <td class="py-3 px-3"><span class="px-2 py-0.5 rounded text-[10px] bg-slate-100 text-slate-800 font-semibold">Admin</span></td>
+                  <td class="py-3 px-3"><span class="text-emerald-700 font-medium">Activo</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Columna Derecha: Parámetros del Sistema y Reportes (lg:col-span-5) -->
+        <div class="lg:col-span-5 space-y-5">
+          
+          <!-- Toggles de Sala -->
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+            <div class="border-b border-slate-100 pb-3">
+              <h3 class="text-base font-bold text-slate-900">Conmutadores de Sala</h3>
+              <p class="text-xs text-slate-500">Ajustes de salida y canales públicos</p>
+            </div>
+
+            <div class="divide-y divide-slate-100">
+              <!-- Toggle Voz TV -->
+              <div class="py-3 flex items-center justify-between">
+                <div>
+                  <span class="text-xs font-semibold text-slate-800 block">Voz en Pantalla TV (Sintetizador)</span>
+                  <span class="text-[11px] text-slate-500">Anuncio hablado de ticket y mesa por Web Audio.</span>
+                </div>
+                <button type="button" @click="voiceEnabled = !voiceEnabled" :class="voiceEnabled ? 'bg-[#1D4ED8]' : 'bg-slate-300'" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200">
+                  <span :class="voiceEnabled ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition duration-200"></span>
+                </button>
+              </div>
+
+              <!-- Toggle Kiosko Web -->
+              <div class="py-3 flex items-center justify-between">
+                <div>
+                  <span class="text-xs font-semibold text-slate-800 block">Módulo Kiosko Web (/kiosko)</span>
+                  <span class="text-[11px] text-slate-500">Permite a estudiantes tomar turno digital por QR.</span>
+                </div>
+                <button type="button" @click="kioskoEnabled = !kioskoEnabled" :class="kioskoEnabled ? 'bg-[#1D4ED8]' : 'bg-slate-300'" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200">
+                  <span :class="kioskoEnabled ? 'translate-x-5' : 'translate-x-0'" class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition duration-200"></span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Reportabilidad CSV -->
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-3">
+            <h3 class="text-base font-bold text-slate-900">Exportación de Reportes</h3>
+            <p class="text-xs text-slate-500">Descargue el consolidado diario de atenciones con marcas de tiempo, operadores y duraciones.</p>
+            <button type="button" @click="alert('Descargando reporte_turnero_2026.csv (Simulado en guía de referencia)')" class="w-full mt-2 flex items-center justify-center space-x-2 px-4 py-2.5 bg-[#1D4ED8] hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors">
+              <svg class="w-4 h-4 stroke-[2]" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              <span>Exportar Reporte del Día (CSV)</span>
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ================= MODAL: CREAR NUEVO LOTE (TRAÍDO DE STITCH) ================= -->
+  <div x-show="showNewLotModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+    <div @click.away="showNewLotModal = false" class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full overflow-hidden transform transition-all">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-[#1D4ED8]">
+            <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M12 4.5v15m7.5-7.5h-15" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900">Crear Nuevo Lote de Vouchers</h3>
+            <p class="text-[11px] text-slate-500">Ciclo de Admisiones 2026 • Correlatividad automática</p>
+          </div>
+        </div>
+        <button @click="showNewLotModal = false" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+          <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+        </button>
+      </div>
+
+      <form @submit.prevent="alert('Lote creado con éxito (simulado)'); showNewLotModal = false;" class="p-6 space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1.5">Descripción del Lote</label>
+          <input class="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:border-blue-500 text-slate-800" placeholder="Ej. Admisión Vespertina B / Medicina" required type="text" value="Admisión Especial Vespertina"/>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Rango Inicial (Correlativo)</label>
+            <input class="w-full pl-3 pr-3 py-2 text-xs font-mono font-medium bg-slate-100 border border-slate-200 rounded-xl text-slate-700 cursor-not-allowed" readonly type="number" value="1001"/>
+            <p class="text-[10px] text-slate-500 mt-1 font-mono">Autocalculado tras Lote 04</p>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Cantidad de Vouchers</label>
+            <input class="w-full px-3 py-2 text-xs font-mono font-medium bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:border-blue-500 text-slate-800" min="10" max="1000" type="number" value="150"/>
+            <p class="text-[10px] text-[#1D4ED8] mt-1 font-mono">Rango final: #1150 (Total: 150)</p>
+          </div>
+        </div>
+        <div class="pt-4 border-t border-slate-100 flex items-center justify-end space-x-2.5">
+          <button @click="showNewLotModal = false" type="button" class="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200">Cancelar</button>
+          <button type="submit" class="px-4 py-2 rounded-xl text-xs font-semibold bg-[#1D4ED8] hover:bg-blue-700 text-white shadow-xs">Crear y Guardar Lote</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= FOOTER DISCRETO ================= -->
+  <footer class="mt-auto bg-white border-t border-[#CBD5E1] py-3 text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto px-8 flex flex-col sm:flex-row items-center justify-between gap-2">
+      <div class="flex items-center space-x-3">
+        <span class="font-mono-num font-semibold text-slate-700">Versión 2.1</span>
+        <span class="text-slate-300">•</span>
+        <div class="flex items-center space-x-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span>Base de datos sincronizada</span>
+        </div>
+        <span class="text-slate-300">•</span>
+        <span>Sede Central Universitaria</span>
+      </div>
+      <div class="flex items-center space-x-2 text-[11px] text-slate-400 font-mono-num">
+        <span>Última actualización:</span>
+        <span class="text-slate-600 font-semibold" id="admin-live-time">12:00:00</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    function updateClock() {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      const el = document.getElementById('admin-live-time');
+      if (el) el.textContent = `${hh}:${mm}:${ss}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+  </script>
+</body>
+</html>

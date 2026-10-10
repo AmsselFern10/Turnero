@@ -87,7 +87,62 @@ module.exports = async function authRoutes (fastify) {
        WHERE m.estado IN ('activa', 'inactiva')
        ORDER BY m.numero`
     )
-
     return reply.send({ mesas: rows })
+  })
+
+  // ── POST /auth/seleccionar-mesa — Operador se auto-asigna a mesa libre (RF-AUTH-03 / RF-AUTH-07) ──
+  fastify.post('/seleccionar-mesa', {
+    preHandler: [fastify.authenticate],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['mesa_id'],
+        properties: {
+          mesa_id: { type: 'integer' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const { mesa_id } = request.body
+    const userId = request.user.id
+
+    // 1. Validar que el operador no está asignado a otra mesa (RF-AUTH-07)
+    const { rows: mesasOcupadas } = await fastify.db.query(
+      `SELECT id, numero FROM mesas WHERE operador_id = $1 AND id != $2 AND estado != 'inactiva'`,
+      [userId, mesa_id]
+    )
+    if (mesasOcupadas.length > 0) {
+      return reply.status(409).send({
+        error: `Ya tienes asignada la Mesa ${mesasOcupadas[0].numero}. Un operador no puede estar en dos mesas simultáneamente.`
+      })
+    }
+
+    // 2. Validar que la mesa destino no esté ocupada por otro operador
+    const { rows: [mesaDestino] } = await fastify.db.query(
+      `SELECT id, numero, nombre, operador_id, estado FROM mesas WHERE id = $1`,
+      [mesa_id]
+    )
+    if (!mesaDestino) {
+      return reply.status(404).send({ error: 'Mesa no encontrada' })
+    }
+    if (mesaDestino.operador_id && mesaDestino.operador_id !== userId && mesaDestino.estado === 'activa') {
+      return reply.status(409).send({ error: 'La mesa seleccionada ya está ocupada por otro operador' })
+    }
+
+    // 3. Asignar operador a la mesa
+    const { rows: [mesaActualizada] } = await fastify.db.query(
+      `UPDATE mesas SET operador_id = $1, estado = 'activa' WHERE id = $2 RETURNING id, numero, nombre, estado, operador_id`,
+      [userId, mesa_id]
+    )
+
+    await fastify.db.query(
+      `INSERT INTO audit_log (mesa_id, operador_id, accion, ip_origen)
+       VALUES ($1, $2, 'OPERADOR_AUTO_ASIGNADO', $3)`,
+      [mesa_id, userId, request.ip]
+    )
+
+    await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa: mesaActualizada })
+
+    return reply.status(200).send({ mesa: mesaActualizada })
   })
 }

@@ -114,6 +114,56 @@ module.exports = async function turnosRoutes (fastify) {
     return reply.status(200).send({ message: 'Turno cancelado', turno })
   })
 
+  // ── POST /turnos/:id/rellamar — Re-llamar turno actual (RF-MESA / TV) ─────────
+  fastify.post('/:id/rellamar', {
+    preHandler: [fastify.authorizeRol('operador', 'supervisor')],
+    schema: {
+      params: {
+        type: 'object',
+        properties: { id: { type: 'integer' } }
+      },
+      body: {
+        type: 'object',
+        required: ['mesa_id'],
+        properties: { mesa_id: { type: 'integer' } }
+      }
+    }
+  }, async (request, reply) => {
+    const turnoId     = parseInt(request.params.id)
+    const { mesa_id } = request.body
+    const operadorId  = request.user.id
+
+    const { rows: [turno] } = await fastify.db.query(
+      `SELECT t.id, t.numero, t.mesa_id, m.numero AS mesa_numero, m.nombre AS mesa_nombre, l.numero_lote
+       FROM turnos t
+       JOIN mesas m ON t.mesa_id = m.id
+       JOIN lotes_voucher l ON t.lote_id = l.id
+       WHERE t.id = $1 AND t.mesa_id = $2 AND t.estado = 'en_atencion'`,
+      [turnoId, mesa_id]
+    )
+
+    if (!turno) {
+      return reply.status(404).send({ error: 'Turno en atención no encontrado en esta mesa' })
+    }
+
+    // Re-anunciar a la TV pública con tipo 'rellamado'
+    await Promise.all([
+      fastify.broadcast('tv:global', 'rellamado', {
+        turno:       turno.numero,
+        mesa_numero: turno.mesa_numero,
+        mesa_nombre: turno.mesa_nombre,
+        lote_numero: turno.numero_lote
+      }),
+      fastify.db.query(
+        `INSERT INTO audit_log (mesa_id, turno_id, operador_id, accion, metadata_json, ip_origen)
+         VALUES ($1, $2, $3, 'TURNO_RELLAMADO', $4, $5)`,
+        [mesa_id, turnoId, operadorId, JSON.stringify({ numero: turno.numero }), request.ip]
+      )
+    ])
+
+    return reply.status(200).send({ message: 'Turno re-llamado con éxito', turno })
+  })
+
   // ── GET /turnos/estado — Snapshot para reconexión WS (RF-WS-05) ───────────
   fastify.get('/estado', {
     preHandler: [fastify.authenticate],

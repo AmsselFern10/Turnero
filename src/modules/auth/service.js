@@ -60,7 +60,19 @@ async function login (fastify, { username, password, ip }) {
   const refreshTtl = 7 * 24 * 60 * 60 // 7 días en segundos
   await fastify.redis.setex(`refresh:${refreshJti}`, refreshTtl, usuario.id.toString())
 
-  // 6. Audit log
+  // 6. Consultar si tiene mesa pre-asignada por el admin (RF-ADM-04 / RF-AUTH-03)
+  let mesaAsignada = null
+  if (usuario.rol === 'operador') {
+    const { rows: mesasRows } = await fastify.db.query(
+      `SELECT id, numero, nombre, estado FROM mesas WHERE operador_id = $1 AND estado != 'inactiva' LIMIT 1`,
+      [usuario.id]
+    )
+    if (mesasRows.length > 0) {
+      mesaAsignada = mesasRows[0]
+    }
+  }
+
+  // 7. Audit log
   await fastify.db.query(
     `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
      VALUES ($1, 'LOGIN_EXITOSO', $2, $3)`,
@@ -71,10 +83,11 @@ async function login (fastify, { username, password, ip }) {
     token,
     refreshToken,
     usuario: {
-      id:       usuario.id,
-      username: usuario.username,
-      nombre:   usuario.nombre_completo,
-      rol:      usuario.rol
+      id:            usuario.id,
+      username:      usuario.username,
+      nombre:        usuario.nombre_completo,
+      rol:           usuario.rol,
+      mesa_asignada: mesaAsignada
     }
   }
 }

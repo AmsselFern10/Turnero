@@ -30,10 +30,10 @@ async function buildApp (opts = {}) {
     contentSecurityPolicy: {
       directives: {
         defaultSrc:     ["'self'"],
-        scriptSrc:      ["'self'"],
+        scriptSrc:      ["'self'", "'unsafe-eval'", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net"],
         connectSrc:     ["'self'", "ws:", "wss:"],
-        styleSrc:       ["'self'", "'unsafe-inline'"],  // Alpine.js necesita inline
-        fontSrc:        ["'self'"],
+        styleSrc:       ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc:        ["'self'", "https://fonts.gstatic.com"],
         imgSrc:         ["'self'", "data:"]
       }
     }

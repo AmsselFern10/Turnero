@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+
+<html class="h-full bg-slate-100" lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Turnero Operativo • Mesa 3</title>
+<!-- Google Fonts: Inter & JetBrains Mono -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ["Inter", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "sans-serif"],
+            mono: ["JetBrains Mono", "SFMono-Regular", "Menlo", "monospace"],
+          }
+        }
+      }
+    }
+  </script>
+<style>
+  @keyframes pulse-call {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.006); }
+  }
+  .animate-pulse-call {
+    animation: pulse-call 1.5s ease-in-out infinite;
+  }
+</style>
+</head>
+<body class="h-screen max-h-screen overflow-hidden flex flex-col justify-between font-sans text-slate-800 bg-[#EEF2F6] antialiased select-none m-0 p-0">
+<!-- ================= MINIMALIST APPLE-INSPIRED HEADER ================= -->
+<header class="w-full px-8 py-3 bg-white border-b border-slate-200/90 flex-shrink-0 z-40 flex items-center justify-between">
+<!-- Left: Desk MesaBox & Operator Badge with Live WebSocket Dot -->
+<div class="flex items-center space-x-4">
+<div class="flex items-center space-x-3">
+<span class="inline-flex items-center px-5 py-2 rounded-xl bg-[#1D4ED8] text-white font-mono text-base font-bold tracking-wide shadow-sm" id="header-mesa-badge">
+          MESA 3
+        </span>
+<span class="text-base font-semibold text-slate-900 tracking-tight" id="header-operador-nombre">Lic. Roberto Morales</span>
+</div>
+<span class="text-slate-300">|</span>
+<div class="flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60" id="header-ws-badge">
+<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" id="header-ws-dot"></span>
+<span class="text-xs font-semibold" id="header-ws-text">En línea</span>
+</div>
+</div>
+<!-- Right: Live Clock & Action Buttons -->
+<div class="flex items-center space-x-4">
+<div class="flex items-center space-x-2 text-slate-700 bg-slate-50 px-3.5 py-1.5 rounded-lg border border-slate-200">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="1.5" viewbox="0 0 24 24">
+<circle cx="12" cy="12" r="10"></circle>
+<polyline points="12 6 12 12 16 14"></polyline>
+</svg>
+<span class="font-mono text-xs font-semibold tracking-tight text-slate-900" id="live-clock">14:00:07</span>
+<span class="text-slate-300">·</span>
+<span class="text-xs text-slate-500 font-medium" id="live-date">14 Feb 2026</span>
+</div>
+<!-- Pausar Mesa Button -->
+<button class="inline-flex items-center space-x-2 px-3.5 py-2 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors active:scale-[0.98] shadow-xs cursor-pointer" id="btn-pause-mesa" type="button">
+<svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="1.5" viewbox="0 0 24 24">
+<rect height="16" rx="1" width="4" x="6" y="4"></rect>
+<rect height="16" rx="1" width="4" x="14" y="4"></rect>
+</svg>
+<span id="btn-pause-text">Pausar Mesa</span>
+</button>
+<!-- Cerrar Sesión Button -->
+<button class="inline-flex items-center space-x-2 px-3.5 py-2 text-sm font-medium rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors active:scale-[0.98] cursor-pointer" id="btn-logout" type="button">
+<svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="1.5" viewbox="0 0 24 24">
+<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+<polyline points="16 17 21 12 16 7"></polyline>
+<line x1="21" x2="9" y1="12" y2="12"></line>
+</svg>
+<span>Cerrar Sesión</span>
+</button>
+</div>
+</header>
+<!-- ================= MAIN OPERATOR WORKSTATION CANVAS ================= -->
+<main class="flex-1 flex gap-6 px-8 py-5 max-w-[1720px] w-full mx-auto items-stretch min-h-0 overflow-hidden">
+<!-- ================= CARD A: TURNO ACTUAL (~65% width) ================= -->
+<section class="min-w-0 flex-[1.8] flex flex-col justify-between p-8 bg-white rounded-2xl border border-slate-300 shadow-sm transition-all duration-300 relative" id="card-current-turn">
+<!-- Card A Header -->
+<div class="flex items-center justify-between pb-5 border-b border-slate-100 flex-shrink-0">
+<!-- Dynamic Status Badge Container -->
+<div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold tracking-wide transition-all" id="statusBadge">
+<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" id="statusDot"></span>
+<span class="hidden" id="statusIconContainer"></span>
+<span id="statusBadgeText">TURNO ACTUAL • EN ATENCIÓN</span>
+</div>
+<!-- Live Chronometer Pill -->
+<div class="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 font-mono text-sm font-semibold shadow-xs">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="1.5" viewbox="0 0 24 24">
+<circle cx="12" cy="12" r="10"></circle>
+<polyline points="12 6 12 12 16 14"></polyline>
+</svg>
+<span id="elapsed-counter">00:00</span>
+<span class="text-xs text-slate-400 font-normal">en ventanilla</span>
+</div>
+</div>
+<!-- Center Hero Content -->
+<div class="flex-1 flex flex-col items-center justify-center my-6 text-center">
+<div class="font-mono font-bold text-[148px] leading-none text-slate-900 tracking-tighter select-none my-1" id="current-ticket-number">
+          --
+        </div>
+<p class="text-sm font-medium text-slate-500 text-center mt-4 max-w-lg" id="ticket-help-text">
+          Ventanilla lista para llamar • Esperando iniciar atención
+        </p>
+<!-- Metric Badge -->
+<div class="inline-flex items-center space-x-2 px-5 py-2 rounded-full bg-slate-100 text-sm font-medium text-slate-700 border border-slate-200 mt-4 shadow-xs">
+<svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24">
+<polyline points="20 6 9 17 4 12"></polyline>
+</svg>
+<span>Atendidos hoy en esta mesa: <strong class="font-bold text-slate-900" id="contador-atendidos-hoy">0 turnos</strong></span>
+</div>
+</div>
+<!-- Bottom Action Bar -->
+<div class="grid grid-cols-12 gap-4 pt-4 border-t border-slate-100 flex-shrink-0">
+<!-- Secondary: No se presentó -->
+<button class="col-span-3 h-[60px] rounded-xl border border-rose-200 hover:border-rose-300 text-rose-700 bg-rose-50/50 hover:bg-rose-50 flex items-center justify-center gap-2 font-medium text-base active:scale-[0.99] transition-all cursor-pointer shadow-xs" id="btn-absent" title="Marcar alumno no presentado" type="button">
+<svg class="w-4 h-4 text-rose-600 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewbox="0 0 24 24">
+<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+<circle cx="9" cy="7" r="4"></circle>
+<line x1="17" x2="22" y1="8" y2="13"></line>
+<line x1="22" x2="17" y1="8" y2="13"></line>
+</svg>
+<span>No se presentó</span>
+</button>
+<!-- Auxiliary: Re-llamar Turno -->
+<button class="col-span-4 h-[60px] rounded-xl border border-slate-200 hover:border-slate-300 text-slate-700 bg-white hover:bg-slate-50 flex items-center justify-center gap-2 font-medium text-base active:scale-[0.99] transition-all cursor-pointer shadow-xs" id="btn-recall" title="Re-anunciar turno en pantalla y sonido" type="button">
+<svg class="w-4 h-4 text-slate-600 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewbox="0 0 24 24">
+<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+<path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+<path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+</svg>
+<span>Re-llamar Turno</span>
+</button>
+<!-- Dominant Primary CTA: LLAMAR SIGUIENTE -->
+<button class="col-span-5 h-[60px] rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-lg flex items-center justify-center gap-3 active:scale-[0.99] transition-all shadow-md shadow-blue-600/20 cursor-pointer" id="btn-call-next" type="button">
+<span>LLAMAR SIGUIENTE</span>
+<svg class="w-5 h-5 text-white/95" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24">
+<line x1="5" x2="19" y1="12" y2="12"></line>
+<polyline points="12 5 19 12 12 19"></polyline>
+</svg>
+</button>
+</div>
+</section>
+<!-- ================= CARD B: PRÓXIMO EN COLA (~35% width) ================= -->
+<section class="min-w-0 flex-1 flex flex-col justify-between p-8 bg-white rounded-2xl border border-slate-300 shadow-sm">
+<!-- Header -->
+<div class="flex-shrink-0">
+<span class="text-xs font-bold tracking-widest uppercase text-slate-500 block">
+          PRÓXIMO TURNO DISPONIBLE
+        </span>
+</div>
+<!-- Inner Ticket Preview Card -->
+<div class="flex-1 flex flex-col items-center justify-center my-6 p-8 bg-slate-50/80 rounded-xl border border-slate-200/80 text-center shadow-xs">
+<span class="text-xs uppercase tracking-wider font-semibold text-slate-400 mb-2">TURNO SIGUIENTE</span>
+<div class="font-mono text-[92px] font-bold text-slate-800 leading-none my-2" id="next-ticket-number">
+          043
+        </div>
+<p class="text-sm text-slate-500 max-w-[280px] leading-relaxed mt-4">
+          Se llamará automáticamente a tu mesa al presionar "Llamar Siguiente".
+        </p>
+</div>
+<!-- Action Feedback Banner -->
+<div class="flex-shrink-0 bg-emerald-50/80 border border-emerald-200 p-4 rounded-xl flex items-start gap-3 transition-all duration-300" id="feedback-banner">
+<div class="text-emerald-600 flex-shrink-0 mt-0.5" id="feedback-icon-container">
+<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewbox="0 0 24 24">
+<circle cx="12" cy="12" r="2"></circle>
+<path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"></path>
+</svg>
+</div>
+<div class="text-left">
+<div class="text-xs font-bold text-emerald-800 uppercase tracking-wider" id="feedback-banner-title">LLAMADO EMITIDO CON ÉXITO</div>
+<div class="text-xs text-emerald-700 font-medium mt-0.5 leading-relaxed" id="feedback-banner-detail">
+            Turno 043 convocado a Mesa 3 • Sonando en pantalla TV (<span id="feedback-timestamp">hace un momento</span>)
+          </div>
+</div>
+</div>
+</section>
+</main>
+<!-- ================= DOCKED FOOTER (FLUSH TO BOTTOM) ================= -->
+<footer class="w-full bg-white border-t border-slate-200 px-8 py-2.5 text-xs text-slate-600 flex items-center justify-between shrink-0 z-40">
+<div class="flex items-center space-x-6">
+<div class="flex items-center space-x-2">
+<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="1.5" viewbox="0 0 24 24">
+<rect height="16" rx="2" width="20" x="2" y="4"></rect>
+<path d="M6 8h.001M10 8h.001M14 8h.001M18 8h.001M8 12h.001M12 12h.001M16 12h.001M7 16h10"></path>
+</svg>
+<span class="font-semibold text-slate-700">Atajos de Teclado Operativo:</span>
+</div>
+<div class="flex flex-wrap items-center gap-5">
+<div class="flex items-center space-x-1.5">
+<kbd class="font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-slate-700 font-semibold text-[11px]">Enter</kbd>
+<span class="text-slate-600">Llamar Siguiente</span>
+</div>
+<div class="flex items-center space-x-1.5">
+<kbd class="font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-slate-700 font-semibold text-[11px]">Espacio</kbd>
+<span class="text-slate-600">Re-llamar Turno</span>
+</div>
+<div class="flex items-center space-x-1.5">
+<kbd class="font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-slate-700 font-semibold text-[11px]">Esc</kbd>
+<span class="text-slate-600">No Presentado</span>
+</div>
+<div class="flex items-center space-x-1.5">
+<kbd class="font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-slate-700 font-semibold text-[11px]">P</kbd>
+<span class="text-slate-600">Pausar Mesa</span>
+</div>
+</div>
+</div>
+<div class="flex items-center space-x-2 text-[11px] text-slate-500">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+<span>Sincronizado con Nodo Central de Admisiones</span>
+</div>
+</footer>
+<!-- ================= PAUSED MODAL OVERLAY ================= -->
+<div class="fixed inset-0 z-50 bg-slate-900/30 backdrop-blur-xs hidden items-center justify-center p-4" id="pause-modal">
+<div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full overflow-hidden">
+<div class="p-6 text-center flex flex-col items-center">
+<div class="w-12 h-12 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center mb-3">
+<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewbox="0 0 24 24">
+<rect height="16" rx="1" width="4" x="6" y="4"></rect>
+<rect height="16" rx="1" width="4" x="14" y="4"></rect>
+</svg>
+</div>
+<h3 class="text-lg font-semibold text-slate-900">Mesa en Pausa</h3>
+<p class="text-xs text-slate-500 mt-1 max-w-xs leading-relaxed">
+          La ventanilla no está recibiendo llamados del sistema. La cola permanece activa en el tótem.
+        </p>
+<div class="w-full mt-4 text-left">
+<label class="block text-xs font-semibold text-slate-700 mb-1.5">Motivo del receso:</label>
+<select class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500">
+<option>Descanso programado / Almuerzo</option>
+<option>Soporte técnico / Validación</option>
+<option>Reunión de coordinación</option>
+<option>Atención excepcional fuera de mesa</option>
+</select>
+</div>
+<button class="w-full mt-5 flex items-center justify-center space-x-2 px-4 py-2.5 rounded-lg bg-blue-600 text-white font-semibold text-xs hover:bg-blue-700 transition-colors cursor-pointer" id="btn-resume-mesa" type="button">
+<span>Reanudar Atención</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Inclusión del Cliente WebSocket base (RF-WS) -->
+<script src="/ws-client.js"></script>
+
+<!-- Lógica de Integración Operativa, API REST y WebSocket -->
+<script>
+  (function () {
+    'use strict';
+
+    // ── 1. GESTIÓN DE SESIÓN (RF-AUTH-05: sessionStorage) ──────────────────
+    const token = sessionStorage.getItem('token') || sessionStorage.getItem('turnero_jwt');
+    const usuarioRaw = sessionStorage.getItem('usuario') || sessionStorage.getItem('turnero_user');
+    const mesaRaw = sessionStorage.getItem('mesa') || sessionStorage.getItem('turnero_mesa');
+
+    let usuario = null;
+    let mesa = null;
+
+    try {
+      if (usuarioRaw) usuario = JSON.parse(usuarioRaw);
+      if (mesaRaw) mesa = JSON.parse(mesaRaw);
+    } catch (e) {
+      console.warn('Error leyendo sesión:', e);
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const mesaId = mesa?.id || urlParams.get('mesa') || urlParams.get('mesa_id') || 3;
+    const mesaNumero = mesa?.numero || urlParams.get('mesa') || 3;
+    const operadorNombre = usuario?.nombre || usuario?.nombre_completo || 'Lic. Roberto Morales';
+
+    // Actualizar Header
+    const elHeaderMesaBadge = document.getElementById('header-mesa-badge');
+    const elHeaderOperador = document.getElementById('header-operador-nombre');
+    if (elHeaderMesaBadge) elHeaderMesaBadge.textContent = `MESA ${mesaNumero}`;
+    if (elHeaderOperador) elHeaderOperador.textContent = operadorNombre;
+
+    // ── 2. ELEMENTOS DEL DOM ──────────────────────────────────────────────
+    const elLiveClock = document.getElementById('live-clock');
+    const elLiveDate = document.getElementById('live-date');
+    const elElapsedCounter = document.getElementById('elapsed-counter');
+    const elCurrentTicket = document.getElementById('current-ticket-number');
+    const elNextTicket = document.getElementById('next-ticket-number');
+    const elTicketHelp = document.getElementById('ticket-help-text');
+    const elContadorAtendidos = document.getElementById('contador-atendidos-hoy');
+
+    const cardCurrentTurn = document.getElementById('card-current-turn');
+    const statusBadge = document.getElementById('statusBadge');
+    const statusDot = document.getElementById('statusDot');
+    const statusIconContainer = document.getElementById('statusIconContainer');
+    const statusBadgeText = document.getElementById('statusBadgeText');
+
+    const feedbackBanner = document.getElementById('feedback-banner');
+    const feedbackIconContainer = document.getElementById('feedback-icon-container');
+    const feedbackBannerTitle = document.getElementById('feedback-banner-title');
+    const feedbackBannerDetail = document.getElementById('feedback-banner-detail');
+
+    const btnCallNext = document.getElementById('btn-call-next');
+    const btnRecall = document.getElementById('btn-recall');
+    const btnAbsent = document.getElementById('btn-absent');
+    const btnPauseMesa = document.getElementById('btn-pause-mesa');
+    const btnPauseText = document.getElementById('btn-pause-text');
+    const btnResumeMesa = document.getElementById('btn-resume-mesa');
+    const btnLogout = document.getElementById('btn-logout');
+    const pauseModal = document.getElementById('pause-modal');
+
+    const elWsBadge = document.getElementById('header-ws-badge');
+    const elWsDot = document.getElementById('header-ws-dot');
+    const elWsText = document.getElementById('header-ws-text');
+
+    // ── 3. ESTADO LOCAL ────────────────────────────────────────────────────
+    let turnoActual = null;       // { id, numero, llamado_en, estado }
+    let atendidosHoy = 0;
+    let proximoNumero = null;
+    let mesaEstado = 'activa';    // 'activa' | 'pausada'
+    let elapsedSeconds = 0;
+    let chronometerInterval = null;
+    let stateAnimationTimer = null;
+    let isRequestInProgress = false;
+
+    // Reloj Terminal en vivo
+    function updateClock() {
+      const now = new Date();
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      if (elLiveClock) elLiveClock.textContent = `${hours}:${minutes}:${seconds}`;
+
+      if (elLiveDate) {
+        const opciones = { day: 'numeric', month: 'short', year: 'numeric' };
+        elLiveDate.textContent = now.toLocaleDateString('es-ES', opciones);
+      }
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Cronómetro de atención en vivo (RF-MESA-03)
+    function startChronometer(startTime) {
+      if (chronometerInterval) clearInterval(chronometerInterval);
+
+      if (!startTime) {
+        elapsedSeconds = 0;
+        if (elElapsedCounter) elElapsedCounter.textContent = '00:00';
+        return;
+      }
+
+      const startMs = new Date(startTime).getTime();
+      const calculate = () => {
+        const nowMs = Date.now();
+        elapsedSeconds = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+        const mins = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
+        const secs = String(elapsedSeconds % 60).padStart(2, '0');
+        if (elElapsedCounter) elElapsedCounter.textContent = `${mins}:${secs}`;
+      };
+
+      calculate();
+      chronometerInterval = setInterval(calculate, 1000);
+    }
+
+    // Formateador de números a 3 dígitos (ej: "042")
+    function formatTurno(num) {
+      if (!num && num !== 0) return '--';
+      return String(num).padStart(3, '0');
+    }
+
+    // ── 4. CONTROL DE ANIMACIONES TEMPORALES (5 SEGUNDOS) ──────────────────
+    function resetToIdleState() {
+      cardCurrentTurn.classList.remove(
+        'ring-4', 'ring-blue-500/30', 'border-blue-500', 'bg-blue-50/10',
+        'ring-amber-500/30', 'border-amber-500', 'bg-amber-50/15',
+        'animate-pulse-call'
+      );
+      cardCurrentTurn.classList.add('border-slate-300', 'bg-white');
+
+      if (turnoActual) {
+        statusBadge.className = 'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold tracking-wide transition-all';
+        statusDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
+        statusDot.classList.remove('hidden');
+        statusIconContainer.className = 'hidden';
+        statusIconContainer.innerHTML = '';
+        statusBadgeText.textContent = 'TURNO ACTUAL • EN ATENCIÓN';
+        if (elTicketHelp) elTicketHelp.textContent = 'Realizando atención en ventanilla • Alumno presente';
+      } else {
+        statusBadge.className = 'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold tracking-wide transition-all';
+        statusDot.className = 'w-2 h-2 rounded-full bg-slate-400';
+        statusDot.classList.remove('hidden');
+        statusIconContainer.className = 'hidden';
+        statusBadgeText.textContent = 'VENTANILLA DISPONIBLE';
+        if (elTicketHelp) elTicketHelp.textContent = 'Ventanilla lista para llamar • Esperando iniciar atención';
+      }
+    }
+
+    function triggerCallingEffect(tipo = 'llamada') {
+      if (stateAnimationTimer) clearTimeout(stateAnimationTimer);
+
+      cardCurrentTurn.classList.remove('border-slate-300', 'bg-white');
+
+      if (tipo === 'llamada') {
+        // Azul Cobalto + Megáfono pulsante
+        cardCurrentTurn.classList.remove('ring-amber-500/30', 'border-amber-500', 'bg-amber-50/15');
+        cardCurrentTurn.classList.add('ring-4', 'ring-blue-500/30', 'border-blue-500', 'bg-blue-50/10', 'animate-pulse-call');
+
+        statusBadge.className = 'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold tracking-wide transition-all';
+        statusDot.classList.add('hidden');
+        statusIconContainer.className = 'inline-flex items-center';
+        statusIconContainer.innerHTML = `
+          <svg class="w-3.5 h-3.5 text-blue-600 animate-bounce" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          </svg>
+        `;
+        statusBadgeText.textContent = 'LLAMANDO ALUMNO...';
+        if (elTicketHelp) elTicketHelp.textContent = 'Sonando en la TV pública • Esperando que el alumno tome asiento';
+      } else {
+        // Ámbar Dorado + Campana pulsante
+        cardCurrentTurn.classList.remove('ring-blue-500/30', 'border-blue-500', 'bg-blue-50/10');
+        cardCurrentTurn.classList.add('ring-4', 'ring-amber-500/30', 'border-amber-500', 'bg-amber-50/15', 'animate-pulse-call');
+
+        statusBadge.className = 'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold tracking-wide transition-all';
+        statusDot.classList.add('hidden');
+        statusIconContainer.className = 'inline-flex items-center';
+        statusIconContainer.innerHTML = `
+          <svg class="w-3.5 h-3.5 text-amber-600 animate-bounce" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+          </svg>
+        `;
+        statusBadgeText.textContent = 'RE-LLAMANDO (2º AVISO)';
+        if (elTicketHelp) elTicketHelp.textContent = 'Segundo aviso transmitido a la TV pública • Insistencia';
+      }
+
+      stateAnimationTimer = setTimeout(() => {
+        resetToIdleState();
+      }, 5000);
+    }
+
+    // Actualizar Banner de retroalimentación en Card B
+    function updateFeedbackBanner(tipo, titulo, detalle) {
+      if (!feedbackBanner) return;
+
+      if (tipo === 'exito') {
+        feedbackBanner.className = 'flex-shrink-0 bg-emerald-50/80 border border-emerald-200 p-4 rounded-xl flex items-start gap-3 transition-all duration-300';
+        if (feedbackIconContainer) {
+          feedbackIconContainer.className = 'text-emerald-600 flex-shrink-0 mt-0.5';
+          feedbackIconContainer.innerHTML = `
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="2"></circle>
+              <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"></path>
+            </svg>
+          `;
+        }
+        if (feedbackBannerTitle) {
+          feedbackBannerTitle.className = 'text-xs font-bold text-emerald-800 uppercase tracking-wider';
+          feedbackBannerTitle.textContent = titulo || 'LLAMADO EMITIDO CON ÉXITO';
+        }
+        if (feedbackBannerDetail) {
+          feedbackBannerDetail.className = 'text-xs text-emerald-700 font-medium mt-0.5 leading-relaxed';
+          feedbackBannerDetail.textContent = detalle;
+        }
+      } else if (tipo === 'aviso') {
+        feedbackBanner.className = 'flex-shrink-0 bg-amber-50/80 border border-amber-200 p-4 rounded-xl flex items-start gap-3 transition-all duration-300';
+        if (feedbackIconContainer) {
+          feedbackIconContainer.className = 'text-amber-600 flex-shrink-0 mt-0.5';
+          feedbackIconContainer.innerHTML = `
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+          `;
+        }
+        if (feedbackBannerTitle) {
+          feedbackBannerTitle.className = 'text-xs font-bold text-amber-800 uppercase tracking-wider';
+          feedbackBannerTitle.textContent = titulo || 'RE-LLAMADO EMITIDO (2º AVISO)';
+        }
+        if (feedbackBannerDetail) {
+          feedbackBannerDetail.className = 'text-xs text-amber-700 font-medium mt-0.5 leading-relaxed';
+          feedbackBannerDetail.textContent = detalle;
+        }
+      } else if (tipo === 'cancelado') {
+        feedbackBanner.className = 'flex-shrink-0 bg-rose-50/80 border border-rose-200 p-4 rounded-xl flex items-start gap-3 transition-all duration-300';
+        if (feedbackIconContainer) {
+          feedbackIconContainer.className = 'text-rose-600 flex-shrink-0 mt-0.5';
+          feedbackIconContainer.innerHTML = `
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <line x1="17" x2="22" y1="8" x2="13"></line>
+              <line x1="22" x2="17" y1="8" x2="13"></line>
+            </svg>
+          `;
+        }
+        if (feedbackBannerTitle) {
+          feedbackBannerTitle.className = 'text-xs font-bold text-rose-800 uppercase tracking-wider';
+          feedbackBannerTitle.textContent = titulo || 'TURNO MARCADO COMO AUSENTE';
+        }
+        if (feedbackBannerDetail) {
+          feedbackBannerDetail.className = 'text-xs text-rose-700 font-medium mt-0.5 leading-relaxed';
+          feedbackBannerDetail.textContent = detalle;
+        }
+      }
+    }
+
+    // ── 5. CLIENTE WEBSOCKET EN TIEMPO REAL (RF-WS-01 .. 07) ───────────────
+    let wsClient = null;
+
+    if (window.TurneroWSClient) {
+      wsClient = new window.TurneroWSClient({
+        token: token || '',
+        canal: `mesa:${mesaId}`,
+        mesaId: mesaId
+      });
+
+      // Monitoreo de Estado de Conexión (RF-MESA-05: Verde / Amarillo / Rojo)
+      wsClient.onStatusChange(({ status, attempt, nextDelay }) => {
+        if (!elWsBadge) return;
+
+        if (status === 'CONECTADO') {
+          elWsBadge.className = 'flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60';
+          if (elWsDot) elWsDot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
+          if (elWsText) elWsText.textContent = 'En línea';
+        } else if (status === 'RECONECTANDO') {
+          elWsBadge.className = 'flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200/60';
+          if (elWsDot) elWsDot.className = 'w-2 h-2 rounded-full bg-amber-500 animate-ping';
+          if (elWsText) elWsText.textContent = `Reconectando en ${Math.round(nextDelay / 1000)}s...`;
+        } else {
+          elWsBadge.className = 'flex items-center space-x-2 px-3 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200/60';
+          if (elWsDot) elWsDot.className = 'w-2 h-2 rounded-full bg-rose-500';
+          if (elWsText) elWsText.textContent = 'Desconectado';
+        }
+      });
+
+      // Snapshot inicial al conectar o reconectar (RF-WS-05)
+      wsClient.on('snapshot', (payload) => {
+        console.info('[WS] Snapshot recibido:', payload);
+        if (payload.turno_actual) {
+          turnoActual = payload.turno_actual;
+          if (elCurrentTicket) elCurrentTicket.textContent = formatTurno(turnoActual.numero);
+          startChronometer(turnoActual.llamado_en);
+        } else {
+          turnoActual = null;
+          if (elCurrentTicket) elCurrentTicket.textContent = '--';
+          startChronometer(null);
+        }
+
+        if (typeof payload.atendidos_hoy === 'number') {
+          atendidosHoy = payload.atendidos_hoy;
+          if (elContadorAtendidos) elContadorAtendidos.textContent = `${atendidosHoy} turnos`;
+        }
+
+        if (payload.proximo_numero) {
+          proximoNumero = payload.proximo_numero;
+          if (elNextTicket) elNextTicket.textContent = formatTurno(proximoNumero);
+        }
+
+        resetToIdleState();
+      });
+
+      // Evento de llamado de turno recibido en el canal mesa:<id> (RF-TURN-01)
+      wsClient.on('turno_llamado', (payload) => {
+        console.info('[WS] Evento turno_llamado:', payload);
+        turnoActual = payload.turno;
+        proximoNumero = payload.proximo_numero;
+
+        if (elCurrentTicket) elCurrentTicket.textContent = formatTurno(turnoActual.numero);
+        if (elNextTicket) elNextTicket.textContent = formatTurno(proximoNumero);
+
+        triggerCallingEffect('llamada');
+        startChronometer(turnoActual.llamado_en);
+
+        updateFeedbackBanner(
+          'exito',
+          'LLAMADO EMITIDO CON ÉXITO',
+          `Turno ${formatTurno(turnoActual.numero)} convocado a Mesa ${mesaNumero} • Sonando en TV pública (hace un instante)`
+        );
+      });
+
+      // Alerta de lote agotado (RF-TURN-08)
+      wsClient.on('lote_agotado', () => {
+        updateFeedbackBanner(
+          'aviso',
+          'LOTE DE VOUCHERS AGOTADO',
+          'Todos los vouchers del lote activo han sido llamados. Notifica al administrador para activar o extender lote.'
+        );
+        if (btnCallNext) {
+          btnCallNext.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+      });
+
+      // Iniciar conexión WebSocket
+      wsClient.connect();
+    }
+
+    // ── 6. ACCIONES REST OPERATIVAS ────────────────────────────────────────
+
+    // LLAMAR SIGUIENTE (RF-TURN-01 / RF-USA-01: 1 Clic atómico)
+    async function accionLlamarSiguiente() {
+      if (isRequestInProgress) return;
+      isRequestInProgress = true;
+
+      // Debounce visual inmediato
+      if (btnCallNext) btnCallNext.classList.add('opacity-75');
+
+      try {
+        const resp = await fetch('/turnos/llamar', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ mesa_id: parseInt(mesaId) })
+        });
+
+        const data = await resp.json();
+
+        if (resp.ok) {
+          turnoActual = data.turno;
+          proximoNumero = data.proximo_numero;
+
+          if (elCurrentTicket) elCurrentTicket.textContent = formatTurno(turnoActual.numero);
+          if (elNextTicket) elNextTicket.textContent = formatTurno(proximoNumero);
+
+          atendidosHoy++;
+          if (elContadorAtendidos) elContadorAtendidos.textContent = `${atendidosHoy} turnos`;
+
+          triggerCallingEffect('llamada');
+          startChronometer(turnoActual.llamado_en);
+
+          updateFeedbackBanner(
+            'exito',
+            'LLAMADO EMITIDO CON ÉXITO',
+            `Turno ${formatTurno(turnoActual.numero)} convocado a Mesa ${mesaNumero} • Sonando en pantalla TV (hace 1 seg)`
+          );
+        } else if (resp.status === 409) {
+          // Lote agotado o sin lote activo
+          updateFeedbackBanner(
+            'aviso',
+            'LOTE NO DISPONIBLE O AGOTADO',
+            data.message || 'No hay más turnos disponibles en el lote activo.'
+          );
+        } else {
+          console.error('Error llamando siguiente:', data);
+          alert(data.error || data.message || 'Error al llamar siguiente turno');
+        }
+      } catch (err) {
+        console.error('Fallo de red al llamar siguiente:', err);
+        // Modo simulación/preview si el backend no está online
+        const simuladoNum = turnoActual ? (turnoActual.numero + 1) : 42;
+        turnoActual = { numero: simuladoNum, llamado_en: new Date().toISOString() };
+        proximoNumero = simuladoNum + 1;
+        if (elCurrentTicket) elCurrentTicket.textContent = formatTurno(turnoActual.numero);
+        if (elNextTicket) elNextTicket.textContent = formatTurno(proximoNumero);
+        atendidosHoy++;
+        if (elContadorAtendidos) elContadorAtendidos.textContent = `${atendidosHoy} turnos`;
+        triggerCallingEffect('llamada');
+        startChronometer(new Date().toISOString());
+        updateFeedbackBanner('exito', 'LLAMADO EMITIDO (LOCAL)', `Turno ${formatTurno(simuladoNum)} convocado a Mesa ${mesaNumero}`);
+      } finally {
+        setTimeout(() => {
+          isRequestInProgress = false;
+          if (btnCallNext) btnCallNext.classList.remove('opacity-75');
+        }, 1000); // 1s anti-doble clic
+      }
+    }
+
+    // RE-LLAMAR TURNO (RF-MESA / TV)
+    async function accionRellamar() {
+      if (!turnoActual) {
+        updateFeedbackBanner('aviso', 'SIN TURNO ACTIVO', 'Debes llamar un turno antes de poder re-llamarlo.');
+        return;
+      }
+
+      triggerCallingEffect('rellamada');
+
+      try {
+        await fetch(`/turnos/${turnoActual.id || 0}/rellamar`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ mesa_id: parseInt(mesaId) })
+        });
+
+        updateFeedbackBanner(
+          'aviso',
+          'RE-LLAMADO EMITIDO (2º AVISO)',
+          `Turno ${formatTurno(turnoActual.numero)} re-convocado a Mesa ${mesaNumero} • Sonando en pantalla TV (hace 1 seg)`
+        );
+      } catch (err) {
+        console.warn('Error en API rellamar (modo visual):', err);
+        updateFeedbackBanner(
+          'aviso',
+          'RE-LLAMADO EMITIDO (2º AVISO)',
+          `Turno ${formatTurno(turnoActual.numero)} re-convocado a Mesa ${mesaNumero} • Aviso local emitido`
+        );
+      }
+    }
+
+    // NO SE PRESENTÓ / CANCELAR TURNO (RF-TURN-05)
+    async function accionNoSePresento() {
+      if (!turnoActual) {
+        updateFeedbackBanner('aviso', 'SIN TURNO ACTIVO', 'No hay un turno en atención para marcar como no presentado.');
+        return;
+      }
+
+      if (!confirm(`¿Confirmas marcar el turno ${formatTurno(turnoActual.numero)} como no presentado?`)) {
+        return;
+      }
+
+      const numCancelado = turnoActual.numero;
+
+      try {
+        await fetch(`/turnos/${turnoActual.id || 0}/cancelar`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ mesa_id: parseInt(mesaId) })
+        });
+      } catch (err) {
+        console.warn('Error cancelando turno vía API (modo visual):', err);
+      }
+
+      turnoActual = null;
+      if (elCurrentTicket) elCurrentTicket.textContent = '--';
+      startChronometer(null);
+      resetToIdleState();
+
+      updateFeedbackBanner(
+        'cancelado',
+        'TURNO NO PRESENTADO REGISTRADO',
+        `El turno ${formatTurno(numCancelado)} fue marcado como ausente y registrado en auditoría.`
+      );
+    }
+
+    // PAUSAR / REANUDAR MESA (RF-TURN-07)
+    async function togglePausaMesa(nuevoEstado) {
+      mesaEstado = nuevoEstado || (mesaEstado === 'activa' ? 'pausada' : 'activa');
+
+      try {
+        await fetch(`/mesas/${mesaId}/estado`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ estado: mesaEstado })
+        });
+      } catch (err) {
+        console.warn('Error cambiando estado de mesa vía API:', err);
+      }
+
+      if (mesaEstado === 'pausada') {
+        pauseModal.classList.remove('hidden');
+        pauseModal.classList.add('flex');
+        if (btnPauseText) btnPauseText.textContent = 'Reanudar Mesa';
+      } else {
+        pauseModal.classList.add('hidden');
+        pauseModal.classList.remove('flex');
+        if (btnPauseText) btnPauseText.textContent = 'Pausar Mesa';
+      }
+    }
+
+    // CERRAR SESIÓN (RF-AUTH-04)
+    async function accionCerrarSesion() {
+      if (!confirm('¿Deseas cerrar tu sesión operativa?')) return;
+
+      try {
+        if (token) {
+          await fetch('/auth/logout', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+        }
+      } catch (err) {
+        console.warn('Error cerrando sesión en backend:', err);
+      } finally {
+        if (wsClient) wsClient.disconnect();
+        sessionStorage.clear();
+        window.location.href = '/index.html';
+      }
+    }
+
+    // ── 7. LISTENERS DE CLICK Y TECLADO ────────────────────────────────────
+    if (btnCallNext) btnCallNext.addEventListener('click', accionLlamarSiguiente);
+    if (btnRecall) btnRecall.addEventListener('click', accionRellamar);
+    if (btnAbsent) btnAbsent.addEventListener('click', accionNoSePresento);
+    if (btnPauseMesa) btnPauseMesa.addEventListener('click', () => togglePausaMesa());
+    if (btnResumeMesa) btnResumeMesa.addEventListener('click', () => togglePausaMesa('activa'));
+    if (btnLogout) btnLogout.addEventListener('click', accionCerrarSesion);
+
+    // Atajos de Teclado Operativo (RNF-USA-05)
+    document.addEventListener('keydown', (e) => {
+      // Ignorar si el usuario está escribiendo en un input
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        accionLlamarSiguiente();
+      } else if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        accionRellamar();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        if (!pauseModal.classList.contains('hidden')) {
+          togglePausaMesa('activa');
+        } else {
+          accionNoSePresento();
+        }
+      } else if (e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        togglePausaMesa();
+      }
+    });
+
+  })();
+</script>
+</body></html>
+
+

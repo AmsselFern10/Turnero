@@ -11,6 +11,8 @@ process.on('unhandledRejection', (reason) => {
   process.exit(1)
 })
 
+require('dotenv').config()
+
 const buildApp = require('./app')
 
 async function start () {

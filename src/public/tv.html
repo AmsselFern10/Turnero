@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full w-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080, initial-scale=1.0">
+  <title>Pantalla Pública de Turnos — Sala Central 1080p</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+    .font-mono-numbers {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    @keyframes pulse-ring-blue {
+      0% {
+        box-shadow: 0 0 0 0 rgba(29, 78, 216, 0.45);
+        transform: scale(1);
+      }
+      50% {
+        transform: scale(1.006);
+      }
+      70% {
+        box-shadow: 0 0 0 22px rgba(29, 78, 216, 0);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(29, 78, 216, 0);
+        transform: scale(1);
+      }
+    }
+    .pulse-call-blue {
+      animation: pulse-ring-blue 1.6s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+    }
+
+    @keyframes pulse-ring-amber {
+      0% {
+        box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.5);
+        transform: scale(1);
+      }
+      50% {
+        transform: scale(1.006);
+      }
+      70% {
+        box-shadow: 0 0 0 22px rgba(217, 119, 6, 0);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(217, 119, 6, 0);
+        transform: scale(1);
+      }
+    }
+    .pulse-call-amber {
+      animation: pulse-ring-amber 1.6s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+    }
+  </style>
+</head>
+<body class="bg-[#EEF2F6] text-slate-800 h-screen w-screen flex flex-col justify-between overflow-hidden p-6 pb-0 antialiased selection:bg-blue-600 selection:text-white">
+
+  <!-- ================= BANNER FLOTANTE DE RECONEXIÓN (RNF-DIS-03 / RF-TV-05) ================= -->
+  <div id="tv-reconnect-banner" class="hidden fixed top-0 inset-x-0 z-50 bg-amber-500 text-white px-8 py-2.5 shadow-lg flex items-center justify-between transition-all">
+    <div class="flex items-center space-x-3">
+      <svg class="w-5 h-5 animate-spin flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="font-medium text-sm" id="tv-reconnect-msg">Reconectando con el servidor central de turnos... El último llamado permanece en pantalla.</span>
+    </div>
+    <span class="font-mono text-xs bg-amber-600/80 px-3 py-1 rounded-md font-semibold" id="tv-reconnect-countdown">Reintento en curso</span>
+  </div>
+
+  <!-- MAIN VIEWPORT CONTAINER (Full HD 1080p Pasivo sin scroll) -->
+  <main class="flex-1 w-full grid grid-cols-12 gap-6 pb-6 min-h-0">
+
+    <!-- COLUMNA IZQUIERDA: HERO CARD PRINCIPAL (~65% width / col-span-8) -->
+    <section id="hero-card" class="col-span-8 bg-white border border-[#CBD5E1] rounded-2xl p-8 shadow-sm flex flex-col justify-between h-full relative overflow-hidden transition-all duration-300">
+      
+      <!-- 1. TOP SECTION: BANNER DE ANTICIPACIÓN DE FILA ("PRÓXIMO TURNO EN ESPERA") -->
+      <div class="w-full bg-amber-50 border border-amber-300 rounded-2xl px-6 py-4 flex items-center justify-between shadow-xs">
+        <!-- Izquierda: Icono Reloj + Label -->
+        <div class="flex items-center space-x-3 text-amber-900">
+          <div class="p-2 bg-amber-100/80 rounded-xl border border-amber-200/90 text-amber-800 flex items-center justify-center">
+            <svg class="w-6 h-6 stroke-[1.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div>
+            <span class="block text-xs font-semibold text-amber-700 tracking-wider uppercase">Siguiente en Fila</span>
+            <span class="font-bold text-base uppercase tracking-wider text-amber-950">PRÓXIMO TURNO EN ESPERA:</span>
+          </div>
+        </div>
+
+        <!-- Centro: Ticket Colosal Destacado -->
+        <div class="flex items-center space-x-3">
+          <div class="bg-amber-200/90 border border-amber-300 px-6 py-1.5 rounded-xl shadow-xs flex items-center justify-center">
+            <span id="hero-next-ticket" class="font-mono-numbers text-3xl font-black text-amber-950 tracking-tight">043</span>
+          </div>
+        </div>
+
+        <!-- Derecha: Instrucción -->
+        <div class="flex items-center space-x-2 text-amber-800 font-semibold text-sm bg-amber-100/60 px-4 py-2 rounded-xl border border-amber-200/60">
+          <svg class="w-4 h-4 stroke-[1.5] text-amber-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+          </svg>
+          <span>(A prepararse)</span>
+        </div>
+      </div>
+
+      <!-- 2. CENTER SECTION: TICKET COLOSAL CONVOCADO (RF-TV-01: >= 200px) -->
+      <div class="flex-1 flex flex-col items-center justify-center my-auto text-center py-4">
+        <div class="flex items-center space-x-2 mb-2">
+          <span class="h-2 w-2 rounded-full bg-blue-600 animate-ping"></span>
+          <span id="hero-status-tag" class="text-sm font-medium uppercase tracking-[0.25em] text-slate-500">TURNO ASIGNADO</span>
+        </div>
+        <div id="hero-ticket-number" class="font-mono-numbers font-bold text-slate-900 tracking-tighter leading-none select-none text-[240px] drop-shadow-xs">
+          042
+        </div>
+      </div>
+
+      <!-- 3. BOTTOM SECTION: BANNER DE DESTINO EN AZUL COBALTO (#1D4ED8) (RF-TV-01: >= 72px) -->
+      <div id="hero-destination-banner" class="w-full bg-[#1D4ED8] rounded-2xl p-6 px-8 flex items-center justify-between text-white shadow-lg border border-blue-600/40 transition-colors duration-300">
+        <!-- Lado Izquierdo: Icono de Mesa + Texto "DIRÍJASE A" -->
+        <div class="flex items-center space-x-5">
+          <div class="w-16 h-16 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center shadow-inner">
+            <svg class="w-9 h-9 stroke-[1.5] text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+            </svg>
+          </div>
+          <div>
+            <span class="block text-blue-200 text-xs font-semibold tracking-wider uppercase mb-0.5">Ubicación Asignada</span>
+            <span class="font-bold text-3xl uppercase tracking-wider text-white">DIRÍJASE A</span>
+          </div>
+        </div>
+
+        <!-- Lado Derecho: Identificador Colosal MESA 3 -->
+        <div class="bg-white/10 border border-white/20 px-8 py-3 rounded-2xl flex items-center justify-center shadow-inner backdrop-blur-xs">
+          <span id="hero-desk-name" class="font-mono-numbers font-bold text-[80px] leading-none text-white tracking-wide">MESA 3</span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- COLUMNA DERECHA: HISTORIAL DE TURNOS (~35% width / col-span-4) (RF-TV-02) -->
+    <section class="col-span-4 flex flex-col justify-between h-full space-y-4">
+
+      <!-- Header del Historial -->
+      <div class="bg-white border border-[#CBD5E1] rounded-2xl px-6 py-4 flex items-center justify-between shadow-xs">
+        <div class="flex items-center space-x-3 text-slate-800">
+          <svg class="w-5 h-5 text-blue-700 stroke-[1.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <h2 class="font-bold text-sm tracking-wide uppercase text-slate-900">TURNOS ANTERIORES EN ATENCIÓN</h2>
+        </div>
+        <span class="text-xs font-semibold bg-slate-100 text-slate-600 px-3 py-1 rounded-full border border-slate-200">
+          Últimos 4
+        </span>
+      </div>
+
+      <!-- Tarjetas del Historial (Exactamente 4 tarjetas limpias sin motivos ficticios) -->
+      <div id="history-container" class="flex-1 flex flex-col justify-between gap-4">
+
+        <!-- Turno Slot 0 -->
+        <div class="history-card flex-1 bg-white border border-[#CBD5E1] rounded-2xl px-8 py-4 flex items-center justify-between shadow-xs hover:border-blue-300 transition-colors" data-index="0">
+          <div class="history-number font-mono-numbers font-bold text-[46px] text-slate-900 tracking-tight">
+            041
+          </div>
+          <div class="flex items-center space-x-5">
+            <span class="history-desk font-mono-numbers font-bold text-lg bg-blue-50 text-blue-700 border border-blue-200 px-5 py-2 rounded-xl shadow-2xs">
+              Mesa 1
+            </span>
+            <div class="flex items-center space-x-1.5 text-slate-500 text-sm font-medium">
+              <svg class="w-4 h-4 stroke-[1.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span class="history-time">Hace 1 min</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Turno Slot 1 -->
+        <div class="history-card flex-1 bg-white border border-[#CBD5E1] rounded-2xl px-8 py-4 flex items-center justify-between shadow-xs hover:border-blue-300 transition-colors" data-index="1">
+          <div class="history-number font-mono-numbers font-bold text-[46px] text-slate-900 tracking-tight">
+            040
+          </div>
+          <div class="flex items-center space-x-5">
+            <span class="history-desk font-mono-numbers font-bold text-lg bg-blue-50 text-blue-700 border border-blue-200 px-5 py-2 rounded-xl shadow-2xs">
+              Mesa 4
+            </span>
+            <div class="flex items-center space-x-1.5 text-slate-500 text-sm font-medium">
+              <svg class="w-4 h-4 stroke-[1.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span class="history-time">Hace 3 min</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Turno Slot 2 -->
+        <div class="history-card flex-1 bg-white border border-[#CBD5E1] rounded-2xl px-8 py-4 flex items-center justify-between shadow-xs hover:border-blue-300 transition-colors" data-index="2">
+          <div class="history-number font-mono-numbers font-bold text-[46px] text-slate-900 tracking-tight">
+            039
+          </div>
+          <div class="flex items-center space-x-5">
+            <span class="history-desk font-mono-numbers font-bold text-lg bg-blue-50 text-blue-700 border border-blue-200 px-5 py-2 rounded-xl shadow-2xs">
+              Mesa 2
+            </span>
+            <div class="flex items-center space-x-1.5 text-slate-500 text-sm font-medium">
+              <svg class="w-4 h-4 stroke-[1.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span class="history-time">Hace 6 min</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Turno Slot 3 -->
+        <div class="history-card flex-1 bg-white border border-[#CBD5E1] rounded-2xl px-8 py-4 flex items-center justify-between shadow-xs hover:border-blue-300 transition-colors" data-index="3">
+          <div class="history-number font-mono-numbers font-bold text-[46px] text-slate-900 tracking-tight">
+            038
+          </div>
+          <div class="flex items-center space-x-5">
+            <span class="history-desk font-mono-numbers font-bold text-lg bg-blue-50 text-blue-700 border border-blue-200 px-5 py-2 rounded-xl shadow-2xs">
+              Mesa 5
+            </span>
+            <div class="flex items-center space-x-1.5 text-slate-500 text-sm font-medium">
+              <svg class="w-4 h-4 stroke-[1.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span class="history-time">Hace 9 min</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- BOTTOM TICKER FOOTER (Anclado a todo lo ancho con información y reloj digital en vivo) -->
+  <footer class="w-full bg-white border-t border-[#CBD5E1] -mx-6 px-8 py-3.5 flex items-center justify-between text-sm shadow-xs relative z-20">
+    
+    <!-- Lado Izquierdo: Icono informativo y consejo institucional -->
+    <div class="flex items-center space-x-3 text-slate-600">
+      <div class="p-1 rounded-full bg-blue-50 text-blue-700">
+        <svg class="w-5 h-5 stroke-[1.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+        </svg>
+      </div>
+      <p class="font-medium text-slate-700">
+        Por favor, diríjase a la ventanilla indicada portando su comprobante de matrícula.
+      </p>
+    </div>
+
+    <!-- Lado Derecho: Sincronización + Reloj en tiempo real + Fecha completa (RF-TV-03) -->
+    <div class="flex items-center space-x-6 text-slate-700">
+      
+      <!-- Punto esmeralda de sincronización -->
+      <div class="flex items-center space-x-2">
+        <span class="relative flex h-2.5 w-2.5">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-600"></span>
+        </span>
+        <span id="ws-status-text" class="text-xs font-semibold text-slate-600 tracking-wide">Sistema Sincronizado</span>
+      </div>
+
+      <div class="h-4 w-px bg-slate-300"></div>
+
+      <!-- Reloj digital en vivo en JetBrains Mono -->
+      <div class="flex items-center space-x-2 font-mono-numbers font-bold text-slate-900 text-base">
+        <svg class="w-4 h-4 text-slate-500 stroke-[1.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span id="live-clock">--:--:--</span>
+      </div>
+
+      <div class="h-4 w-px bg-slate-300"></div>
+
+      <!-- Fecha completa -->
+      <span id="live-date" class="text-xs font-medium text-slate-600">
+        Cargando fecha...
+      </span>
+    </div>
+
+  </footer>
+
+  <!-- Inclusión del Cliente WebSocket base (RF-WS) -->
+  <script src="/ws-client.js"></script>
+
+  <!-- Lógica de Operación Pasiva en Vivo (RF-TV-01 .. 06) -->
+  <script>
+    (function () {
+      'use strict';
+
+      // ── DOM ELEMENTS ────────────────────────────────────────────────────────
+      const elLiveClock           = document.getElementById('live-clock');
+      const elLiveDate            = document.getElementById('live-date');
+      const elHeroCard            = document.getElementById('hero-card');
+      const elHeroNextTicket      = document.getElementById('hero-next-ticket');
+      const elHeroStatusTag       = document.getElementById('hero-status-tag');
+      const elHeroTicketNumber    = document.getElementById('hero-ticket-number');
+      const elHeroDestination     = document.getElementById('hero-destination-banner');
+      const elHeroDeskName        = document.getElementById('hero-desk-name');
+      const elWsStatusText        = document.getElementById('ws-status-text');
+      const elReconnectBanner     = document.getElementById('tv-reconnect-banner');
+      const elReconnectMsg        = document.getElementById('tv-reconnect-msg');
+      const elReconnectCountdown  = document.getElementById('tv-reconnect-countdown');
+      const historyCards          = document.querySelectorAll('.history-card');
+
+      let historyData = [
+        { numero: 41, mesa_nombre: 'Mesa 1', llamado_en: new Date(Date.now() - 60000).toISOString() },
+        { numero: 40, mesa_nombre: 'Mesa 4', llamado_en: new Date(Date.now() - 180000).toISOString() },
+        { numero: 39, mesa_nombre: 'Mesa 2', llamado_en: new Date(Date.now() - 360000).toISOString() },
+        { numero: 38, mesa_nombre: 'Mesa 5', llamado_en: new Date(Date.now() - 540000).toISOString() }
+      ];
+      let animationTimer = null;
+
+      // ── RELOJ DIGITAL SINCRONIZADO (RF-TV-03) ──────────────────────────────
+      function updateClock() {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        if (elLiveClock) elLiveClock.textContent = `${hh}:${mm}:${ss}`;
+
+        if (elLiveDate) {
+          const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+          const dateStr = now.toLocaleDateString('es-ES', options);
+          elLiveDate.textContent = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+        }
+      }
+      setInterval(updateClock, 1000);
+      updateClock();
+
+      // Formateador de tickets a 3 dígitos (ej: "042")
+      function formatTicket(num) {
+        if (!num && num !== 0) return '--';
+        return String(num).padStart(3, '0');
+      }
+
+      // Tiempo relativo legible ("Hace 1 min")
+      function timeAgo(dateString) {
+        if (!dateString) return 'En espera';
+        const past = new Date(dateString).getTime();
+        const now = Date.now();
+        const diffSecs = Math.max(0, Math.floor((now - past) / 1000));
+        if (diffSecs < 45) return 'Hace un instante';
+        const diffMins = Math.floor(diffSecs / 60);
+        if (diffMins === 1) return 'Hace 1 min';
+        if (diffMins < 60) return `Hace ${diffMins} min`;
+        return `Hace ${Math.floor(diffMins / 60)} h`;
+      }
+
+      // ── CHIME INSTITUCIONAL DE AUDIO (RF-TV-06: Web Audio API) ─────────────
+      // Genera un sonido "Ding-Dong" suave y claro sin necesidad de descargar MP3s (RNF-DIS-06).
+      function playCallingChime() {
+        try {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContext) return;
+          const ctx = new AudioContext();
+          const now = ctx.currentTime;
+
+          // Primer tono: 587.33 Hz (Re5)
+          const osc1 = ctx.createOscillator();
+          const gain1 = ctx.createGain();
+          osc1.type = 'sine';
+          osc1.frequency.setValueAtTime(587.33, now);
+          gain1.gain.setValueAtTime(0.2, now);
+          gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+          osc1.connect(gain1);
+          gain1.connect(ctx.destination);
+          osc1.start(now);
+          osc1.stop(now + 0.6);
+
+          // Segundo tono: 880.00 Hz (La5) a los 0.25 segundos
+          const osc2 = ctx.createOscillator();
+          const gain2 = ctx.createGain();
+          osc2.type = 'sine';
+          osc2.frequency.setValueAtTime(880.00, now + 0.25);
+          gain2.gain.setValueAtTime(0.25, now + 0.25);
+          gain2.gain.exponentialRampToValueAtTime(0.001, now + 1.1);
+          osc2.connect(gain2);
+          gain2.connect(ctx.destination);
+          osc2.start(now + 0.25);
+          osc2.stop(now + 1.1);
+        } catch (e) {
+          console.warn('[TV Audio] Web Audio no inicializado:', e);
+        }
+      }
+
+      // ── RENDERIZADO DEL HISTORIAL DE ÚLTIMOS 4 TURNOS (RF-TV-02) ────────────
+      function renderHistory() {
+        historyCards.forEach((card, idx) => {
+          const numEl  = card.querySelector('.history-number');
+          const deskEl = card.querySelector('.history-desk');
+          const timeEl = card.querySelector('.history-time');
+
+          const data = historyData[idx];
+          if (data) {
+            numEl.textContent  = formatTicket(data.numero);
+            deskEl.textContent = data.mesa_nombre || `Mesa ${data.mesa_numero || '--'}`;
+            timeEl.textContent = timeAgo(data.llamado_en);
+            card.classList.remove('opacity-40');
+          } else {
+            numEl.textContent  = '--';
+            deskEl.textContent = '--';
+            timeEl.textContent = 'En espera';
+            card.classList.add('opacity-40');
+          }
+        });
+      }
+
+      // Actualizar tiempos relativos cada 30 segundos
+      setInterval(renderHistory, 30000);
+      renderHistory();
+
+      // ── ACTIVACIÓN DEL EFECTO DE LLAMADO / RE-LLAMADO (5 SEGUNDOS) (RF-TV-06) ─────────
+      function triggerCallingVisuals(tipo = 'llamada') {
+        if (animationTimer) clearTimeout(animationTimer);
+
+        elHeroCard.classList.remove('pulse-call-blue', 'pulse-call-amber', 'border-blue-500', 'border-amber-500', 'ring-4', 'ring-blue-500/20', 'ring-amber-500/20');
+
+        if (tipo === 'llamada') {
+          // Resplandor Azul Cobalto
+          elHeroCard.classList.add('pulse-call-blue', 'border-blue-500', 'ring-4', 'ring-blue-500/20');
+          if (elHeroStatusTag) elHeroStatusTag.textContent = 'NUEVO TURNO CONVOCADO';
+          if (elHeroDestination) {
+            elHeroDestination.className = 'w-full bg-[#1D4ED8] rounded-2xl p-6 px-8 flex items-center justify-between text-white shadow-lg border border-blue-600/40 transition-colors duration-300';
+          }
+        } else {
+          // Resplandor Ámbar (Re-llamado de insistencia)
+          elHeroCard.classList.add('pulse-call-amber', 'border-amber-500', 'ring-4', 'ring-amber-500/20');
+          if (elHeroStatusTag) elHeroStatusTag.textContent = 'RE-LLAMANDO TURNO (2º AVISO)';
+          if (elHeroDestination) {
+            elHeroDestination.className = 'w-full bg-amber-600 rounded-2xl p-6 px-8 flex items-center justify-between text-white shadow-lg border border-amber-500 transition-colors duration-300';
+          }
+        }
+
+        playCallingChime();
+
+        // Tras 5 segundos, retornar suavemente a reposo
+        animationTimer = setTimeout(() => {
+          elHeroCard.classList.remove('pulse-call-blue', 'pulse-call-amber', 'border-blue-500', 'border-amber-500', 'ring-4', 'ring-blue-500/20', 'ring-amber-500/20');
+          elHeroCard.classList.add('border-[#CBD5E1]');
+          if (elHeroStatusTag) elHeroStatusTag.textContent = 'TURNO ASIGNADO';
+          if (elHeroDestination) {
+            elHeroDestination.className = 'w-full bg-[#1D4ED8] rounded-2xl p-6 px-8 flex items-center justify-between text-white shadow-lg border border-blue-600/40 transition-colors duration-300';
+          }
+        }, 5000);
+      }
+
+      // ── CONEXIÓN WEBSOCKET PASIVA AL CANAL tv:global (RF-WS / RF-TV) ───────
+      const wsClient = new window.TurneroWSClient({
+        canal: 'tv:global'
+      });
+
+      // Monitoreo de Conexión (RF-TV-05: Banner si cae conexión, nunca pantalla en blanco)
+      wsClient.onStatusChange(({ status, attempt, nextDelay }) => {
+        if (status === 'CONECTADO') {
+          if (elReconnectBanner) elReconnectBanner.classList.add('hidden');
+          if (elWsStatusText) elWsStatusText.textContent = 'Sistema Sincronizado';
+        } else if (status === 'RECONECTANDO') {
+          if (elReconnectBanner) elReconnectBanner.classList.remove('hidden');
+          if (elReconnectMsg) elReconnectMsg.textContent = 'Reconectando con el servidor central... Estado mantenido en pantalla.';
+          if (elReconnectCountdown) elReconnectCountdown.textContent = `Reintento en ${Math.round(nextDelay / 1000)}s (intento ${attempt})`;
+          if (elWsStatusText) elWsStatusText.textContent = 'Reconectando...';
+        } else {
+          if (elReconnectBanner) elReconnectBanner.classList.remove('hidden');
+          if (elReconnectMsg) elReconnectMsg.textContent = 'Conexión interrumpida. Reintentando sincronización automática...';
+          if (elWsStatusText) elWsStatusText.textContent = 'Desconectado';
+        }
+      });
+
+      // Snapshot inicial al conectar o reconectar (RF-WS-05)
+      wsClient.on('snapshot', (payload) => {
+        console.info('[TV WS] Snapshot recibido:', payload);
+
+        // Turno convocado principal
+        if (payload.ultimo_llamado) {
+          elHeroTicketNumber.textContent = formatTicket(payload.ultimo_llamado.numero);
+          elHeroDeskName.textContent     = payload.ultimo_llamado.mesa_nombre || `MESA ${payload.ultimo_llamado.mesa_numero}`;
+        } else if (Array.isArray(payload.historial) && payload.historial.length > 0) {
+          const primero = payload.historial[0];
+          elHeroTicketNumber.textContent = formatTicket(primero.numero);
+          elHeroDeskName.textContent     = primero.mesa_nombre || `MESA ${primero.mesa_numero || '--'}`;
+        }
+
+        // Próximo turno en espera
+        if (payload.proximo_numero) {
+          elHeroNextTicket.textContent = formatTicket(payload.proximo_numero);
+        } else if (payload.lote && payload.lote.ultimo_numero_llamado !== undefined) {
+          elHeroNextTicket.textContent = formatTicket(payload.lote.ultimo_numero_llamado + 1);
+        }
+
+        // Historial
+        if (Array.isArray(payload.historial)) {
+          // Descartar el que ya está en el Hero si corresponde
+          const historialLimpio = payload.ultimo_llamado ? payload.historial.filter(h => h.id !== payload.ultimo_llamado.id) : payload.historial.slice(1);
+          historyData = historialLimpio.slice(0, 4);
+          renderHistory();
+        }
+      });
+
+      // Evento de Nuevo Llamado emitido por cualquier mesa (RF-TV-01 / RF-TURN-01)
+      wsClient.on('nuevo_llamado', (payload) => {
+        console.info('[TV WS] Nuevo llamado recibido:', payload);
+
+        // Desplazar el turno convocado actual al historial
+        const turnoActualPrevio = elHeroTicketNumber.textContent.trim();
+        const deskActualPrevio  = elHeroDeskName.textContent.trim();
+
+        if (turnoActualPrevio !== '--') {
+          historyData.unshift({
+            numero: parseInt(turnoActualPrevio, 10),
+            mesa_nombre: deskActualPrevio,
+            llamado_en: new Date().toISOString()
+          });
+          if (historyData.length > 4) historyData.pop();
+          renderHistory();
+        }
+
+        // Actualizar el Hero
+        elHeroTicketNumber.textContent = formatTicket(payload.turno);
+        elHeroDeskName.textContent     = payload.mesa_nombre || `MESA ${payload.mesa_numero}`;
+
+        // Actualizar próximo turno en espera
+        if (payload.proximo_numero) {
+          elHeroNextTicket.textContent = formatTicket(payload.proximo_numero);
+        } else {
+          elHeroNextTicket.textContent = formatTicket(payload.turno + 1);
+        }
+
+        // Activar animación y sonido
+        triggerCallingVisuals('llamada');
+      });
+
+      // Evento de Re-llamado (RF-MESA-08 / RF-TV)
+      wsClient.on('rellamado', (payload) => {
+        console.info('[TV WS] Re-llamado recibido:', payload);
+        elHeroTicketNumber.textContent = formatTicket(payload.turno);
+        elHeroDeskName.textContent     = payload.mesa_nombre || `MESA ${payload.mesa_numero}`;
+
+        // Activar animación ámbar y sonido
+        triggerCallingVisuals('rellamado');
+      });
+
+      // Iniciar conexión automática
+      wsClient.connect();
+
+    })();
+  </script>
+</body>
+</html>

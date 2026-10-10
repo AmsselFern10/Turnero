@@ -1,0 +1,239 @@
+/**
+ * ==============================================================================
+ * API.JS — Cliente HTTP Centralizado y Resiliente (Fetch)
+ * Sistema Turnero de Matrículas 2026 (v2.1)
+ *
+ * Cumple con:
+ * - RF-AUTH-01 / 02: Manejo de autenticación por Bearer Token.
+ * - RF-AUTH-06: Renovación transparente via POST /auth/refresh (cookie HttpOnly).
+ * - RNF-SEG-05: Credenciales incluidas y protección de sesión.
+ * ==============================================================================
+ */
+
+class ApiClient {
+  constructor() {
+    this.refreshPromise = null; // Previene múltiples llamados concurrentes a /auth/refresh
+  }
+
+  /**
+   * Obtiene el token JWT actual desde sessionStorage.
+   * @returns {string|null}
+   */
+  getToken() {
+    try {
+      return sessionStorage.getItem('token');
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Almacena o actualiza la sesión en sessionStorage.
+   * @param {string} token - JWT emitido por Fastify
+   * @param {Object} [usuario] - Datos de perfil del usuario
+   */
+  setSession(token, usuario = null) {
+    if (token) sessionStorage.setItem('token', token);
+    if (usuario) sessionStorage.setItem('usuario', JSON.stringify(usuario));
+  }
+
+  /**
+   * Obtiene los datos del usuario logueado en la sesión activa.
+   * @returns {Object|null}
+   */
+  getUser() {
+    try {
+      const data = sessionStorage.getItem('usuario');
+      return data ? JSON.parse(data) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Limpia la sesión actual y redirige a la pantalla de acceso.
+   */
+  clearSession(redirect = true) {
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('usuario');
+    sessionStorage.removeItem('mesa_seleccionada');
+    if (redirect && window.location.pathname !== '/index.html' && window.location.pathname !== '/') {
+      window.location.href = '/index.html';
+    }
+  }
+
+  /**
+   * Intenta refrescar el token de forma transparente mediante la cookie HttpOnly.
+   * Si ya hay una solicitud en curso, reutiliza la misma promesa para evitar tormentas de peticiones.
+   * @private
+   * @returns {Promise<string>} Nuevo token JWT
+   */
+  async _refreshToken() {
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
+    this.refreshPromise = (async () => {
+      try {
+        const response = await fetch('/auth/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include' // Obligatorio para transmitir cookie HttpOnly
+        });
+
+        if (!response.ok) {
+          throw new Error('Refresh token expirado o revocado');
+        }
+
+        const data = await response.json();
+        if (!data.token) {
+          throw new Error('Respuesta de refresh inválida');
+        }
+
+        this.setSession(data.token);
+        return data.token;
+      } catch (err) {
+        console.warn('[API] Sesión expirada definitivamente:', err.message);
+        this.clearSession(true);
+        throw err;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
+  }
+
+  /**
+   * Método base para ejecutar peticiones HTTP con interceptor automático.
+   * @param {string} endpoint - Ruta relativa o URL completa (ej: '/turnos/llamar')
+   * @param {Object} [options={}] - Opciones de fetch
+   * @returns {Promise<any>}
+   */
+  async request(endpoint, options = {}) {
+    const config = {
+      credentials: 'include',
+      headers: {
+        'Accept': 'application/json',
+        ...(options.headers || {})
+      },
+      ...options
+    };
+
+    // Serialización automática del body si es objeto
+    if (config.body && typeof config.body === 'object' && !(config.body instanceof FormData)) {
+      config.headers['Content-Type'] = 'application/json';
+      config.body = JSON.stringify(config.body);
+    }
+
+    // Inyección de token de autorización si existe
+    const token = this.getToken();
+    if (token && !config.headers['Authorization']) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    let response;
+    try {
+      response = await fetch(endpoint, config);
+    } catch (networkError) {
+      console.error(`[API] Error de red al solicitar ${endpoint}:`, networkError);
+      throw networkError;
+    }
+
+    // Interceptor 401 Unauthorized: intento de renovación transparente
+    if (response.status === 401 && !options._isRetry) {
+      // Evitar loop infinito si la ruta que dio 401 era el propio /auth/refresh o /auth/login
+      if (endpoint.includes('/auth/refresh') || endpoint.includes('/auth/login')) {
+        this.clearSession(true);
+        throw new Error('Credenciales inválidas o expiradas');
+      }
+
+      try {
+        console.info(`[API] Token expirado en ${endpoint}. Intentando renovación transparente...`);
+        const newToken = await this._refreshToken();
+
+        // Reintentar la petición original con el nuevo token
+        const retryConfig = {
+          ...options,
+          _isRetry: true,
+          headers: {
+            ...(options.headers || {}),
+            'Authorization': `Bearer ${newToken}`
+          }
+        };
+        return this.request(endpoint, retryConfig);
+      } catch (refreshErr) {
+        // La sesión no pudo renovarse
+        throw refreshErr;
+      }
+    }
+
+    // Procesamiento de la respuesta
+    const contentType = response.headers.get('content-type') || '';
+    let responseData = null;
+
+    if (contentType.includes('application/json')) {
+      responseData = await response.json();
+    } else {
+      responseData = await response.text();
+    }
+
+    // Manejo de errores HTTP 4xx / 5xx
+    if (!response.ok) {
+      const errorMsg = (responseData && (responseData.message || responseData.error)) ||
+        `Error HTTP ${response.status}: ${response.statusText}`;
+      const httpError = new Error(errorMsg);
+      httpError.status = response.status;
+      httpError.data = responseData;
+      throw httpError;
+    }
+
+    return responseData;
+  }
+
+  /**
+   * Petición HTTP GET
+   * @param {string} url
+   * @param {Object} [options]
+   */
+  get(url, options = {}) {
+    return this.request(url, { ...options, method: 'GET' });
+  }
+
+  /**
+   * Petición HTTP POST
+   * @param {string} url
+   * @param {any} [data]
+   * @param {Object} [options]
+   */
+  post(url, data = null, options = {}) {
+    return this.request(url, { ...options, method: 'POST', body: data });
+  }
+
+  /**
+   * Petición HTTP PATCH
+   * @param {string} url
+   * @param {any} [data]
+   * @param {Object} [options]
+   */
+  patch(url, data = null, options = {}) {
+    return this.request(url, { ...options, method: 'PATCH', body: data });
+  }
+
+  /**
+   * Petición HTTP DELETE
+   * @param {string} url
+   * @param {Object} [options]
+   */
+  delete(url, options = {}) {
+    return this.request(url, { ...options, method: 'DELETE' });
+  }
+}
+
+// Instancia singleton para importación como módulo ES6
+export const api = new ApiClient();
+
+// Exposición global opcional en ventana para retrocompatibilidad
+if (typeof window !== 'undefined') {
+  window.api = api;
+}
