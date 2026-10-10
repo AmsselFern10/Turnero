@@ -305,16 +305,12 @@ export function panelMesaView() {
     },
 
     /**
-     * Acción 3: "No se presentó" (POST /turnos/:id/cancelar)
+     * Acción 3: "No se presentó" (POST /turnos/:id/cancelar — Acción directa sin modal)
      */
     async cancelarTurno() {
       if (!this.turnoActual || this.loadingAction) return;
 
       const num = this.turnoActual.numero;
-      if (!confirm(`¿Marcar el Turno #${num} como 'No se presentó'? Esta acción cancela la atención actual.`)) {
-        return;
-      }
-
       this.loadingAction = true;
       try {
         await api.post(`/turnos/${this.turnoActual.id}/cancelar`, {
