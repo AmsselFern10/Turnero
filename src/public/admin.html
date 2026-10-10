@@ -5,28 +5,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Administración y Supervisión — Turnero 2026</title>
   <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/components.css">
   <link rel="stylesheet" href="/css/animations.css">
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body x-data="adminView()" x-init="init()" x-cloak class="min-h-full flex flex-col bg-app antialiased text-slate-800">
 
   <!-- ── 1. ENCABEZADO Y TABS ── -->
-  <header class="bg-white border-b border-[#CBD5E1] sticky top-0 z-30 shadow-xs">
+  <header class="app-header sticky top-0 z-30">
     <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
       <div class="flex items-center space-x-3">
-        <div class="w-8 h-8 rounded-lg bg-[#1D4ED8] text-white flex items-center justify-center font-bold text-xs">ADM</div>
+        <div class="badge-mesa w-8 h-8 p-0 justify-center text-xs">ADM</div>
         <span class="font-bold text-slate-900 text-sm">Supervisión Turnero 2026</span>
-        <span class="text-xs px-2 py-0.5 rounded-full font-semibold" :class="wsConnected ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'" x-text="wsConnected ? 'En vivo' : 'Reconectando'"></span>
+        <span class="pill text-xs" :class="wsConnected ? 'pill-success' : 'pill-warning'" x-text="wsConnected ? 'En vivo' : 'Reconectando'"></span>
       </div>
       <nav class="flex space-x-1" aria-label="Navegación del panel">
-        <button type="button" @click="tab = 'monitoreo'" :class="tab === 'monitoreo' ? 'bg-blue-50 text-[#1D4ED8] font-bold' : 'text-slate-600 hover:bg-slate-50'" class="px-3 py-1.5 rounded-xl text-xs transition-colors cursor-pointer">1. Monitoreo</button>
-        <button type="button" @click="tab = 'lotes'" :class="tab === 'lotes' ? 'bg-blue-50 text-[#1D4ED8] font-bold' : 'text-slate-600 hover:bg-slate-50'" class="px-3 py-1.5 rounded-xl text-xs transition-colors cursor-pointer">2. Lotes</button>
-        <button type="button" @click="tab = 'mesas'" :class="tab === 'mesas' ? 'bg-blue-50 text-[#1D4ED8] font-bold' : 'text-slate-600 hover:bg-slate-50'" class="px-3 py-1.5 rounded-xl text-xs transition-colors cursor-pointer">3. Mesas</button>
-        <button type="button" @click="tab = 'config'" :class="tab === 'config' ? 'bg-blue-50 text-[#1D4ED8] font-bold' : 'text-slate-600 hover:bg-slate-50'" class="px-3 py-1.5 rounded-xl text-xs transition-colors cursor-pointer">4. Config & Usuarios</button>
+        <button type="button" @click="tab = 'monitoreo'" :class="tab === 'monitoreo' ? 'btn-primary' : 'btn-ghost'" class="btn-sm">1. Monitoreo</button>
+        <button type="button" @click="tab = 'lotes'" :class="tab === 'lotes' ? 'btn-primary' : 'btn-ghost'" class="btn-sm">2. Lotes</button>
+        <button type="button" @click="tab = 'mesas'" :class="tab === 'mesas' ? 'btn-primary' : 'btn-ghost'" class="btn-sm">3. Mesas</button>
+        <button type="button" @click="tab = 'config'" :class="tab === 'config' ? 'btn-primary' : 'btn-ghost'" class="btn-sm">4. Config & Usuarios</button>
       </nav>
       <div class="flex items-center space-x-3">
         <span class="font-mono-num text-xs font-bold text-slate-700 hidden sm:inline" x-text="relojHora"></span>
-        <button type="button" @click="logout()" title="Cerrar sesión" class="text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-1 rounded-lg hover:bg-rose-50 cursor-pointer">Salir</button>
+        <button type="button" @click="logout()" title="Cerrar sesión" class="btn-ghost btn-sm text-rose-600 hover:text-rose-800">Salir</button>
       </div>
     </div>
   </header>
@@ -37,27 +38,27 @@
     <!-- PESTAÑA 1: MONITOREO (4 KPIs + Tabla Mesas) -->
     <section x-show="tab === 'monitoreo'" class="space-y-6">
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="bg-white border border-[#CBD5E1] rounded-2xl p-4 shadow-xs"><span class="text-xs font-semibold text-slate-500 block uppercase">Atendidos Hoy</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.atendidos_hoy">0</span></div>
-        <div class="bg-white border border-[#CBD5E1] rounded-2xl p-4 shadow-xs"><span class="text-xs font-semibold text-slate-500 block uppercase">Espera Promedio</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.espera_promedio_min + ' min'">0 min</span></div>
-        <div class="bg-white border border-[#CBD5E1] rounded-2xl p-4 shadow-xs"><span class="text-xs font-semibold text-slate-500 block uppercase">Mesas Activas</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.mesas_activas">0</span></div>
-        <div class="bg-white border border-[#CBD5E1] rounded-2xl p-4 shadow-xs" :class="kpis.vouchers_restantes <= 20 ? 'border-amber-400 bg-amber-50/50' : ''"><span class="text-xs font-semibold text-slate-500 block uppercase">Vouchers Restantes</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.vouchers_restantes">0</span></div>
+        <div class="card-kpi"><span class="text-xs font-semibold text-slate-500 block uppercase">Atendidos Hoy</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.atendidos_hoy">0</span></div>
+        <div class="card-kpi"><span class="text-xs font-semibold text-slate-500 block uppercase">Espera Promedio</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.espera_promedio_min + ' min'">0 min</span></div>
+        <div class="card-kpi"><span class="text-xs font-semibold text-slate-500 block uppercase">Mesas Activas</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.mesas_activas">0</span></div>
+        <div class="card-kpi" :class="kpis.vouchers_restantes <= 20 ? 'border-amber-400 bg-amber-50/50' : ''"><span class="text-xs font-semibold text-slate-500 block uppercase">Vouchers Restantes</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.vouchers_restantes">0</span></div>
       </div>
 
-      <div class="bg-white border border-[#CBD5E1] rounded-2xl overflow-hidden shadow-xs">
+      <div class="table-container shadow-xs">
         <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center">
           <h2 class="font-bold text-sm text-slate-900">Estado de Ventanillas en Tiempo Real</h2>
           <button type="button" @click="cargarDashboard()" class="text-xs text-[#1D4ED8] font-semibold hover:underline cursor-pointer">Actualizar</button>
         </div>
-        <table class="w-full text-xs text-left">
-          <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+        <table class="table-base">
+          <thead class="table-head">
             <tr><th class="p-3">Mesa</th><th class="p-3">Operador</th><th class="p-3">Estado</th><th class="p-3">Turno Actual</th><th class="p-3">Atendidos</th><th class="p-3">Tiempo Medio</th><th class="p-3">Eficiencia</th></tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
             <template x-for="mesa in mesas" :key="mesa.id">
-              <tr class="hover:bg-slate-50/80">
+              <tr class="table-row">
                 <td class="p-3 font-mono-num font-bold text-slate-900" x-text="'MESA ' + mesa.numero"></td>
                 <td class="p-3 text-slate-700" x-text="mesa.operador_nombre || 'Sin asignar'"></td>
-                <td class="p-3"><span class="px-2 py-0.5 rounded-full font-semibold uppercase text-[10px]" :class="mesa.estado === 'activa' ? 'bg-emerald-50 text-emerald-700' : (mesa.estado === 'pausada' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500')" x-text="mesa.estado"></span></td>
+                <td class="p-3"><span class="pill text-[10px] uppercase" :class="mesa.estado === 'activa' ? 'pill-success' : (mesa.estado === 'pausada' ? 'pill-warning' : 'pill-neutral')" x-text="mesa.estado"></span></td>
                 <td class="p-3 font-mono-num font-bold text-slate-900" x-text="mesa.turno_actual ? ('#' + String(mesa.turno_actual).padStart(3, '0')) : '--'"></td>
                 <td class="p-3 font-mono-num" x-text="mesa.atendidos_hoy || 0"></td>
                 <td class="p-3 font-mono-num" x-text="(mesa.tiempo_promedio_min || 0) + ' min'"></td>
@@ -71,34 +72,34 @@
 
     <!-- PESTAÑA 2: LOTES DE VOUCHERS -->
     <section x-show="tab === 'lotes'" class="space-y-6">
-      <div class="bg-white border border-[#CBD5E1] rounded-2xl p-6 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div class="card p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <span class="text-xs uppercase font-bold text-slate-400">Lote Activo Actual</span>
           <h2 class="text-2xl font-black text-slate-900 font-mono-num mt-1" x-text="loteActivo ? ('Lote ' + loteActivo.numero_lote) : 'Sin Lote Activo'"></h2>
           <p class="text-xs text-slate-500 mt-1" x-text="loteActivo ? ('Progreso: ' + loteActivo.ultimo_numero_llamado + ' de ' + loteActivo.numero_hasta + ' vouchers') : 'Cree o active un lote para despachar turnos'"></p>
         </div>
         <div class="flex flex-wrap gap-2" x-show="loteActivo">
-          <button type="button" @click="loteActivo.estado === 'activo' ? pausarLote(loteActivo.id) : activarLote(loteActivo.id)" title="Pausar o reanudar lote" aria-label="Pausar o reanudar lote" class="px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer"><span x-text="loteActivo?.estado === 'activo' ? 'Pausar Jornada' : 'Reanudar Lote'">Pausar Jornada</span></button>
+          <button type="button" @click="loteActivo.estado === 'activo' ? pausarLote(loteActivo.id) : activarLote(loteActivo.id)" title="Pausar o reanudar lote" aria-label="Pausar o reanudar lote" class="btn-ghost btn-sm"><span x-text="loteActivo?.estado === 'activo' ? 'Pausar Jornada' : 'Reanudar Lote'">Pausar Jornada</span></button>
           <div class="flex items-center space-x-1.5">
-            <input type="number" x-model.number="extensionVouchers" min="1" placeholder="+Extender" title="Vouchers a extender" class="w-24 h-8 px-2 border border-slate-300 rounded-xl text-xs font-mono-num">
-            <button type="button" @click="extenderLote(loteActivo.id)" class="h-8 px-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs cursor-pointer">Extender</button>
+            <input type="number" x-model.number="extensionVouchers" min="1" placeholder="+Extender" title="Vouchers a extender" class="input-field input-sm w-24 font-mono-num">
+            <button type="button" @click="extenderLote(loteActivo.id)" class="btn-warning btn-sm">Extender</button>
           </div>
-          <button type="button" @click="cerrarLote(loteActivo.id)" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 cursor-pointer">Cerrar Definitivo</button>
+          <button type="button" @click="cerrarLote(loteActivo.id)" class="btn-danger btn-sm">Cerrar Definitivo</button>
         </div>
-        <button type="button" @click="modalLote = true" class="px-4 py-2 bg-[#1D4ED8] hover:bg-blue-800 text-white rounded-xl text-xs font-bold cursor-pointer">+ Nuevo Lote</button>
+        <button type="button" @click="modalLote = true" class="btn-primary btn-sm">+ Nuevo Lote</button>
       </div>
 
-      <div class="bg-white border border-[#CBD5E1] rounded-2xl overflow-hidden shadow-xs">
+      <div class="table-container shadow-xs">
         <div class="p-4 border-b border-slate-200 font-bold text-xs uppercase text-slate-700">Historial de Lotes</div>
-        <table class="w-full text-xs text-left">
-          <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200"><tr><th class="p-3">Lote</th><th class="p-3">Rango</th><th class="p-3">Progreso</th><th class="p-3">Estado</th><th class="p-3">Acción</th></tr></thead>
+        <table class="table-base">
+          <thead class="table-head"><tr><th class="p-3">Lote</th><th class="p-3">Rango</th><th class="p-3">Progreso</th><th class="p-3">Estado</th><th class="p-3">Acción</th></tr></thead>
           <tbody class="divide-y divide-slate-100">
             <template x-for="lote in lotes" :key="lote.id">
-              <tr class="hover:bg-slate-50/80">
+              <tr class="table-row">
                 <td class="p-3 font-bold font-mono-num" x-text="'Lote ' + lote.numero_lote"></td>
                 <td class="p-3 font-mono-num" x-text="lote.numero_desde + ' → ' + lote.numero_hasta"></td>
                 <td class="p-3 font-mono-num" x-text="lote.ultimo_numero_llamado + ' llamados'"></td>
-                <td class="p-3"><span class="px-2 py-0.5 rounded-full font-bold uppercase text-[10px]" :class="lote.estado === 'activo' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'" x-text="lote.estado"></span></td>
+                <td class="p-3"><span class="pill text-[10px] uppercase" :class="lote.estado === 'activo' ? 'pill-success' : 'pill-neutral'" x-text="lote.estado"></span></td>
                 <td class="p-3"><button type="button" x-show="lote.estado !== 'activo' && lote.estado !== 'cerrado'" @click="activarLote(lote.id)" class="text-[#1D4ED8] font-bold hover:underline cursor-pointer">Activar</button></td>
               </tr>
             </template>
@@ -111,18 +112,18 @@
     <section x-show="tab === 'mesas'" class="space-y-6">
       <div class="flex justify-between items-center">
         <div><h2 class="font-bold text-base text-slate-900">Ventanillas y Asignación de Operadores</h2><p class="text-xs text-slate-500">Configure las mesas habilitadas para la jornada de hoy</p></div>
-        <button type="button" @click="crearMesa()" class="px-4 py-2 bg-[#1D4ED8] hover:bg-blue-800 text-white rounded-xl text-xs font-bold cursor-pointer">+ Nueva Mesa</button>
+        <button type="button" @click="crearMesa()" class="btn-primary btn-sm">+ Nueva Mesa</button>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <template x-for="mesa in mesas" :key="mesa.id">
-          <div class="bg-white border border-[#CBD5E1] rounded-2xl p-4 shadow-xs flex flex-col justify-between h-40">
+          <div class="card p-4 flex flex-col justify-between h-40">
             <div class="flex justify-between items-center">
               <span class="font-mono-num font-bold text-base text-slate-900" x-text="'MESA ' + mesa.numero"></span>
-              <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full" :class="mesa.estado === 'activa' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'" x-text="mesa.estado"></span>
+              <span class="pill text-[10px] uppercase" :class="mesa.estado === 'activa' ? 'pill-success' : 'pill-neutral'" x-text="mesa.estado"></span>
             </div>
             <div class="space-y-1">
               <label :for="'op-select-' + mesa.id" class="text-[11px] font-semibold text-slate-500">Operador asignado:</label>
-              <select :id="'op-select-' + mesa.id" @change="asignarOperador(mesa.id, $event.target.value)" class="w-full text-xs p-2 border border-slate-300 rounded-xl bg-slate-50">
+              <select :id="'op-select-' + mesa.id" @change="asignarOperador(mesa.id, $event.target.value)" class="select-field">
                 <option value="">-- Sin asignar --</option>
                 <template x-for="op in operadoresDisponibles" :key="op.id"><option :value="op.id" :selected="mesa.operador_id === op.id" x-text="op.nombre_completo"></option></template>
               </select>
@@ -137,28 +138,28 @@
 
     <!-- PESTAÑA 4: CONFIGURACIÓN, USUARIOS & REPORTES -->
     <section x-show="tab === 'config'" class="space-y-6">
-      <div class="bg-white border border-[#CBD5E1] rounded-2xl p-5 shadow-xs flex justify-between items-center">
+      <div class="card p-5 flex justify-between items-center">
         <div><h2 class="font-bold text-sm text-slate-900">Reporte Diario de Matrículas</h2><p class="text-xs text-slate-500">Descargue el registro completo en formato CSV</p></div>
-        <button type="button" @click="exportarCSV()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold cursor-pointer">Exportar CSV</button>
+        <button type="button" @click="exportarCSV()" class="btn-success btn-sm">Exportar CSV</button>
       </div>
 
-      <div class="bg-white border border-[#CBD5E1] rounded-2xl p-5 shadow-xs space-y-4">
+      <div class="card p-5 space-y-4">
         <h3 class="font-bold text-sm text-slate-900">Ajustes Operativos en Caliente</h3>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-          <div><label for="cfg-tiempo-atencion" class="font-semibold block mb-1">Tiempo máx atención (min):</label><input id="cfg-tiempo-atencion" type="number" x-model.number="config.tiempo_max_atencion_min" class="w-full p-2 border border-slate-300 rounded-xl font-mono-num"></div>
-          <div><label for="cfg-alerta-vouchers" class="font-semibold block mb-1">Alerta vouchers restantes:</label><input id="cfg-alerta-vouchers" type="number" x-model.number="config.alerta_vouchers_restantes" class="w-full p-2 border border-slate-300 rounded-xl font-mono-num"></div>
+          <div><label for="cfg-tiempo-atencion" class="font-semibold block mb-1">Tiempo máx atención (min):</label><input id="cfg-tiempo-atencion" type="number" x-model.number="config.tiempo_max_atencion_min" class="input-field font-mono-num"></div>
+          <div><label for="cfg-alerta-vouchers" class="font-semibold block mb-1">Alerta vouchers restantes:</label><input id="cfg-alerta-vouchers" type="number" x-model.number="config.alerta_vouchers_restantes" class="input-field font-mono-num"></div>
           <div class="flex items-center space-x-2 pt-5"><input id="cfg-kiosko-activo" type="checkbox" x-model="config.kiosko_web_activo" class="rounded border-slate-300 text-blue-600"><label for="cfg-kiosko-activo" class="font-semibold">Kiosko Web Activo</label></div>
         </div>
-        <button type="button" @click="guardarConfiguracion()" class="px-4 py-2 bg-[#1D4ED8] text-white rounded-xl text-xs font-bold hover:bg-blue-800 cursor-pointer">Guardar Ajustes</button>
+        <button type="button" @click="guardarConfiguracion()" class="btn-primary btn-sm">Guardar Ajustes</button>
       </div>
 
-      <div class="bg-white border border-[#CBD5E1] rounded-2xl p-5 shadow-xs space-y-4">
-        <div class="flex justify-between items-center"><h3 class="font-bold text-sm text-slate-900">Usuarios y Operadores</h3><button type="button" @click="modalUsuario = true" class="text-xs font-bold text-[#1D4ED8] hover:underline cursor-pointer">+ Nuevo Usuario</button></div>
-        <table class="w-full text-xs text-left">
-          <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200"><tr><th class="p-2.5">Nombre</th><th class="p-2.5">Usuario</th><th class="p-2.5">Rol</th><th class="p-2.5">Estado</th></tr></thead>
+      <div class="table-container shadow-xs">
+        <div class="p-4 border-b border-slate-200 flex justify-between items-center"><h3 class="font-bold text-xs uppercase text-slate-700">Usuarios y Operadores</h3><button type="button" @click="modalUsuario = true" class="text-xs font-bold text-[#1D4ED8] hover:underline cursor-pointer">+ Nuevo Usuario</button></div>
+        <table class="table-base">
+          <thead class="table-head"><tr><th class="p-2.5">Nombre</th><th class="p-2.5">Usuario</th><th class="p-2.5">Rol</th><th class="p-2.5">Estado</th></tr></thead>
           <tbody class="divide-y divide-slate-100">
             <template x-for="usr in usuarios" :key="usr.id">
-              <tr><td class="p-2.5 font-medium" x-text="usr.nombre_completo"></td><td class="p-2.5 font-mono-num" x-text="usr.username"></td><td class="p-2.5 uppercase font-bold text-[10px]" x-text="usr.rol"></td><td class="p-2.5"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold" :class="usr.activo ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'" x-text="usr.activo ? 'Activo' : 'Inactivo'"></span></td></tr>
+              <tr class="table-row"><td class="p-2.5 font-medium" x-text="usr.nombre_completo"></td><td class="p-2.5 font-mono-num" x-text="usr.username"></td><td class="p-2.5 uppercase font-bold text-[10px]" x-text="usr.rol"></td><td class="p-2.5"><span class="pill text-[10px]" :class="usr.activo ? 'pill-success' : 'pill-danger'" x-text="usr.activo ? 'Activo' : 'Inactivo'"></span></td></tr>
             </template>
           </tbody>
         </table>
@@ -168,25 +169,24 @@
   </main>
 
   <!-- ── 3. MODALES DE ACCIÓN ── -->
-  <div x-show="modalLote" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-    <div class="bg-white border border-[#CBD5E1] rounded-2xl max-w-sm w-full p-6 shadow-xl space-y-4">
+  <div x-show="modalLote" x-cloak class="modal-backdrop">
+    <div class="modal-box space-y-4">
       <h3 class="text-base font-bold text-slate-900">Crear Nuevo Lote</h3>
       <form @submit.prevent="crearLoteSubmit" class="space-y-3 text-xs">
-        <div><label for="nuevo-lote-hasta" class="font-semibold block mb-1">Número hasta:</label><input id="nuevo-lote-hasta" type="number" x-model.number="nuevoLoteHasta" required min="1" class="w-full p-2.5 border border-slate-300 rounded-xl font-mono-num"></div>
-        <div class="flex justify-end space-x-2 pt-2"><button type="button" @click="modalLote = false" class="px-3 py-2 border border-slate-300 rounded-xl cursor-pointer">Cancelar</button><button type="submit" class="px-4 py-2 bg-[#1D4ED8] text-white rounded-xl font-bold cursor-pointer">Crear y Activar</button></div>
+        <div><label for="nuevo-lote-hasta" class="font-semibold block mb-1">Número hasta:</label><input id="nuevo-lote-hasta" type="number" x-model.number="nuevoLoteHasta" required min="1" class="input-field font-mono-num"></div>
+        <div class="flex justify-end space-x-2 pt-2"><button type="button" @click="modalLote = false" class="btn-ghost btn-sm">Cancelar</button><button type="submit" class="btn-primary btn-sm">Crear y Activar</button></div>
       </form>
     </div>
   </div>
-
-  <div x-show="modalUsuario" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-    <div class="bg-white border border-[#CBD5E1] rounded-2xl max-w-sm w-full p-6 shadow-xl space-y-4">
+  <div x-show="modalUsuario" x-cloak class="modal-backdrop">
+    <div class="modal-box space-y-4">
       <h3 class="text-base font-bold text-slate-900">Crear Usuario</h3>
       <form @submit.prevent="crearUsuarioSubmit" class="space-y-3 text-xs">
-        <div><label for="usr-nombre" class="font-semibold block mb-1">Nombre:</label><input id="usr-nombre" type="text" x-model="nuevoUsuario.nombre_completo" required class="w-full p-2 border border-slate-300 rounded-xl"></div>
-        <div><label for="usr-username" class="font-semibold block mb-1">Usuario / DNI:</label><input id="usr-username" type="text" x-model="nuevoUsuario.username" required class="w-full p-2 border border-slate-300 rounded-xl"></div>
-        <div><label for="usr-password" class="font-semibold block mb-1">Contraseña:</label><input id="usr-password" type="password" x-model="nuevoUsuario.password" required class="w-full p-2 border border-slate-300 rounded-xl"></div>
-        <div><label for="usr-rol" class="font-semibold block mb-1">Rol:</label><select id="usr-rol" x-model="nuevoUsuario.rol" class="w-full p-2 border border-slate-300 rounded-xl"><option value="operador">Operador</option><option value="supervisor">Supervisor</option><option value="admin">Admin</option></select></div>
-        <div class="flex justify-end space-x-2 pt-2"><button type="button" @click="modalUsuario = false" class="px-3 py-2 border border-slate-300 rounded-xl cursor-pointer">Cancelar</button><button type="submit" class="px-4 py-2 bg-[#1D4ED8] text-white rounded-xl font-bold cursor-pointer">Guardar</button></div>
+        <div><label for="usr-nombre" class="font-semibold block mb-1">Nombre:</label><input id="usr-nombre" type="text" x-model="nuevoUsuario.nombre_completo" required class="input-field"></div>
+        <div><label for="usr-username" class="font-semibold block mb-1">Usuario / DNI:</label><input id="usr-username" type="text" x-model="nuevoUsuario.username" required class="input-field font-mono-num"></div>
+        <div><label for="usr-password" class="font-semibold block mb-1">Contraseña:</label><input id="usr-password" type="password" x-model="nuevoUsuario.password" required class="input-field"></div>
+        <div><label for="usr-rol" class="font-semibold block mb-1">Rol:</label><select id="usr-rol" x-model="nuevoUsuario.rol" class="select-field"><option value="operador">Operador</option><option value="supervisor">Supervisor</option><option value="admin">Admin</option></select></div>
+        <div class="flex justify-end space-x-2 pt-2"><button type="button" @click="modalUsuario = false" class="btn-ghost btn-sm">Cancelar</button><button type="submit" class="btn-primary btn-sm">Guardar</button></div>
       </form>
     </div>
   </div>

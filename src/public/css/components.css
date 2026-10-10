@@ -1,0 +1,382 @@
+/**
+ * ==============================================================================
+ * COMPONENTS.CSS — Capa Central de Componentes Visuales Semánticos
+ * Sistema Turnero de Matrículas 2026 (v2.1)
+ *
+ * Normativa: ui-design.md & frontend-architecture.md
+ * Principio: Clases semánticas en CSS plano que consumen variables de base.css
+ * Tailwind CSS queda reservado ÚNICAMENTE para layout (flex, grid, gap, spacing).
+ * ==============================================================================
+ */
+
+/* ── 1. Botones Semánticos (.btn-*) ────────────────────────────────────────── */
+.btn-base,
+.btn-primary,
+.btn-call,
+.btn-danger,
+.btn-warning,
+.btn-success,
+.btn-ghost,
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: inherit;
+  font-weight: 600;
+  border-radius: 0.75rem; /* 12px rounded-xl */
+  border: 1px solid transparent;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  text-decoration: none;
+}
+
+.btn-primary:active,
+.btn-call:active,
+.btn-danger:active,
+.btn-warning:active,
+.btn-success:active,
+.btn-ghost:active,
+.btn-secondary:active {
+  transform: scale(0.98);
+}
+
+.btn-primary:disabled,
+.btn-call:disabled,
+.btn-danger:disabled,
+.btn-warning:disabled,
+.btn-success:disabled,
+.btn-ghost:disabled,
+.btn-secondary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Botón Primario Institucional (Azul Cobalto) */
+.btn-primary {
+  background-color: var(--primary-cobalt);
+  color: #FFFFFF;
+  box-shadow: var(--shadow-xs);
+}
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--primary-hover);
+}
+
+/* Botón de Acción Dominante ("LLAMAR SIGUIENTE") */
+.btn-call {
+  background-color: var(--primary-cobalt);
+  color: #FFFFFF;
+  height: 4rem; /* h-16 */
+  width: 100%;
+  font-size: 1.125rem; /* text-lg */
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  box-shadow: var(--shadow-sm);
+}
+.btn-call:hover:not(:disabled) {
+  background-color: var(--primary-hover);
+}
+
+/* Botón Secundario / Destructivo ("No se presentó", cancelar, cerrar lote) */
+.btn-danger {
+  background-color: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger);
+}
+.btn-danger:hover:not(:disabled) {
+  background-color: #FFE4E6;
+}
+
+/* Botón de Alerta / Extensión de Vouchers */
+.btn-warning {
+  background-color: var(--color-warning);
+  color: #FFFFFF;
+}
+.btn-warning:hover:not(:disabled) {
+  background-color: #B45309;
+}
+
+/* Botón de Éxito / Exportación */
+.btn-success {
+  background-color: var(--color-success);
+  color: #FFFFFF;
+}
+.btn-success:hover:not(:disabled) {
+  background-color: #047857;
+}
+
+/* Botón Neutro / Ghost (Blanco con borde slate) */
+.btn-ghost {
+  background-color: var(--card-bg);
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-xs);
+}
+.btn-ghost:hover:not(:disabled) {
+  background-color: var(--card-bg-subtle);
+  color: var(--text-main);
+  border-color: #94A3B8;
+}
+
+/* Botón Secundario Suave */
+.btn-secondary {
+  background-color: var(--card-bg-subtle);
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+.btn-secondary:hover:not(:disabled) {
+  background-color: #E2E8F0;
+  color: var(--text-main);
+}
+
+/* Modificadores de Tamaño para Botones */
+.btn-sm {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  border-radius: 0.5rem;
+}
+.btn-md {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+}
+.btn-lg {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+}
+
+/* ── 2. Tarjetas y Contenedores (.card*) ────────────────────────────────────── */
+.card {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 1rem; /* 16px rounded-2xl */
+  box-shadow: var(--shadow-xs);
+}
+
+.card-subtle {
+  background-color: var(--card-bg-subtle);
+  border: 1px solid var(--border-light);
+  border-radius: 0.75rem;
+}
+
+.card-hero {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.card-kpi {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 1rem;
+  padding: 1rem;
+  box-shadow: var(--shadow-xs);
+}
+
+.card-callout-warning {
+  background-color: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: 1rem;
+  color: #78350F;
+}
+
+/* ── 3. Pills e Indicadores de Estado (.pill*) ─────────────────────────────── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px; /* rounded-full */
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.pill-success {
+  background-color: var(--color-success-bg);
+  color: var(--color-success);
+  border-color: var(--color-success-border);
+}
+
+.pill-warning {
+  background-color: var(--color-warning-bg);
+  color: var(--color-warning);
+  border-color: var(--color-warning-border);
+}
+
+.pill-danger {
+  background-color: var(--color-danger-bg);
+  color: var(--color-danger);
+  border-color: var(--color-danger-border);
+}
+
+.pill-neutral {
+  background-color: #F1F5F9;
+  color: var(--text-muted);
+  border-color: var(--border-light);
+}
+
+.pill-primary {
+  background-color: var(--primary-light);
+  color: var(--primary-cobalt);
+  border-color: var(--primary-border);
+}
+
+/* Badge distintivo de la Ventanilla/Mesa */
+.badge-mesa {
+  background-color: var(--primary-cobalt);
+  color: #FFFFFF;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.75rem;
+  font-size: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  box-shadow: var(--shadow-xs);
+}
+
+/* ── 4. Layout Institucional (.app-header, .app-footer) ─────────────────────── */
+.app-header {
+  background-color: var(--card-bg);
+  border-bottom: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-xs);
+  flex-shrink: 0;
+}
+
+.app-footer {
+  background-color: var(--card-bg);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+/* ── 5. Tablas Estilizadas (.table-*) ───────────────────────────────────────── */
+.table-container {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: var(--shadow-xs);
+}
+
+.table-base {
+  width: 100%;
+  font-size: 0.75rem;
+  text-align: left;
+  border-collapse: collapse;
+}
+
+.table-head {
+  background-color: var(--card-bg-subtle);
+  color: var(--text-secondary);
+  font-weight: 700;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.table-row {
+  border-bottom: 1px solid var(--border-light);
+  transition: background-color 150ms ease;
+}
+.table-row:hover {
+  background-color: rgba(241, 245, 249, 0.75);
+}
+
+/* ── 6. Campos de Entrada (.input-*, .select-*) ──────────────────────────────── */
+.input-field {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.75rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--text-main);
+  padding: 0.5rem 0.75rem;
+  transition: border-color 150ms, box-shadow 150ms;
+  outline: none;
+  width: 100%;
+}
+.input-field:focus {
+  border-color: var(--primary-cobalt);
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.15);
+}
+.input-field::placeholder {
+  color: var(--text-disabled);
+}
+
+.input-sm {
+  padding: 0.375rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 0.5rem;
+}
+
+.select-field {
+  background-color: var(--card-bg-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.75rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  color: var(--text-main);
+  padding: 0.5rem 0.75rem;
+  outline: none;
+  width: 100%;
+  cursor: pointer;
+}
+.select-field:focus {
+  border-color: var(--primary-cobalt);
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.15);
+}
+
+/* ── 7. Modales y Overlays (.modal-*) ───────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background-color: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal-box {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 1rem;
+  max-width: 24rem; /* max-w-sm */
+  width: 100%;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-md);
+}
+
+/* ── 8. Banners y Alertas de Sistema ────────────────────────────────────────── */
+.banner-reconnect {
+  position: fixed;
+  top: 0;
+  inset-inline: 0;
+  z-index: 50;
+  background-color: var(--color-warning);
+  color: #FFFFFF;
+  padding: 0.625rem 2rem;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.alert-danger {
+  background-color: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  color: var(--color-danger);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  font-size: 0.75rem;
+}
