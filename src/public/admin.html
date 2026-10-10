@@ -7,39 +7,60 @@
   <link rel="stylesheet" href="/css/base.css">
   <link rel="stylesheet" href="/css/components.css">
   <link rel="stylesheet" href="/css/animations.css">
+  <!-- CDN Tailwind: pendiente migrar a CSS precompilado (INC-3, ver frontend-architecture.md) -->
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body x-data="adminView()" x-init="init()" x-cloak class="min-h-full flex flex-col bg-app antialiased text-slate-800">
 
-  <!-- ── 1. ENCABEZADO Y TABS ── -->
-  <header class="app-header sticky top-0 z-30">
+  <!-- ── 1. ENCABEZADO Y TABS (Diseño Imagen 2) ── -->
+  <header class="app-header sticky top-0 z-30 bg-white border-b border-slate-200/90 shadow-2xs">
     <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
-      <div class="flex items-center space-x-3">
-        <div class="badge-mesa w-8 h-8 p-0 justify-center text-xs">ADM</div>
-        <span class="font-bold text-slate-900 text-sm">Supervisión Turnero 2026</span>
-        <span class="pill text-xs" :class="wsConnected ? 'pill-success' : 'pill-warning'" x-text="wsConnected ? 'En vivo' : 'Reconectando'"></span>
+      <!-- Identidad Izquierda -->
+      <div class="flex items-center space-x-2.5">
+        <div class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center">
+          <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.75c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.75h-.152c-3.196 0-6.1-1.249-8.25-3.286zm0 13.036h.008v.008H12v-.008z" /></svg>
+        </div>
+        <span class="font-bold text-slate-900 text-sm tracking-tight">Turnero 2026 • Admin</span>
       </div>
-      <nav class="flex space-x-1" aria-label="Navegación del panel">
-        <button type="button" @click="tab = 'monitoreo'" :class="tab === 'monitoreo' ? 'btn-primary' : 'btn-ghost'" class="btn-sm">1. Monitoreo</button>
-        <button type="button" @click="tab = 'lotes'" :class="tab === 'lotes' ? 'btn-primary' : 'btn-ghost'" class="btn-sm">2. Lotes</button>
-        <button type="button" @click="tab = 'mesas'" :class="tab === 'mesas' ? 'btn-primary' : 'btn-ghost'" class="btn-sm">3. Mesas</button>
-        <button type="button" @click="tab = 'config'" :class="tab === 'config' ? 'btn-primary' : 'btn-ghost'" class="btn-sm">4. Config & Usuarios</button>
+
+      <!-- Navegación por Tabs Segmentada (Imagen 2) -->
+      <nav class="flex items-center p-1 bg-slate-100/90 rounded-xl border border-slate-200/80" aria-label="Navegación del panel">
+        <button type="button" @click="tab = 'monitoreo'" :class="tab === 'monitoreo' ? 'bg-white text-blue-700 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'" class="px-3.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer">Monitoreo</button>
+        <button type="button" @click="tab = 'lotes'" :class="tab === 'lotes' ? 'bg-white text-blue-700 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'" class="px-3.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer">Lotes</button>
+        <button type="button" @click="tab = 'mesas'" :class="tab === 'mesas' ? 'bg-white text-blue-700 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'" class="px-3.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer">Mesas</button>
+        <button type="button" @click="tab = 'config'" :class="tab === 'config' ? 'bg-white text-blue-700 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'" class="px-3.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer">Configuración</button>
       </nav>
-      <div class="flex items-center space-x-3">
-        <span class="font-mono-num text-xs font-bold text-slate-700 hidden sm:inline" x-text="relojHora"></span>
-        <button type="button" @click="logout()" title="Cerrar sesión" class="btn-ghost btn-sm text-rose-600 hover:text-rose-800">Salir</button>
+
+      <!-- Acciones Derecha: Pantalla TV, Salir y Reloj -->
+      <div class="flex items-center space-x-2.5">
+        <a href="/tv.html" target="_blank" rel="noopener noreferrer" class="btn-ghost btn-sm text-xs flex items-center gap-1.5 text-slate-700 hover:text-blue-700 border border-slate-200/80 bg-white shadow-2xs">
+          <svg class="w-3.5 h-3.5 text-blue-600 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" /></svg>
+          <span>Pantalla TV</span>
+        </a>
+        <button type="button" @click="logout()" title="Cerrar sesión" class="btn-ghost btn-sm text-xs text-rose-600 hover:text-rose-800 hover:bg-rose-50 border border-slate-200/80 bg-white flex items-center gap-1.5 shadow-2xs cursor-pointer">
+          <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" /></svg>
+          <span>Salir</span>
+        </button>
       </div>
     </div>
   </header>
 
+  <!-- ── BANNER PERSISTENTE: Lote Agotado ── -->
+  <div x-show="loteAgotadoAlerta" x-cloak
+       class="bg-rose-600 text-white text-xs font-bold px-6 py-2.5 flex items-center justify-between gap-4"
+       role="alert">
+    <span>LOTE AGOTADO: No hay mas vouchers disponibles. Extienda el lote actual o cree uno nuevo.</span>
+    <button type="button" @click="tab = 'lotes'" class="underline hover:no-underline cursor-pointer">Ir a Lotes</button>
+  </div>
+
   <!-- ── 2. CONTENIDO PRINCIPAL POR PESTAÑAS ── -->
   <main class="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
 
-    <!-- PESTAÑA 1: MONITOREO (4 KPIs + Tabla Mesas) -->
-    <section x-show="tab === 'monitoreo'" class="space-y-6">
+    <!-- PESTANA 1: MONITOREO (4 KPIs + Tabla Mesas) -->
+    <section x-show="tab === 'monitoreo'" x-cloak class="space-y-6">
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div class="card-kpi"><span class="text-xs font-semibold text-slate-500 block uppercase">Atendidos Hoy</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.atendidos_hoy">0</span></div>
-        <div class="card-kpi"><span class="text-xs font-semibold text-slate-500 block uppercase">Espera Promedio</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.espera_promedio_min + ' min'">0 min</span></div>
+        <div class="card-kpi"><span class="text-xs font-semibold text-slate-500 block uppercase">Espera Promedio</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.espera_promedio_min !== '--' ? (kpis.espera_promedio_min + ' min') : '--'">-- min</span></div>
         <div class="card-kpi"><span class="text-xs font-semibold text-slate-500 block uppercase">Mesas Activas</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.mesas_activas">0</span></div>
         <div class="card-kpi" :class="kpis.vouchers_restantes <= 20 ? 'border-amber-400 bg-amber-50/50' : ''"><span class="text-xs font-semibold text-slate-500 block uppercase">Vouchers Restantes</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.vouchers_restantes">0</span></div>
       </div>
@@ -62,7 +83,7 @@
                 <td class="p-3 font-mono-num font-bold text-slate-900" x-text="mesa.turno_actual ? ('#' + String(mesa.turno_actual).padStart(3, '0')) : '--'"></td>
                 <td class="p-3 font-mono-num" x-text="mesa.atendidos_hoy || 0"></td>
                 <td class="p-3 font-mono-num" x-text="(mesa.tiempo_promedio_min || 0) + ' min'"></td>
-                <td class="p-3"><span class="w-2.5 h-2.5 rounded-full inline-block" :class="(mesa.tiempo_promedio_min || 0) < 4 ? 'bg-emerald-500' : ((mesa.tiempo_promedio_min || 0) < 7 ? 'bg-amber-500' : 'bg-rose-500')"></span></td>
+                <td class="p-3"><span class="w-2.5 h-2.5 rounded-full inline-block" :class="semaforoClass(mesa.tiempo_promedio_min || 0)"></span></td>
               </tr>
             </template>
           </tbody>
@@ -70,23 +91,116 @@
       </div>
     </section>
 
-    <!-- PESTAÑA 2: LOTES DE VOUCHERS -->
-    <section x-show="tab === 'lotes'" class="space-y-6">
-      <div class="card p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <!-- PESTANA 2: LOTES DE VOUCHERS -->
+    <section x-show="tab === 'lotes'" x-cloak class="space-y-6">
+
+      <!-- Encabezado de la Sección de Lotes (Diseño Imagen 2) -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <span class="text-xs uppercase font-bold text-slate-400">Lote Activo Actual</span>
-          <h2 class="text-2xl font-black text-slate-900 font-mono-num mt-1" x-text="loteActivo ? ('Lote ' + loteActivo.numero_lote) : 'Sin Lote Activo'"></h2>
-          <p class="text-xs text-slate-500 mt-1" x-text="loteActivo ? ('Progreso: ' + loteActivo.ultimo_numero_llamado + ' de ' + loteActivo.numero_hasta + ' vouchers') : 'Cree o active un lote para despachar turnos'"></p>
-        </div>
-        <div class="flex flex-wrap gap-2" x-show="loteActivo">
-          <button type="button" @click="loteActivo.estado === 'activo' ? pausarLote(loteActivo.id) : activarLote(loteActivo.id)" title="Pausar o reanudar lote" aria-label="Pausar o reanudar lote" class="btn-ghost btn-sm"><span x-text="loteActivo?.estado === 'activo' ? 'Pausar Jornada' : 'Reanudar Lote'">Pausar Jornada</span></button>
-          <div class="flex items-center space-x-1.5">
-            <input type="number" x-model.number="extensionVouchers" min="1" placeholder="+Extender" title="Vouchers a extender" class="input-field input-sm w-24 font-mono-num">
-            <button type="button" @click="extenderLote(loteActivo.id)" class="btn-warning btn-sm">Extender</button>
+          <div class="flex items-center gap-2 mb-1.5">
+            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-blue-50 border border-blue-200 text-blue-700 uppercase">ADMISIÓN 2026</span>
+            <span class="inline-flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+              <span class="w-2 h-2 rounded-full" :class="wsConnected ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+              <span x-text="wsConnected ? 'Sincronización activa • 12ms' : 'Reconectando con el servidor...'"></span>
+            </span>
           </div>
-          <button type="button" @click="cerrarLote(loteActivo.id)" class="btn-danger btn-sm">Cerrar Definitivo</button>
+          <h1 class="text-2xl font-black text-slate-900 tracking-tight">Gestión de Lotes de Vouchers</h1>
+          <p class="text-xs text-slate-500 mt-0.5">Control secuencial de rangos correlativos y emisión diaria en sala.</p>
         </div>
-        <button type="button" @click="modalLote = true" class="btn-primary btn-sm">+ Nuevo Lote</button>
+        <div>
+          <button type="button" @click="modalLote = true" class="btn-primary h-10 px-4 text-xs font-bold flex items-center gap-2 shadow-xs cursor-pointer">
+            <svg class="w-4 h-4 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+            <span>+ Nuevo Lote</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Card del Lote Activo (Diseño Imagen 2 con Barra de Progreso y Acciones) -->
+      <div class="card p-6 rounded-2xl border border-slate-200/90 shadow-sm" x-show="loteActivo">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+          <div class="flex items-start sm:items-center gap-3 flex-wrap">
+            <span class="px-2.5 py-1 rounded-lg bg-[#1D4ED8] text-white font-mono-num font-bold text-xs uppercase"
+                  x-text="'LOTE ' + String(loteActivo?.numero_lote || 0).padStart(2, '0')"></span>
+            <div>
+              <div class="flex items-center gap-2.5 flex-wrap">
+                <h2 class="text-base font-bold text-slate-900" x-text="loteActivo?.nombre || ('Lote ' + (loteActivo?.numero_lote || ''))"></h2>
+                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
+                      :class="loteActivo?.estado === 'activo' ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' : 'bg-amber-50 border border-amber-200 text-amber-700'">
+                  <span class="w-1.5 h-1.5 rounded-full" :class="loteActivo?.estado === 'activo' ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+                  <span x-text="loteActivo?.estado === 'activo' ? 'Activo en Sala / TV' : 'Pausado en Sala'"></span>
+                </span>
+              </div>
+              <p class="text-xs text-slate-500 mt-0.5">Emisión abierta hacia los módulos de atención</p>
+            </div>
+          </div>
+
+          <!-- Botones de Acción en el mismo sitio que en la Imagen 2 -->
+          <div class="flex items-center gap-2 flex-wrap">
+            <button type="button" @click="loteActivo.estado === 'activo' ? pausarLote(loteActivo.id) : activarLote(loteActivo.id)"
+                    class="btn-ghost btn-sm text-xs font-semibold px-3.5 h-9 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" /></svg>
+              <span x-text="loteActivo?.estado === 'activo' ? 'Pausar Lote' : 'Reanudar Lote'">Pausar Lote</span>
+            </button>
+
+            <!-- Botón Extender abre el modal dedicado -->
+            <button type="button" @click="abrirModalExtender()"
+                    class="btn-ghost btn-sm text-xs font-semibold px-3.5 h-9 bg-blue-50/60 border border-blue-200 text-[#1D4ED8] hover:bg-blue-100 flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+              <span>+ Extender Rango (+50)</span>
+            </button>
+
+            <button type="button" @click="cerrarLote(loteActivo.id)"
+                    class="btn-ghost btn-sm text-xs font-semibold px-3.5 h-9 bg-rose-50/60 border border-rose-200 text-rose-700 hover:bg-rose-100 flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              <span>Cerrar Lote</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Fila de Métricas: Rango, Vouchers Emitidos y Restantes -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-5 pb-4">
+          <div>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">RANGO CORRELATIVO</span>
+            <div class="font-mono-num font-bold text-slate-900 text-base mt-1"
+                 x-text="'#' + (loteActivo?.numero_desde || 1) + ' — #' + (loteActivo?.numero_hasta || 0)"></div>
+          </div>
+          <div>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">VOUCHERS EMITIDOS</span>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span class="font-mono-num font-bold text-[#1D4ED8] text-base"
+                    x-text="calcularVouchersEmitidos() + ' / ' + (loteActivo?.numero_hasta || 0)"></span>
+              <span class="font-mono-num text-xs text-slate-500 font-semibold"
+                    x-text="'(' + calcularProgresoLote() + '%)'"></span>
+            </div>
+          </div>
+          <div>
+            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">ESTADO DE DISPONIBILIDAD</span>
+            <div class="font-mono-num font-bold text-slate-900 text-base mt-1"
+                 x-text="calcularVouchersRestantesLote() + ' vouchers disponibles'"></div>
+          </div>
+        </div>
+
+        <!-- Barra de Progreso y Leyenda (Imagen 2) -->
+        <div class="pt-2">
+          <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+            <div class="bg-[#1D4ED8] h-full rounded-full transition-all duration-500"
+                 :style="'width: ' + calcularProgresoLote() + '%'"></div>
+          </div>
+          <div class="flex justify-between items-center text-[11px] text-slate-500 mt-2 font-mono-num">
+            <span>Progreso del lote: <strong class="text-slate-700" x-text="calcularProgresoLote() + '%'"></strong></span>
+            <span>Restan <strong class="text-slate-800" x-text="calcularVouchersRestantesLote()"></strong> vouchers</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Estado cuando NO hay lote activo -->
+      <div class="card p-8 rounded-2xl text-center border-dashed border-2 border-slate-300" x-show="!loteActivo">
+        <div class="w-12 h-12 mx-auto rounded-full bg-slate-100 text-slate-500 flex items-center justify-center mb-3">
+          <svg class="w-6 h-6 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+        </div>
+        <h3 class="font-bold text-slate-800 text-sm">Sin Lote Activo en la Jornada</h3>
+        <p class="text-xs text-slate-500 max-w-sm mx-auto mt-1 mb-4">No hay un lote habilitado para despachar vouchers. Cree un nuevo lote o active uno existente del historial inferior.</p>
+        <button type="button" @click="modalLote = true" class="btn-primary btn-sm">+ Crear Nuevo Lote</button>
       </div>
 
       <div class="table-container shadow-xs">
@@ -108,11 +222,14 @@
       </div>
     </section>
 
-    <!-- PESTAÑA 3: CONFIGURACIÓN DIARIA DE MESAS -->
-    <section x-show="tab === 'mesas'" class="space-y-6">
+    <!-- PESTANA 3: CONFIGURACION DIARIA DE MESAS -->
+    <section x-show="tab === 'mesas'" x-cloak class="space-y-6">
       <div class="flex justify-between items-center">
         <div><h2 class="font-bold text-base text-slate-900">Ventanillas y Asignación de Operadores</h2><p class="text-xs text-slate-500">Configure las mesas habilitadas para la jornada de hoy</p></div>
-        <button type="button" @click="crearMesa()" class="btn-primary btn-sm">+ Nueva Mesa</button>
+        <button type="button" @click="abrirModalMesa()" class="btn-primary btn-sm flex items-center gap-1.5 shadow-xs cursor-pointer">
+          <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+          <span>+ Nueva Mesa</span>
+        </button>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <template x-for="mesa in mesas" :key="mesa.id">
@@ -136,8 +253,8 @@
       </div>
     </section>
 
-    <!-- PESTAÑA 4: CONFIGURACIÓN, USUARIOS & REPORTES -->
-    <section x-show="tab === 'config'" class="space-y-6">
+    <!-- PESTANA 4: CONFIGURACION, USUARIOS & REPORTES -->
+    <section x-show="tab === 'config'" x-cloak class="space-y-6">
       <div class="card p-5 flex justify-between items-center">
         <div><h2 class="font-bold text-sm text-slate-900">Reporte Diario de Matrículas</h2><p class="text-xs text-slate-500">Descargue el registro completo en formato CSV</p></div>
         <button type="button" @click="exportarCSV()" class="btn-success btn-sm">Exportar CSV</button>
@@ -146,7 +263,11 @@
       <div class="card p-5 space-y-4">
         <h3 class="font-bold text-sm text-slate-900">Ajustes Operativos en Caliente</h3>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-          <div><label for="cfg-tiempo-atencion" class="font-semibold block mb-1">Tiempo máx atención (min):</label><input id="cfg-tiempo-atencion" type="number" x-model.number="config.tiempo_max_atencion_min" class="input-field font-mono-num"></div>
+          <div>
+            <label for="cfg-tiempo-atencion" class="font-semibold block mb-0.5">Tiempo de referencia por atencion (min):</label>
+            <p class="text-[10px] text-slate-400 mb-1">Solo afecta el semaforo del dashboard. No interrumpe ni limita la atencion. Escriba 0 para desactivar el semaforo.</p>
+            <input id="cfg-tiempo-atencion" type="number" x-model.number="config.tiempo_max_atencion_min" min="0" max="240" class="input-field font-mono-num">
+          </div>
           <div><label for="cfg-alerta-vouchers" class="font-semibold block mb-1">Alerta vouchers restantes:</label><input id="cfg-alerta-vouchers" type="number" x-model.number="config.alerta_vouchers_restantes" class="input-field font-mono-num"></div>
           <div class="flex items-center space-x-2 pt-5"><input id="cfg-kiosko-activo" type="checkbox" x-model="config.kiosko_web_activo" class="rounded border-slate-300 text-blue-600"><label for="cfg-kiosko-activo" class="font-semibold">Kiosko Web Activo</label></div>
         </div>
@@ -169,12 +290,106 @@
   </main>
 
   <!-- ── 3. MODALES DE ACCIÓN ── -->
+  <!-- Modal: Crear Nuevo Lote -->
   <div x-show="modalLote" x-cloak class="modal-backdrop">
-    <div class="modal-box space-y-4">
-      <h3 class="text-base font-bold text-slate-900">Crear Nuevo Lote</h3>
-      <form @submit.prevent="crearLoteSubmit" class="space-y-3 text-xs">
-        <div><label for="nuevo-lote-hasta" class="font-semibold block mb-1">Número hasta:</label><input id="nuevo-lote-hasta" type="number" x-model.number="nuevoLoteHasta" required min="1" class="input-field font-mono-num"></div>
-        <div class="flex justify-end space-x-2 pt-2"><button type="button" @click="modalLote = false" class="btn-ghost btn-sm">Cancelar</button><button type="submit" class="btn-primary btn-sm">Crear y Activar</button></div>
+    <div class="modal-box space-y-4 max-w-sm">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <h3 class="text-base font-bold text-slate-900">Crear Nuevo Lote</h3>
+        <button type="button" @click="modalLote = false" class="text-slate-400 hover:text-slate-600 cursor-pointer">
+          <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+      <form @submit.prevent="crearLoteSubmit" class="space-y-3.5 text-xs">
+        <div>
+          <label for="nuevo-lote-hasta" class="font-semibold block mb-1">Número hasta (límite del lote):</label>
+          <input id="nuevo-lote-hasta" type="number" x-model.number="nuevoLoteHasta" required min="1" class="input-field font-mono-num text-sm">
+          <p class="text-[11px] text-slate-400 mt-1">El lote iniciará secuencialmente y se activará de inmediato.</p>
+        </div>
+        <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+          <button type="button" @click="modalLote = false" class="btn-ghost btn-sm">Cancelar</button>
+          <button type="submit" class="btn-primary btn-sm">Crear y Activar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Extender Rango de Lote (Modal Solicitado por Usuario) -->
+  <div x-show="modalExtender" x-cloak class="modal-backdrop">
+    <div class="modal-box space-y-4 max-w-sm">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-[#1D4ED8] flex items-center justify-center">
+            <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+          </div>
+          <h3 class="text-base font-bold text-slate-900">Extender Rango del Lote</h3>
+        </div>
+        <button type="button" @click="modalExtender = false" class="text-slate-400 hover:text-slate-600 cursor-pointer">
+          <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+
+      <div class="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-1">
+        <div class="flex justify-between">
+          <span class="text-slate-500">Lote activo:</span>
+          <strong class="font-mono-num text-slate-900" x-text="'Lote ' + (loteActivo?.numero_lote || '')"></strong>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Límite actual:</span>
+          <span class="font-mono-num text-slate-900" x-text="'Hasta #' + (loteActivo?.numero_hasta || 0)"></span>
+        </div>
+      </div>
+
+      <form @submit.prevent="extenderLoteSubmit" class="space-y-3.5 text-xs">
+        <div>
+          <label for="extension-vouchers-input" class="font-semibold text-slate-700 block mb-1">Cantidad de vouchers a adicionar:</label>
+          <input id="extension-vouchers-input" type="number" x-model.number="extensionCantidad" required min="1" step="10" placeholder="50" class="input-field font-mono-num text-sm">
+          <p class="text-[11px] text-slate-400 mt-1">
+            Nuevo límite correlativo: <strong class="text-blue-700 font-mono-num" x-text="'#' + ((loteActivo?.numero_hasta || 0) + (extensionCantidad || 0))"></strong>
+          </p>
+        </div>
+        <div class="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+          <button type="button" @click="modalExtender = false" class="btn-ghost btn-sm">Cancelar</button>
+          <button type="submit" class="btn-primary btn-sm flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+            <span>Confirmar Extensión</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Crear Nueva Mesa (Reemplazo del prompt nativo) -->
+  <div x-show="modalMesa" x-cloak class="modal-backdrop">
+    <div class="modal-box space-y-4 max-w-sm">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-[#1D4ED8] flex items-center justify-center">
+            <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 16.875h3.375m0 0h3.375m-3.375 0V13.5m0 3.375v3.375M6 10.5h2.25a2.25 2.25 0 002.25-2.25V6a2.25 2.25 0 00-2.25-2.25H6A2.25 2.25 0 003.75 6v2.25A2.25 2.25 0 006 10.5zm0 9.75h2.25A2.25 2.25 0 0010.5 18v-2.25a2.25 2.25 0 00-2.25-2.25H6a2.25 2.25 0 00-2.25 2.25V18A2.25 2.25 0 006 20.25zm9.75-9.75H18a2.25 2.25 0 002.25-2.25V6A2.25 2.25 0 0018 3.75h-2.25A2.25 2.25 0 0013.5 6v2.25a2.25 2.25 0 002.25 2.25z" /></svg>
+          </div>
+          <h3 class="text-base font-bold text-slate-900">Crear Nueva Mesa</h3>
+        </div>
+        <button type="button" @click="modalMesa = false" class="text-slate-400 hover:text-slate-600 cursor-pointer">
+          <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+
+      <form @submit.prevent="crearMesaSubmit" class="space-y-3.5 text-xs">
+        <div>
+          <label for="nueva-mesa-num" class="font-semibold text-slate-700 block mb-1">Número de Mesa (entero):</label>
+          <input id="nueva-mesa-num" type="number" x-model.number="nuevaMesa.numero" required min="1" class="input-field font-mono-num text-sm">
+        </div>
+        <div>
+          <label for="nueva-mesa-nombre" class="font-semibold text-slate-700 block mb-1">Nombre / Identificador de Ventanilla:</label>
+          <input id="nueva-mesa-nombre" type="text" x-model="nuevaMesa.nombre" placeholder="ej. Mesa 5 — Matrícula" class="input-field text-sm">
+          <p class="text-[11px] text-slate-400 mt-1">Nombre descriptivo que verán los operadores y supervisores.</p>
+        </div>
+        <div class="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+          <button type="button" @click="modalMesa = false" class="btn-ghost btn-sm">Cancelar</button>
+          <button type="submit" class="btn-primary btn-sm flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+            <span>Crear Mesa</span>
+          </button>
+        </div>
       </form>
     </div>
   </div>
@@ -192,6 +407,7 @@
   </div>
 
   <script type="module" src="/js/pages/admin.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+  <!-- Alpine local — version fijada, sin CDN (INC-3) -->
+  <script defer src="/vendor/alpine-3.13.3.min.js"></script>
 </body>
 </html>

@@ -64,90 +64,148 @@ export function initLiveClock(timeTarget, dateTarget = null) {
 }
 
 /**
- * Instancia compartida de AudioContext para síntesis Web Audio API offline.
- * @type {AudioContext|null}
+ * ==============================================================================
+ * SISTEMA DE AUDIO HÍBRIDO RESILIENTE (INC-3)
+ *
+ * Invariantes:
+ *  - Un único AudioContext (singleton) creado de forma perezosa.
+ *  - bell.mp3 se descarga y decodifica UNA sola vez; si falla (404 / red),
+ *    se activa la bandera _bellFailed y nunca se reintenta la red.
+ *  - Anti-solapamiento: si el chime anterior sigue sonando se omite el nuevo.
+ *  - El fallback (síntesis Web Audio) usa el mismo AudioContext singleton.
+ *  - Nunca bloquea ni retrasa la actualización visual.
+ * ==============================================================================
  */
-let sharedAudioCtx = null;
+
+/** @type {AudioContext|null} Instancia única compartida */
+let _audioCtx = null;
+
+/** @type {AudioBuffer|null} Buffer decodificado de bell.mp3 */
+let _bellBuffer = null;
+
+/** @type {boolean} true si la carga de bell.mp3 falló (no reintentar red) */
+let _bellFailed = false;
+
+/** @type {Promise<void>|null} Promesa de carga en curso para evitar descargas paralelas */
+let _bellLoadPromise = null;
+
+/** @type {number} Marca de tiempo (ctx.currentTime) en que termina el chime actual */
+let _chimeEndTime = 0;
+
+/** Duración del chime en segundos (< 1.2 s, sin solapamiento) */
+const CHIME_DURATION = 0.85;
 
 /**
- * Obtiene o inicializa de forma segura el AudioContext del navegador.
- * Maneja políticas de autoplay activándolo con el primer clic del operador.
+ * Obtiene (o crea) el AudioContext singleton.
+ * Reanuda si está en estado 'suspended'.
  * @returns {AudioContext|null}
  */
-function getAudioContext() {
+function _getAudioCtx() {
   if (typeof window === 'undefined') return null;
-  const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtxClass) return null;
-
-  if (!sharedAudioCtx) {
-    sharedAudioCtx = new AudioCtxClass();
-  }
-
-  if (sharedAudioCtx.state === 'suspended') {
-    sharedAudioCtx.resume().catch(() => {});
-  }
-
-  return sharedAudioCtx;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  if (!_audioCtx) _audioCtx = new AC();
+  if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {});
+  return _audioCtx;
 }
 
 /**
- * Sintetiza un doble tono institucional armonizado (523.25 Hz C5 + 659.25 Hz E5)
- * con envolvente suave utilizando la Web Audio API nativa.
- * Fallback resiliente garantizado cuando no hay Internet o falla bell.mp3.
+ * Carga y decodifica bell.mp3 una sola vez.
+ * Si ya falló antes, resuelve inmediatamente sin tocar la red.
+ * @returns {Promise<AudioBuffer|null>}
+ */
+async function _loadBell() {
+  if (_bellFailed) return null;
+  if (_bellBuffer) return _bellBuffer;
+  if (_bellLoadPromise) return _bellLoadPromise;
+
+  _bellLoadPromise = (async () => {
+    try {
+      const ctx = _getAudioCtx();
+      if (!ctx) { _bellFailed = true; return null; }
+
+      const resp = await fetch('/assets/audio/bell.mp3', { cache: 'force-cache' });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+      const arrayBuffer = await resp.arrayBuffer();
+      _bellBuffer = await ctx.decodeAudioData(arrayBuffer);
+      return _bellBuffer;
+    } catch (err) {
+      console.warn('[AUDIO] bell.mp3 no disponible, usando síntesis Web Audio:', err.message);
+      _bellFailed = true;
+      return null;
+    } finally {
+      _bellLoadPromise = null;
+    }
+  })();
+
+  return _bellLoadPromise;
+}
+
+/**
+ * Sintetiza un doble tono institucional armonizado (C5 + E5) con envolvente suave.
+ * Usa el AudioContext singleton; nunca crea uno nuevo.
  */
 export function synthesizeInstitutionalChime() {
   try {
-    const ctx = getAudioContext();
+    const ctx = _getAudioCtx();
     if (!ctx) return;
 
     const now = ctx.currentTime;
-    const duration = 0.75; // Duración total del chime (segundos)
+    const freqs = [523.25, 659.25];
 
-    // Frecuencias institucionales armonizadas (Do5 y Mi5)
-    const tones = [523.25, 659.25];
-
-    tones.forEach((freq, idx) => {
-      const osc = ctx.createOscillator();
+    freqs.forEach((freq, idx) => {
+      const osc  = ctx.createOscillator();
       const gain = ctx.createGain();
-
       osc.type = 'sine';
       osc.frequency.setValueAtTime(freq, now);
 
-      // Desfase sutil de 40ms para sensación de campanilla acústica
       const startTime = now + idx * 0.04;
-
-      // Envolvente acústica: Ataque suave -> Decaimiento natural exponencial
       gain.gain.setValueAtTime(0.0001, startTime);
       gain.gain.exponentialRampToValueAtTime(0.28, startTime + 0.025);
-      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + CHIME_DURATION);
 
       osc.connect(gain);
       gain.connect(ctx.destination);
-
       osc.start(startTime);
-      osc.stop(startTime + duration);
+      osc.stop(startTime + CHIME_DURATION);
     });
+
+    _chimeEndTime = ctx.currentTime + CHIME_DURATION + 0.1;
   } catch (err) {
-    console.warn('[AUDIO] No se pudo sintetizar tono con Web Audio API:', err);
+    console.warn('[AUDIO] Síntesis Web Audio fallida:', err);
   }
 }
 
 /**
- * Sistema de Audio Híbrido Resiliente para anuncio de turno:
- * 1. Intenta reproducir el archivo de audio institucional /assets/audio/bell.mp3.
- * 2. Si el archivo no carga, la red falla o está en modo offline, sintetiza
- *    automáticamente el chime institucional con la Web Audio API nativa.
+ * Sistema de audio híbrido: bell.mp3 (cargado una vez) → síntesis Web Audio.
+ * Anti-solapamiento: si el chime anterior sigue sonando, se omite.
+ * Nunca bloquea ni retrasa la actualización visual.
  * @returns {Promise<void>}
  */
 export async function playCallChime() {
   try {
-    const audio = new Audio('/assets/audio/bell.mp3');
-    audio.preload = 'auto';
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
 
-    // Manejo de promesa play()
-    await audio.play();
+    // Anti-solapamiento: si el chime anterior todavía suena, omitir
+    if (ctx.currentTime < _chimeEndTime) return;
+
+    // Intentar bell.mp3 (solo UNA descarga de red; si falló antes, usa síntesis)
+    const buffer = await _loadBell();
+
+    if (buffer) {
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start();
+      _chimeEndTime = ctx.currentTime + buffer.duration + 0.05;
+    } else {
+      // Fallback: síntesis sin red
+      synthesizeInstitutionalChime();
+    }
   } catch (err) {
-    // Fallback Offline inmediato con Web Audio API
+    console.warn('[AUDIO] Error al reproducir chime:', err);
     synthesizeInstitutionalChime();
   }
 }
@@ -191,12 +249,4 @@ export function showToast({ message, type = 'info', duration = 3500 }) {
       if (toast.parentNode) toast.parentNode.removeChild(toast);
     }, 220);
   }, duration);
-}
-
-// Exposición global para compatibilidad con vistas sin módulos ES6
-if (typeof window !== 'undefined') {
-  window.formatTimer = formatTimer;
-  window.initLiveClock = initLiveClock;
-  window.playCallChime = playCallChime;
-  window.showToast = showToast;
 }

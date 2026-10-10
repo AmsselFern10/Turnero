@@ -1,11 +1,18 @@
 /**
  * ==============================================================================
- * ADMIN.JS — Controlador de Supervisión, Lotes, Mesas y Ajustes
- * Sistema Turnero de Matrículas 2026 (v2.1)
+ * ADMIN.JS — Controlador de Supervision, Lotes, Mesas, Usuarios y Configuracion
+ * Sistema Turnero de Matriculas 2026 (v2.1)
  *
- * Cumple con:
- * - RF-ADM-01 a RF-ADM-09: KPIs, Lotes, Mesas, Usuarios, Configuración y CSV
- * - RF-WS-02: Suscripción a canal 'admin:all' con actualización push en vivo
+ * Contrato de identificadores (sincronizado con admin.html):
+ *  - tab, relojHora, wsConnected, loteAgotadoAlerta
+ *  - kpis.{ atendidos_hoy, espera_promedio_min, mesas_activas, vouchers_restantes }
+ *  - mesas[], lotes[], loteActivo, usuarios[], config, operadoresDisponibles[]
+ *  - extensionVouchers, modalLote, modalUsuario, nuevoLoteHasta, nuevoUsuario
+ *  - cargarDashboard(), exportarCSV(), asignarOperador(), activarMesaAdmin()
+ *  - pausarMesaAdmin(), extenderLote(), pausarLote(), activarLote(), cerrarLote()
+ *  - crearLoteSubmit(), crearUsuarioSubmit(), guardarConfiguracion(), logout()
+ *
+ * Cumple: RF-ADM-01..09, RF-LOTE-03..09, RF-WS, RNF-DIS-01/03/06
  * ==============================================================================
  */
 
@@ -15,581 +22,499 @@ import { formatTimer, showToast } from '../utils.js';
 
 export function adminView() {
   return {
-    // Pestaña activa: 'monitoreo' | 'lotes' | 'mesas' | 'configuracion'
     tab: 'monitoreo',
+    relojHora: '--:--:--',
+    _clockTimer: null,
 
-    // Estado de KPIs y métricas
     kpis: {
-      atendidos_hoy: 0,
-      cancelados_hoy: 0,
-      en_atencion_ahora: 0,
-      promedio_seg: null,
-      mesas_activas: 0,
-      mesas_pausadas: 0,
-      vouchers_restantes: 0
+      atendidos_hoy:       0,
+      espera_promedio_min: '--',
+      mesas_activas:       0,
+      vouchers_restantes:  0
     },
 
-    // Datos maestros
-    mesas: [],
-    loteActivo: null,
-    lotesHistorial: [],
-    usuarios: [],
+    mesas:                [],
+    lotes:                [],
+    loteActivo:           null,
+    usuarios:             [],
+    operadoresDisponibles:[],
 
-    // Formularios y controles
-    extensionCantidad: 100,
-    loadingAction: false,
-
-    // Modales
-    showNewLotModal: false,
-    showNewUserModal: false,
-    showEditUserModal: false,
-    showNewMesaModal: false,
-
-    nuevoLote: {
-      cantidad: 500
-    },
-
-    nuevoUsuario: {
-      username: '',
-      nombre_completo: '',
-      password: '',
-      rol: 'operador'
-    },
-
-    usuarioAEditar: {
-      id: null,
-      username: '',
-      nombre_completo: '',
-      password: '',
-      rol: 'operador'
-    },
+    extensionVouchers: 50,
+    extensionCantidad: 50,
+    modalLote:         false,
+    modalExtender:     false,
+    modalMesa:         false,
+    modalUsuario:      false,
+    nuevoLoteHasta:    500,
 
     nuevaMesa: {
-      numero: '',
+      numero: 1,
       nombre: ''
     },
 
-    // Ajustes del sistema
-    config: {
-      kiosko_web_activo: false,
-      voz_habilitada: true,
-      alerta_vouchers_restantes: 20,
-      tiempo_max_atencion_min: 5
+    nuevoUsuario: {
+      nombre_completo: '',
+      username:        '',
+      password:        '',
+      rol:             'operador'
     },
 
-    // Conexión WebSocket
-    ws: null,
-    wsConnected: false,
+    config: {
+      tiempo_max_atencion_min:   5,
+      alerta_vouchers_restantes: 20,
+      kiosko_web_activo:         false
+    },
+    _configSnapshot: null,
 
-    /**
-     * Inicialización del controlador
-     */
+    ws:          null,
+    wsConnected: false,
+    loteAgotadoAlerta: false,
+    _loading: false,
+
+    // =========================================================================
+    // CICLO DE VIDA
+    // =========================================================================
+
     async init() {
-      // 1. Validar autenticación y rol
-      const user = api.getUser();
-      if (!user || (user.rol !== 'admin' && user.rol !== 'supervisor')) {
-        console.warn('[ADMIN] Acceso no autorizado. Redirigiendo...');
+      try {
+        const { usuario } = await api.get('/auth/me');
+        if (!usuario || (usuario.rol !== 'admin' && usuario.rol !== 'supervisor')) {
+          api.clearSession(true);
+          return;
+        }
+      } catch (_) {
         api.clearSession(true);
         return;
       }
 
-      // 2. Carga inicial de datos
+      this._tickClock();
+      this._clockTimer = setInterval(() => this._tickClock(), 1000);
       await this.cargarTodo();
-
-      // 3. Conectar a WebSocket en canal 'admin:all'
+      this._actualizarAlertaLote();
       this.initWebSocket();
     },
 
-    /**
-     * Carga todos los datos necesarios para las pestañas
-     */
+    destroy() {
+      if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
+      if (this.ws) { this.ws.disconnect(); this.ws = null; }
+    },
+
+    _tickClock() {
+      this.relojHora = new Date().toLocaleTimeString('es-MX', {
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+      });
+    },
+
+    // =========================================================================
+    // CARGA DE DATOS
+    // =========================================================================
+
     async cargarTodo() {
-      await Promise.all([
-        this.cargarKPIs(),
-        this.cargarMesas(),
-        this.cargarLotes(),
-        this.cargarUsuarios(),
-        this.cargarConfiguracion()
+      const r = await Promise.allSettled([
+        this.cargarKPIs(), this.cargarMesas(), this.cargarLotes(),
+        this.cargarUsuarios(), this.cargarConfiguracion()
       ]);
+      ['KPIs','Mesas','Lotes','Usuarios','Config'].forEach((n, i) => {
+        if (r[i].status === 'rejected') console.warn(`[ADMIN] Fallo ${n}:`, r[i].reason);
+      });
     },
 
-    /**
-     * Pestaña 1: Carga los KPIs de la jornada (GET /admin/kpis)
-     */
+    async cargarDashboard() {
+      await Promise.allSettled([this.cargarKPIs(), this.cargarMesas()]);
+    },
+
     async cargarKPIs() {
-      try {
-        const data = await api.get('/admin/kpis');
-        this.kpis = {
-          atendidos_hoy: data.atendidos_hoy || 0,
-          cancelados_hoy: data.cancelados_hoy || 0,
-          en_atencion_ahora: data.en_atencion_ahora || 0,
-          promedio_seg: data.promedio_seg,
-          mesas_activas: data.mesas_activas || 0,
-          mesas_pausadas: data.mesas_pausadas || 0,
-          vouchers_restantes: data.lote ? data.lote.vouchers_restantes : 0
-        };
-        if (data.lote) {
-          this.loteActivo = data.lote;
-        }
-      } catch (err) {
-        console.error('[ADMIN] Error al cargar KPIs:', err);
-      }
+      const data = await api.get('/admin/kpis');
+      this.kpis = {
+        atendidos_hoy:       data.atendidos_hoy || 0,
+        espera_promedio_min: data.promedio_seg != null ? (data.promedio_seg / 60).toFixed(1) : '--',
+        mesas_activas:       data.mesas_activas || 0,
+        vouchers_restantes:  data.lote ? (data.lote.numero_hasta - data.lote.ultimo_numero_llamado) : 0
+      };
+      if (data.lote) this.loteActivo = data.lote;
     },
 
-    /**
-     * Pestaña 1 y 3: Carga el listado de mesas (GET /mesas)
-     */
     async cargarMesas() {
-      try {
-        const res = await api.get('/mesas');
-        this.mesas = res.mesas || [];
-      } catch (err) {
-        console.error('[ADMIN] Error al cargar mesas:', err);
-      }
+      const res = await api.get('/mesas');
+      this.mesas = res.mesas || [];
     },
 
-    /**
-     * Pestaña 2: Carga los lotes de vouchers (GET /lotes y GET /lotes/activo)
-     */
     async cargarLotes() {
-      try {
-        const [resLotes, resActivo] = await Promise.allSettled([
-          api.get('/lotes'),
-          api.get('/lotes/activo')
-        ]);
-
-        if (resLotes.status === 'fulfilled') {
-          this.lotesHistorial = resLotes.value.lotes || [];
-        }
-
-        if (resActivo.status === 'fulfilled' && resActivo.value.lote) {
-          this.loteActivo = resActivo.value.lote;
-        } else {
-          this.loteActivo = null;
-        }
-      } catch (err) {
-        console.error('[ADMIN] Error al cargar lotes:', err);
-      }
+      const [rL, rA] = await Promise.allSettled([api.get('/lotes'), api.get('/lotes/activo')]);
+      if (rL.status === 'fulfilled') this.lotes = rL.value.lotes || [];
+      this.loteActivo = (rA.status === 'fulfilled' && rA.value.lote) ? rA.value.lote : null;
     },
 
-    /**
-     * Pestaña 4: Carga los usuarios del sistema (GET /admin/usuarios)
-     */
     async cargarUsuarios() {
-      try {
-        const res = await api.get('/admin/usuarios');
-        this.usuarios = res.usuarios || [];
-      } catch (err) {
-        console.error('[ADMIN] Error al cargar usuarios:', err);
-      }
+      const res = await api.get('/admin/usuarios');
+      this.usuarios = res.usuarios || [];
+      this.operadoresDisponibles = this.usuarios.filter(u => u.rol === 'operador' && u.activo);
     },
 
-    /**
-     * Pestaña 2: Extensión de turnos en caliente con validación estricta > 0
-     */
-    async extenderLote() {
+    async cargarConfiguracion() {
+      const res = await api.get('/admin/configuracion');
+      if (res && res.configuracion) {
+        const c = res.configuracion;
+        this.config.tiempo_max_atencion_min   = parseInt(c.tiempo_max_atencion_min   || '5',  10) || 0;
+        this.config.alerta_vouchers_restantes = parseInt(c.alerta_vouchers_restantes || '20', 10) || 20;
+        this.config.kiosko_web_activo         = c.kiosko_web_activo === 'true' || c.kiosko_web_activo === true;
+      }
+      this._configSnapshot = { ...this.config };
+    },
+
+    // =========================================================================
+    // LOTES
+    // =========================================================================
+
+    async crearLoteSubmit() {
+      const hasta = parseInt(this.nuevoLoteHasta, 10);
+      if (!hasta || hasta < 1) { showToast({ message: 'Ingrese un numero valido (min. 1)', type: 'warning' }); return; }
+      if (this._loading) return;
+      this._loading = true;
+      try {
+        const res = await api.post('/lotes', { numero_desde: 1, numero_hasta: hasta });
+        showToast({ message: `Lote ${res.lote.numero_lote} creado (1 al ${hasta})`, type: 'success' });
+        this.modalLote = false;
+        this.nuevoLoteHasta = 500;
+        await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
+      } catch (err) {
+        showToast({ message: err.mensaje || 'No se pudo crear el lote', type: 'danger' });
+      } finally { this._loading = false; }
+    },
+
+    async activarLote(loteId) {
+      if (this._loading) return;
+      this._loading = true;
+      try {
+        await api.patch(`/lotes/${loteId}/activar`);
+        showToast({ message: 'Lote activado', type: 'success' });
+        await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
+      } catch (err) {
+        showToast({ message: err.status === 409 ? 'El lote cambio. Vista actualizada.' : (err.mensaje || 'Error'), type: err.status === 409 ? 'warning' : 'danger' });
+        await this.cargarLotes();
+      } finally { this._loading = false; }
+    },
+
+    calcularProgresoLote() {
+      if (!this.loteActivo) return 0;
+      const total = (this.loteActivo.numero_hasta - this.loteActivo.numero_desde + 1);
+      const llamados = (this.loteActivo.ultimo_numero_llamado - this.loteActivo.numero_desde + 1);
+      if (total <= 0) return 0;
+      return Math.min(100, Math.max(0, Math.round((llamados / total) * 100)));
+    },
+
+    calcularVouchersEmitidos() {
+      if (!this.loteActivo) return 0;
+      return Math.max(0, this.loteActivo.ultimo_numero_llamado - this.loteActivo.numero_desde + 1);
+    },
+
+    calcularVouchersRestantesLote() {
+      if (!this.loteActivo) return 0;
+      return Math.max(0, this.loteActivo.numero_hasta - this.loteActivo.ultimo_numero_llamado);
+    },
+
+    abrirModalExtender() {
       if (!this.loteActivo) {
         showToast({ message: 'No hay un lote activo para extender', type: 'warning' });
         return;
       }
+      this.extensionCantidad = 50;
+      this.modalExtender = true;
+    },
 
-      // Validación estricta anti-negativos
+    async extenderLoteSubmit() {
+      if (!this.loteActivo) return;
       const cantidad = parseInt(this.extensionCantidad, 10);
-      if (isNaN(cantidad) || cantidad <= 0) {
-        showToast({ message: 'Ingrese una cantidad válida mayor a 0', type: 'danger' });
+      if (!cantidad || cantidad <= 0) {
+        showToast({ message: 'Cantidad a adicionar inválida', type: 'warning' });
         return;
       }
-
-      const nuevoLimite = this.loteActivo.numero_hasta + cantidad;
-      this.loadingAction = true;
-
+      if (this._loading) return;
+      this._loading = true;
+      const nuevoHasta = this.loteActivo.numero_hasta + cantidad;
       try {
-        const res = await api.patch(`/lotes/${this.loteActivo.id}/extender`, {
-          nuevo_numero_hasta: nuevoLimite
-        });
-
+        const res = await api.patch(`/lotes/${this.loteActivo.id}/extender`, { nuevo_numero_hasta: nuevoHasta });
         this.loteActivo = res.lote;
-        showToast({
-          message: `Lote ${res.lote.numero_lote} extendido: +${cantidad} turnos habilitados`,
-          type: 'success'
-        });
-        await this.cargarLotes();
-        await this.cargarKPIs();
+        this.loteAgotadoAlerta = false;
+        this.modalExtender = false;
+        showToast({ message: `Lote extendido +${cantidad} vouchers (Nuevo límite: #${nuevoHasta})`, type: 'success' });
+        await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
       } catch (err) {
-        console.error('[ADMIN] Error extendiendo lote:', err);
-        showToast({ message: err.message || 'Error al extender lote', type: 'danger' });
-      } finally {
-        this.loadingAction = false;
-      }
+        showToast({ message: err.status === 409 ? 'El lote cambió. Vista actualizada.' : (err.mensaje || 'Error al extender lote'), type: err.status === 409 ? 'warning' : 'danger' });
+        await this.cargarLotes();
+      } finally { this._loading = false; }
     },
 
-    /**
-     * Pestaña 2: Pausar el lote activo al finalizar la jornada
-     */
-    async pausarLote() {
+    async pausarLote(loteId) {
       if (!this.loteActivo) return;
-      if (!confirm(`¿Pausar el Lote ${this.loteActivo.numero_lote}? Podrá continuar mañana desde el turno ${this.loteActivo.ultimo_numero_llamado + 1}.`)) {
-        return;
-      }
-
+      if (this._loading) return;
+      this._loading = true;
       try {
-        await api.patch(`/lotes/${this.loteActivo.id}/pausar`);
-        showToast({ message: 'Lote pausado correctamente', type: 'info' });
-        await this.cargarLotes();
-        await this.cargarKPIs();
+        await api.patch(`/lotes/${loteId}/pausar`);
+        showToast({ message: 'Lote pausado.', type: 'info' });
+        await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
       } catch (err) {
-        showToast({ message: err.message, type: 'danger' });
-      }
+        showToast({ message: err.mensaje || 'Error al pausar lote', type: 'danger' });
+        await this.cargarLotes();
+      } finally { this._loading = false; }
     },
 
-    /**
-     * Pestaña 2: Activar un lote en estado pausado o preparado
-     */
-    async activarLote(loteId) {
-      try {
-        await api.patch(`/lotes/${loteId}/activar`);
-        showToast({ message: 'Lote activado con éxito', type: 'success' });
-        await this.cargarLotes();
-        await this.cargarKPIs();
-      } catch (err) {
-        showToast({ message: err.message, type: 'danger' });
-      }
+    async extenderLote(loteId) {
+      this.abrirModalExtender();
     },
 
-    /**
-     * Pestaña 2: Cierre definitivo de un lote
-     */
-    async cerrarLote() {
+    async cerrarLote(loteId) {
       if (!this.loteActivo) return;
-      if (!confirm(`¿Cerrar definitivamente el Lote ${this.loteActivo.numero_lote}? Esta acción es irreversible.`)) {
-        return;
-      }
-
+      if (this._loading) return;
+      this._loading = true;
       try {
-        await api.patch(`/lotes/${this.loteActivo.id}/cerrar`);
-        showToast({ message: 'Lote cerrado definitivamente', type: 'info' });
+        await api.patch(`/lotes/${loteId}/cerrar`);
+        showToast({ message: 'Lote cerrado definitivamente.', type: 'info' });
         this.loteActivo = null;
+        this.loteAgotadoAlerta = false;
+        await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
+      } catch (err) {
+        showToast({ message: err.status === 409 ? 'El lote cambió. Vista actualizada.' : (err.mensaje || 'Error'), type: err.status === 409 ? 'warning' : 'danger' });
         await this.cargarLotes();
-        await this.cargarKPIs();
-      } catch (err) {
-        showToast({ message: err.message, type: 'danger' });
-      }
+      } finally { this._loading = false; }
     },
 
-    /**
-     * Pestaña 2: Crear un nuevo lote correlativo
-     */
-    async crearNuevoLote() {
-      const cantidad = parseInt(this.nuevoLote.cantidad, 10);
-      if (isNaN(cantidad) || cantidad <= 0) {
-        showToast({ message: 'El total de vouchers debe ser mayor a 0', type: 'warning' });
-        return;
-      }
+    // =========================================================================
+    // MESAS
+    // =========================================================================
 
+    async asignarOperador(mesaId, operadorIdStr) {
+      const operadorId = operadorIdStr ? parseInt(operadorIdStr, 10) : null;
       try {
-        const res = await api.post('/lotes', {
-          numero_desde: 1,
-          numero_hasta: cantidad
-        });
-        showToast({ message: `Lote ${res.lote.numero_lote} creado con éxito (1 al ${cantidad})`, type: 'success' });
-        this.showNewLotModal = false;
-        this.nuevoLote.cantidad = 500;
-        await this.cargarLotes();
+        await api.patch(`/mesas/${mesaId}/asignar`, { operador_id: operadorId });
+        showToast({ message: 'Asignacion actualizada', type: 'success' });
+        await Promise.allSettled([this.cargarMesas(), this.cargarUsuarios()]);
       } catch (err) {
-        showToast({ message: err.message, type: 'danger' });
-      }
-    },
-
-    /**
-     * Pestaña 3: Asignar operador a mesa en caliente
-     */
-    async asignarOperadorAMesa(mesaId, event) {
-      const selectVal = event.target.value;
-      const operadorId = selectVal ? parseInt(selectVal, 10) : null;
-
-      try {
-        await api.patch(`/mesas/${mesaId}/asignar`, {
-          operador_id: operadorId
-        });
-        showToast({ message: 'Asignación de mesa actualizada', type: 'success' });
+        showToast({ message: err.mensaje || 'Error en asignacion', type: err.status === 409 ? 'warning' : 'danger' });
         await this.cargarMesas();
-      } catch (err) {
-        console.error('[ADMIN] Error asignando operador:', err);
-        showToast({ message: err.message || 'Conflicto de asignación', type: 'danger' });
-        await this.cargarMesas(); // Revertir select
       }
     },
 
-    /**
-     * Pestaña 3: Alternar estado de mesa (Pausar / Activar)
-     */
-    async toggleEstadoMesa(mesa) {
-      const nuevoEstado = mesa.estado === 'activa' ? 'pausada' : 'activa';
+    async activarMesaAdmin(mesaId) {
+      if (this._loading) return;
+      this._loading = true;
       try {
-        await api.patch(`/mesas/${mesa.id}/estado`, {
-          estado: nuevoEstado
-        });
-        showToast({ message: `Mesa ${mesa.numero} marcada como ${nuevoEstado}`, type: 'info' });
-        await this.cargarMesas();
-        await this.cargarKPIs();
+        await api.patch(`/mesas/${mesaId}/estado`, { estado: 'activa' });
+        showToast({ message: 'Mesa activada', type: 'success' });
+        await Promise.allSettled([this.cargarMesas(), this.cargarKPIs()]);
       } catch (err) {
-        showToast({ message: err.message, type: 'danger' });
-      }
+        showToast({ message: err.mensaje || 'Error al activar mesa', type: 'danger' });
+        await this.cargarMesas();
+      } finally { this._loading = false; }
     },
 
-    /**
-     * Pestaña 3: Crear nueva mesa de trabajo
-     */
-    async crearMesa() {
+    async pausarMesaAdmin(mesaId) {
+      if (this._loading) return;
+      this._loading = true;
+      try {
+        await api.patch(`/mesas/${mesaId}/estado`, { estado: 'pausada' });
+        showToast({ message: 'Mesa pausada', type: 'info' });
+        await Promise.allSettled([this.cargarMesas(), this.cargarKPIs()]);
+      } catch (err) {
+        if (err.codigo === 'mesa_con_turno_activo') {
+          showToast({ message: 'Mesa con turno activo. Finalicelo antes de pausar.', type: 'warning' });
+        } else {
+          showToast({ message: err.mensaje || 'Error al pausar mesa', type: 'danger' });
+        }
+        await this.cargarMesas();
+      } finally { this._loading = false; }
+    },
+
+    abrirModalMesa() {
+      const maxNum = this.mesas.reduce((max, m) => Math.max(max, parseInt(m.numero, 10) || 0), 0);
+      this.nuevaMesa = {
+        numero: maxNum + 1,
+        nombre: `Mesa ${maxNum + 1}`
+      };
+      this.modalMesa = true;
+    },
+
+    async crearMesaSubmit() {
       const num = parseInt(this.nuevaMesa.numero, 10);
-      const nom = this.nuevaMesa.nombre.trim();
-
-      if (!num || !nom) {
-        showToast({ message: 'Complete número y nombre de mesa', type: 'warning' });
+      if (!num || num < 1) {
+        showToast({ message: 'Número de mesa inválido (debe ser mayor a 0)', type: 'warning' });
         return;
       }
-
+      const nombre = (this.nuevaMesa.nombre || '').trim() || `Mesa ${num}`;
       try {
-        await api.post('/mesas', {
-          numero: num,
-          nombre: nom
-        });
-        showToast({ message: `Mesa ${num} creada correctamente`, type: 'success' });
-        this.nuevaMesa = { numero: '', nombre: '' };
-        this.showNewMesaModal = false;
+        await api.post('/mesas', { numero: num, nombre });
+        showToast({ message: `Mesa ${num} creada exitosamente`, type: 'success' });
+        this.modalMesa = false;
         await this.cargarMesas();
       } catch (err) {
-        showToast({ message: err.message, type: 'danger' });
+        showToast({ message: err.mensaje || 'Error al crear mesa', type: 'danger' });
       }
     },
 
-    /**
-     * Pestaña 4: Crear nuevo usuario
-     */
-    async crearUsuario() {
-      const { username, nombre_completo, password, rol } = this.nuevoUsuario;
-      if (!username.trim() || !nombre_completo.trim() || !password) {
-        showToast({ message: 'Complete todos los campos obligatorios', type: 'warning' });
-        return;
-      }
+    crearMesa() {
+      this.abrirModalMesa();
+    },
 
+    // =========================================================================
+    // USUARIOS
+    // =========================================================================
+
+    async crearUsuarioSubmit() {
+      const { nombre_completo, username, password, rol } = this.nuevoUsuario;
+      if (!nombre_completo.trim() || !username.trim() || !password) {
+        showToast({ message: 'Complete todos los campos', type: 'warning' }); return;
+      }
+      if (password.length < 8) {
+        showToast({ message: 'Contrasena de al menos 8 caracteres', type: 'warning' }); return;
+      }
+      if (this._loading) return;
+      this._loading = true;
       try {
         await api.post('/admin/usuarios', {
-          username: username.trim(),
-          nombre_completo: nombre_completo.trim(),
-          password,
-          rol
+          nombre_completo: nombre_completo.trim(), username: username.trim(), password, rol
         });
-        showToast({ message: 'Usuario creado con éxito', type: 'success' });
-        this.nuevoUsuario = { username: '', nombre_completo: '', password: '', rol: 'operador' };
-        this.showNewUserModal = false;
+        showToast({ message: `Usuario "${username}" creado`, type: 'success' });
+        this.nuevoUsuario = { nombre_completo: '', username: '', password: '', rol: 'operador' };
+        this.modalUsuario = false;
         await this.cargarUsuarios();
       } catch (err) {
-        showToast({ message: err.message, type: 'danger' });
-      }
+        showToast({ message: err.mensaje || 'Error al crear usuario', type: 'danger' });
+      } finally { this._loading = false; }
     },
 
-    /**
-     * Pestaña 4: Alternar estado activo de usuario
-     */
-    async toggleUsuarioActivo(u) {
+    // =========================================================================
+    // CONFIGURACION (INC-4)
+    // =========================================================================
+
+    async guardarConfiguracion() {
+      const tiempo = this.config.tiempo_max_atencion_min;
+      const alerta = this.config.alerta_vouchers_restantes;
+
+      if (tiempo !== 0 && (!Number.isInteger(tiempo) || tiempo < 0 || tiempo > 240)) {
+        showToast({ message: 'Tiempo de referencia: 0 (sin umbral) o entero 1-240', type: 'warning' }); return;
+      }
+      if (!Number.isInteger(alerta) || alerta < 1) {
+        showToast({ message: 'Alerta de vouchers debe ser entero >= 1', type: 'warning' }); return;
+      }
+      if (this._loading) return;
+      this._loading = true;
       try {
-        await api.patch(`/admin/usuarios/${u.id}`, {
-          activo: !u.activo
-        });
-        u.activo = !u.activo;
-        showToast({ message: `Usuario ${u.username} ${u.activo ? 'activado' : 'desactivado'}`, type: 'info' });
+        await Promise.all([
+          api.patch('/admin/configuracion/tiempo_max_atencion_min',   { valor: String(tiempo) }),
+          api.patch('/admin/configuracion/alerta_vouchers_restantes', { valor: String(alerta) }),
+          api.patch('/admin/configuracion/kiosko_web_activo',         { valor: String(this.config.kiosko_web_activo) })
+        ]);
+        this._configSnapshot = { ...this.config };
+        showToast({ message: 'Ajustes guardados', type: 'success' });
       } catch (err) {
-        showToast({ message: err.message, type: 'danger' });
-      }
+        if (this._configSnapshot) this.config = { ...this._configSnapshot };
+        showToast({ message: err.mensaje || 'Error al guardar. Valores revertidos.', type: 'danger' });
+      } finally { this._loading = false; }
     },
 
-    /**
-     * Pestaña 4: Abrir modal de edición de usuario
-     */
-    abrirEditarUsuario(u) {
-      this.usuarioAEditar = {
-        id: u.id,
-        username: u.username,
-        nombre_completo: u.nombre_completo,
-        password: '',
-        rol: u.rol
-      };
-      this.showEditUserModal = true;
-    },
+    // =========================================================================
+    // EXPORTAR CSV
+    // =========================================================================
 
-    /**
-     * Pestaña 4: Guardar cambios de usuario
-     */
-    async guardarEdicionUsuario() {
-      if (!this.usuarioAEditar.id) return;
-      const { id, nombre_completo, rol, password } = this.usuarioAEditar;
-      if (!nombre_completo.trim()) {
-        showToast({ message: 'El nombre no puede estar vacío', type: 'warning' });
-        return;
-      }
-
-      const payload = {
-        nombre_completo: nombre_completo.trim(),
-        rol
-      };
-      if (password && password.trim()) {
-        if (password.length < 8) {
-          showToast({ message: 'La nueva contraseña debe tener al menos 8 caracteres', type: 'warning' });
-          return;
-        }
-        payload.password = password;
-      }
-
+    async exportarCSV() {
+      if (this._loading) return;
+      this._loading = true;
       try {
-        await api.patch(`/admin/usuarios/${id}`, payload);
-        showToast({ message: 'Usuario actualizado correctamente', type: 'success' });
-        this.showEditUserModal = false;
-        await this.cargarUsuarios();
+        const fecha = new Date().toISOString().slice(0, 10);
+        const blob  = await api.getBlob(`/admin/reporte/csv?fecha=${fecha}`);
+        const url   = URL.createObjectURL(blob);
+        const a     = document.createElement('a');
+        a.href = url; a.download = `turnero_reporte_${fecha}.csv`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        showToast({ message: `Reporte ${fecha} descargado`, type: 'success' });
       } catch (err) {
-        showToast({ message: err.message || 'Error al editar usuario', type: 'danger' });
-      }
+        showToast({ message: err.mensaje || 'Error al generar CSV', type: 'danger' });
+      } finally { this._loading = false; }
     },
 
-    /**
-     * Pestaña 4: Carga los parámetros del sistema (GET /admin/configuracion)
-     */
-    async cargarConfiguracion() {
-      try {
-        const res = await api.get('/admin/configuracion');
-        if (res && res.configuracion) {
-          this.config.kiosko_web_activo = res.configuracion.kiosko_web_activo === 'true';
-          this.config.alerta_vouchers_restantes = parseInt(res.configuracion.alerta_vouchers_restantes || '20', 10);
-          this.config.tiempo_max_atencion_min = parseInt(res.configuracion.tiempo_max_atencion_min || '5', 10);
-        }
-        const vozGuardada = localStorage.getItem('turnero_voz_habilitada');
-        this.config.voz_habilitada = vozGuardada !== null ? vozGuardada === 'true' : true;
-      } catch (err) {
-        console.warn('[ADMIN] Error al cargar configuración:', err);
-      }
+    // =========================================================================
+    // SEMAFORO (INC-4)
+    // =========================================================================
+
+    /** Verde <= umbral; Ambar <= 1.5x; Rojo > 1.5x. 0 = sin umbral (gris). */
+    semaforoClass(tiempoMin) {
+      const u = this.config.tiempo_max_atencion_min || 0;
+      if (!u || !tiempoMin) return 'bg-slate-300';
+      if (tiempoMin <= u)       return 'bg-emerald-500';
+      if (tiempoMin <= u * 1.5) return 'bg-amber-500';
+      return 'bg-rose-500';
     },
 
-    /**
-     * Pestaña 4: Actualizar un switch o parámetro de configuración
-     */
-    async actualizarConfig(clave, valor) {
-      if (clave === 'voz_habilitada') {
-        this.config.voz_habilitada = valor;
-        localStorage.setItem('turnero_voz_habilitada', String(valor));
-        showToast({ message: `Voz de llamados ${valor ? 'activada' : 'desactivada'}`, type: 'info' });
-        return;
-      }
-
-      try {
-        await api.patch(`/admin/configuracion/${clave}`, { valor: String(valor) });
-        this.config[clave] = (valor === 'true' || valor === true) ? true : (valor === 'false' || valor === false ? false : valor);
-        showToast({ message: 'Parámetro actualizado en el servidor', type: 'success' });
-      } catch (err) {
-        showToast({ message: err.message || 'Error al actualizar parámetro', type: 'danger' });
-      }
+    _actualizarAlertaLote() {
+      if (!this.loteActivo) { this.loteAgotadoAlerta = false; return; }
+      const r = this.loteActivo.numero_hasta - (this.loteActivo.ultimo_numero_llamado || 0);
+      this.loteAgotadoAlerta = r <= 0 || this.loteActivo.estado === 'agotado';
     },
 
-    /**
-     * Pestaña 4: Descarga del reporte CSV diario
-     */
-    descargarCSV() {
-      const fecha = new Date().toISOString().slice(0, 10);
-      window.location.href = `/admin/reporte/csv?fecha=${fecha}`;
-    },
+    // =========================================================================
+    // WEBSOCKET
+    // =========================================================================
 
-    /**
-     * Helper para formatear segundos en mm:ss
-     */
-    formatearTiempo(seg) {
-      if (!seg && seg !== 0) return '--:--';
-      return formatTimer(seg);
-    },
-
-    /**
-     * WebSocket: Inicialización de canal 'admin:all'
-     */
     initWebSocket() {
       const token = api.getToken();
       if (!token) return;
 
-      this.ws = new TurneroWSClient({
-        token,
-        canal: 'admin:all'
+      this.ws = new TurneroWSClient({ token, canal: 'admin:all' });
+      this.ws.onStatusChange(({ status }) => { this.wsConnected = status === 'CONECTADO'; });
+
+      this.ws.on('snapshot', async () => { await this.cargarTodo(); this._actualizarAlertaLote(); });
+
+      let _kpiPending = false;
+      const recargarKPIs = async () => {
+        if (_kpiPending) return;
+        _kpiPending = true;
+        await Promise.allSettled([this.cargarKPIs(), this.cargarMesas()]);
+        _kpiPending = false;
+      };
+
+      this.ws.on('kpi_update',       recargarKPIs);
+      this.ws.on('turno_llamado',    recargarKPIs);
+      this.ws.on('mesa_actualizada', recargarKPIs);
+
+      this.ws.on('lote_agotado', async () => {
+        this.loteAgotadoAlerta = true;
+        showToast({ message: 'Lote agotado. Extiendalo o cree uno nuevo.', type: 'danger', duration: 0 });
+        await this.cargarKPIs();
       });
 
-      this.ws.onStatusChange(({ status }) => {
-        this.wsConnected = status === 'CONECTADO';
+      this.ws.on('alerta_vouchers_restantes', (p) => {
+        showToast({ message: `ALERTA: Quedan solo ${p?.vouchers_restantes ?? '?'} vouchers`, type: 'warning', duration: 7000 });
       });
 
-      // Escuchar eventos en vivo del sistema
-      this.ws.on('turno_llamado', () => {
-        this.cargarKPIs();
-        this.cargarMesas();
-      });
-
-      this.ws.on('mesa_actualizada', () => {
-        this.cargarKPIs();
-        this.cargarMesas();
-      });
-
-      this.ws.on('lote_extendido', () => {
-        this.cargarLotes();
-        this.cargarKPIs();
-      });
-
-      this.ws.on('lote_pausado', () => {
-        this.cargarLotes();
-        this.cargarKPIs();
-      });
-
-      this.ws.on('lote_activado', () => {
-        this.cargarLotes();
-        this.cargarKPIs();
-      });
-
-      this.ws.on('lote_cerrado', () => {
-        this.cargarLotes();
-        this.cargarKPIs();
-      });
-
-      this.ws.on('config_actualizada', () => {
-        this.cargarConfiguracion();
-      });
-
-      this.ws.on('lote_agotado', () => {
-        showToast({ message: 'ALERTA: El lote activo se ha agotado', type: 'warning', duration: 7000 });
-        this.cargarKPIs();
-      });
+      const recargarLotes = async () => { await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]); };
+      this.ws.on('lote_extendido', async () => { this.loteAgotadoAlerta = false; await recargarLotes(); });
+      this.ws.on('lote_pausado',   recargarLotes);
+      this.ws.on('lote_activado',  recargarLotes);
+      this.ws.on('lote_cerrado',   async () => { this.loteAgotadoAlerta = false; await recargarLotes(); });
+      this.ws.on('config_actualizada', () => this.cargarConfiguracion());
 
       this.ws.connect();
     },
 
-    /**
-     * Cierre de sesión del administrador
-     */
+    // =========================================================================
+    // SESION
+    // =========================================================================
+
     async logout() {
-      try {
-        if (this.ws) this.ws.disconnect();
-        await api.post('/auth/logout');
-      } catch {}
-      api.clearSession(true);
+      if (this.ws) { this.ws.disconnect(); this.ws = null; }
+      await api.logout(true);
     }
   };
 }
 
 // Registro seguro para Alpine.js
 function registerAdminWithAlpine() {
-  if (window.Alpine) {
-    window.Alpine.data('adminView', adminView);
-  }
+  if (window.Alpine) window.Alpine.data('adminView', adminView);
 }
 
 if (window.Alpine) {
   registerAdminWithAlpine();
 } else {
   document.addEventListener('alpine:init', registerAdminWithAlpine);
-}
-
-if (typeof window !== 'undefined') {
-  window.adminView = adminView;
 }
