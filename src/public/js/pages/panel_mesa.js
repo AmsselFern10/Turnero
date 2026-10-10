@@ -1,0 +1,462 @@
+/**
+ * ==============================================================================
+ * PANEL_MESA.JS — Controlador de Operador de Ventanilla
+ * Sistema Turnero de Matrículas 2026 (v2.1)
+ *
+ * Cumple con:
+ * - RF-TURN-01 a RF-TURN-05: 1 Clic Atómico (Finaliza anterior + Llama siguiente)
+ * - RF-MESA-01 a RF-MESA-09: Pantalla sin scroll, cronómetro continuo y atajos
+ * - RF-WS-02: Canal segmentado mesa:<id> con reconexión y snapshot
+ * ==============================================================================
+ */
+
+import { api } from '../api.js';
+import { TurneroWSClient } from '../ws-client.js';
+import { formatTimer, showToast } from '../utils.js';
+
+export function panelMesaView() {
+  return {
+    // Datos de la mesa y del operador
+    mesa: {
+      id: null,
+      numero: null,
+      nombre: ''
+    },
+    operador: {
+      id: null,
+      username: '',
+      nombre_completo: '',
+      rol: ''
+    },
+
+    // Estado del turno en curso
+    turnoActual: null,
+    cronometro: '00:00',
+    cronometroTimer: null,
+
+    // Métricas y proyección
+    proximoNumero: null,
+    atendidosHoy: 0,
+    vouchersRestantes: 0,
+    loteActivo: null,
+
+    // Estados de pantalla y control
+    mesaPausada: false,
+    motivoPausa: 'Descanso programado / Almuerzo',
+    loadingAction: false,
+
+    // Conectividad y reloj
+    ws: null,
+    wsConnected: false,
+    relojHora: '--:--:--',
+    relojFecha: '',
+    relojTimer: null,
+
+    /**
+     * Inicialización del panel de ventanilla
+     */
+    async init() {
+      // 1. Validar autenticación
+      const user = api.getUser();
+      if (!user) {
+        console.warn('[MESA] Sesión no válida. Redirigiendo al login...');
+        api.clearSession(true);
+        return;
+      }
+      this.operador = {
+        id: user.id,
+        username: user.username,
+        nombre_completo: user.nombre || user.nombre_completo || user.username,
+        rol: user.rol
+      };
+
+      // 2. Determinar mesa asignada (vía sessionStorage o query param)
+      const urlParams = new URLSearchParams(window.location.search);
+      const queryMesaId = urlParams.get('mesa_id');
+
+      let mesaData = null;
+      try {
+        const raw = sessionStorage.getItem('turnero_mesa') || sessionStorage.getItem('mesa_seleccionada');
+        if (raw) mesaData = JSON.parse(raw);
+      } catch {}
+
+      if (!mesaData && queryMesaId) {
+        mesaData = { id: parseInt(queryMesaId, 10), numero: parseInt(queryMesaId, 10), nombre: `Mesa ${queryMesaId}` };
+      }
+
+      if (!mesaData || !mesaData.id) {
+        console.warn('[MESA] No hay mesa seleccionada. Redirigiendo a selección de mesas...');
+        window.location.href = '/index.html';
+        return;
+      }
+
+      this.mesa = mesaData;
+
+      // 3. Iniciar reloj digital institucional
+      this._initClock();
+
+      // 4. Iniciar atajos de teclado para ergonomía
+      this._initKeyboardShortcuts();
+
+      // 5. Cargar snapshot inicial desde el backend
+      await this.cargarEstado();
+
+      // 6. Conectar WebSocket al canal segmentado de la mesa
+      this.initWebSocket();
+    },
+
+    /**
+     * Restaura el estado de la mesa y el turno en curso (GET /turnos/estado?mesa_id=X)
+     */
+    async cargarEstado() {
+      try {
+        const [resEstado, resMesas] = await Promise.allSettled([
+          api.get(`/turnos/estado?mesa_id=${this.mesa.id}`),
+          api.get('/mesas')
+        ]);
+
+        if (resEstado.status === 'fulfilled') {
+          const data = resEstado.value;
+          this.turnoActual = data.turno_actual || null;
+          this.atendidosHoy = data.atendidos_hoy || 0;
+          this.proximoNumero = data.proximo_numero || null;
+          this.loteActivo = data.lote || null;
+          this.vouchersRestantes = data.lote
+            ? Math.max(0, data.lote.numero_hasta - data.lote.ultimo_numero_llamado)
+            : 0;
+
+          if (this.turnoActual && this.turnoActual.llamado_en) {
+            this.iniciarCronometro(this.turnoActual.llamado_en);
+          } else {
+            this.detenerCronometro();
+          }
+        }
+
+        if (resMesas.status === 'fulfilled') {
+          const todas = resMesas.value.mesas || [];
+          const actual = todas.find(m => m.id === this.mesa.id);
+          if (actual) {
+            this.mesaPausada = actual.estado === 'pausada';
+            if (actual.nombre) this.mesa.nombre = actual.nombre;
+          }
+        }
+      } catch (err) {
+        console.error('[MESA] Error al cargar estado inicial:', err);
+      }
+    },
+
+    /**
+     * Acción 1: "Llamar Siguiente" (1 Clic Atómico — POST /turnos/llamar)
+     */
+    async llamarSiguiente() {
+      if (this.loadingAction || this.mesaPausada) return;
+
+      this.loadingAction = true;
+      try {
+        const res = await api.post('/turnos/llamar', {
+          mesa_id: this.mesa.id
+        });
+
+        const { turno, proximo_numero, vouchers_restantes } = res;
+        this.turnoActual = turno;
+        this.proximoNumero = proximo_numero;
+        this.vouchersRestantes = vouchers_restantes;
+        this.atendidosHoy++;
+
+        // Iniciar cronómetro desde la marca temporal devuelta por la BD
+        this.iniciarCronometro(turno.llamado_en);
+
+        showToast({
+          message: `Llamando al Turno #${turno.numero} en Mesa ${this.mesa.numero}`,
+          type: 'success'
+        });
+
+      } catch (err) {
+        console.error('[MESA] Error al llamar siguiente:', err);
+        const msg = err.message || '';
+        if (msg.includes('409') || msg.toLowerCase().includes('agotado')) {
+          showToast({
+            message: 'ALERTA: El lote de vouchers se ha agotado. Notifique al supervisor.',
+            type: 'warning',
+            duration: 7000
+          });
+        } else {
+          showToast({
+            message: msg || 'No se pudo llamar al siguiente turno',
+            type: 'danger'
+          });
+        }
+      } finally {
+        this.loadingAction = false;
+      }
+    },
+
+    /**
+     * Acción 2: Cronómetro de atención continuo (diferencia real contra llamado_en)
+     */
+    iniciarCronometro(llamadoEn) {
+      this.detenerCronometro();
+      if (!llamadoEn) {
+        this.cronometro = '00:00';
+        return;
+      }
+
+      const inicioTimestamp = new Date(llamadoEn).getTime();
+
+      const tick = () => {
+        const ahora = Date.now();
+        const segundos = Math.max(0, Math.floor((ahora - inicioTimestamp) / 1000));
+        this.cronometro = formatTimer(segundos);
+      };
+
+      tick();
+      this.cronometroTimer = setInterval(tick, 1000);
+    },
+
+    detenerCronometro() {
+      if (this.cronometroTimer) {
+        clearInterval(this.cronometroTimer);
+        this.cronometroTimer = null;
+      }
+      this.cronometro = '00:00';
+    },
+
+    /**
+     * Acción 3: "No se presentó" (POST /turnos/:id/cancelar)
+     */
+    async cancelarTurno() {
+      if (!this.turnoActual || this.loadingAction) return;
+
+      const num = this.turnoActual.numero;
+      if (!confirm(`¿Marcar el Turno #${num} como 'No se presentó'? Esta acción cancela la atención actual.`)) {
+        return;
+      }
+
+      this.loadingAction = true;
+      try {
+        await api.post(`/turnos/${this.turnoActual.id}/cancelar`, {
+          mesa_id: this.mesa.id
+        });
+
+        showToast({
+          message: `Turno #${num} marcado como No se presentó`,
+          type: 'info'
+        });
+
+        this.turnoActual = null;
+        this.detenerCronometro();
+        await this.cargarEstado();
+      } catch (err) {
+        console.error('[MESA] Error al cancelar turno:', err);
+        showToast({ message: err.message || 'Error al cancelar turno', type: 'danger' });
+      } finally {
+        this.loadingAction = false;
+      }
+    },
+
+    /**
+     * Acción 4: "Re-llamar Turno" (POST /turnos/:id/rellamar)
+     */
+    async rellamarTurno() {
+      if (!this.turnoActual || this.loadingAction) return;
+
+      this.loadingAction = true;
+      try {
+        await api.post(`/turnos/${this.turnoActual.id}/rellamar`, {
+          mesa_id: this.mesa.id
+        });
+
+        showToast({
+          message: `Turno #${this.turnoActual.numero} re-llamado en pantalla TV`,
+          type: 'info'
+        });
+      } catch (err) {
+        console.error('[MESA] Error al re-llamar:', err);
+        showToast({ message: err.message || 'Error al re-llamar turno', type: 'danger' });
+      } finally {
+        this.loadingAction = false;
+      }
+    },
+
+    /**
+     * Acción 5: Pausar Mesa (PATCH /mesas/:id/estado)
+     */
+    async pausarMesa() {
+      try {
+        await api.patch(`/mesas/${this.mesa.id}/estado`, {
+          estado: 'pausada'
+        });
+        this.mesaPausada = true;
+        showToast({ message: `Mesa ${this.mesa.numero} en pausa`, type: 'info' });
+      } catch (err) {
+        showToast({ message: err.message || 'Error al pausar mesa', type: 'danger' });
+      }
+    },
+
+    /**
+     * Acción 5: Reanudar Atención (PATCH /mesas/:id/estado)
+     */
+    async reanudarMesa() {
+      try {
+        await api.patch(`/mesas/${this.mesa.id}/estado`, {
+          estado: 'activa'
+        });
+        this.mesaPausada = false;
+        showToast({ message: `Mesa ${this.mesa.numero} activa para atención`, type: 'success' });
+      } catch (err) {
+        showToast({ message: err.message || 'Error al reanudar mesa', type: 'danger' });
+      }
+    },
+
+    /**
+     * Liberar mesa y volver a selección
+     */
+    cambiarMesa() {
+      sessionStorage.removeItem('turnero_mesa');
+      sessionStorage.removeItem('mesa_seleccionada');
+      window.location.href = '/index.html';
+    },
+
+    /**
+     * Cierre de sesión seguro del operador
+     */
+    async logout() {
+      try {
+        if (this.ws) this.ws.disconnect();
+        await api.post('/auth/logout');
+      } catch {}
+      api.clearSession(true);
+    },
+
+    /**
+     * Atajos de teclado para evitar fatiga motriz en jornadas continuas
+     * - Barra Espaciadora: Llamar Siguiente
+     * - Tecla N: No se presentó
+     * - Tecla R: Re-llamar
+     */
+    _initKeyboardShortcuts() {
+      window.addEventListener('keydown', (e) => {
+        // Ignorar si el usuario está escribiendo en un input, textarea o select
+        const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
+        if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
+          return;
+        }
+
+        // Barra Espaciadora -> Llamar Siguiente
+        if (e.code === 'Space') {
+          e.preventDefault();
+          this.llamarSiguiente();
+          return;
+        }
+
+        // Tecla N -> No se presentó
+        if (e.key === 'n' || e.key === 'N') {
+          e.preventDefault();
+          this.cancelarTurno();
+          return;
+        }
+
+        // Tecla R -> Re-llamar
+        if (e.key === 'r' || e.key === 'R') {
+          e.preventDefault();
+          this.rellamarTurno();
+          return;
+        }
+      });
+    },
+
+    /**
+     * Reloj en vivo sincronizado al segundo
+     */
+    _initClock() {
+      const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+      const update = () => {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        this.relojHora = `${hh}:${mm}:${ss}`;
+
+        const dia = String(now.getDate()).padStart(2, '0');
+        const mes = meses[now.getMonth()];
+        const anio = now.getFullYear();
+        this.relojFecha = `${dia} ${mes} ${anio}`;
+      };
+
+      update();
+      this.relojTimer = setInterval(update, 1000);
+    },
+
+    /**
+     * Acción 6: Suscripción WebSocket al canal mesa:<id>
+     */
+    initWebSocket() {
+      const token = api.getToken();
+      if (!token || !this.mesa.id) return;
+
+      this.ws = new TurneroWSClient({
+        token,
+        canal: `mesa:${this.mesa.id}`,
+        mesaId: this.mesa.id
+      });
+
+      this.ws.onStatusChange(({ status }) => {
+        this.wsConnected = status === 'CONECTADO';
+      });
+
+      // Evento de turno llamado para esta mesa
+      this.ws.on('turno_llamado', (payload) => {
+        if (payload && payload.turno) {
+          this.turnoActual = payload.turno;
+          this.proximoNumero = payload.proximo_numero;
+          this.vouchersRestantes = payload.vouchers_restantes;
+          this.iniciarCronometro(payload.turno.llamado_en);
+        }
+      });
+
+      // Evento si el administrador pausa o activa la mesa remotamente
+      this.ws.on('mesa_pausada', () => {
+        this.mesaPausada = true;
+      });
+
+      this.ws.on('mesa_activada', () => {
+        this.mesaPausada = false;
+      });
+
+      // Snapshot tras reconexión por micro-corte
+      this.ws.on('snapshot', (payload) => {
+        if (payload) {
+          if (payload.turno_actual) {
+            this.turnoActual = payload.turno_actual;
+            this.iniciarCronometro(payload.turno_actual.llamado_en);
+          } else {
+            this.turnoActual = null;
+            this.detenerCronometro();
+          }
+          if (payload.atendidos_hoy !== undefined) this.atendidosHoy = payload.atendidos_hoy;
+          if (payload.proximo_numero !== undefined) this.proximoNumero = payload.proximo_numero;
+        }
+      });
+
+      this.ws.connect();
+    }
+  };
+}
+
+// Registro seguro para Alpine.js
+function registerPanelMesaWithAlpine() {
+  if (window.Alpine) {
+    window.Alpine.data('panelMesa', panelMesaView);
+    window.Alpine.data('panelMesaView', panelMesaView);
+  }
+}
+
+if (window.Alpine) {
+  registerPanelMesaWithAlpine();
+} else {
+  document.addEventListener('alpine:init', registerPanelMesaWithAlpine);
+}
+
+if (typeof window !== 'undefined') {
+  window.panelMesaView = panelMesaView;
+}
