@@ -106,11 +106,25 @@ module.exports = async function mesasRoutes (fastify) {
         [mesaId, request.user.id, request.ip]
       )
 
-      // Notificar a todos los clientes
+      // Notificar a todos los clientes admin
       await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
+      // Notificar a logins abiertos: la lista de mesas disponibles cambia
+      await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', {
+        mesa,
+        accion: operador_id ? 'tomada' : 'liberada'
+      })
+      // Si hay un operador asignado: notificar al login para auto-redirigir al operador afectado.
+      // Se emite a tv:global porque el login escucha ese canal sin auth.
+      if (operador_id && mesa.estado === 'activa') {
+        await fastify.broadcast('tv:global', 'operador_asignado_por_admin', {
+          operador_id: Number(operador_id),
+          mesa: { id: mesa.id, numero: mesa.numero, nombre: mesa.nombre, estado: mesa.estado }
+        })
+      }
 
       return reply.send({ mesa })
     } catch (err) {
+
       if (err.code === '23505') {
         return reply.status(409).send({
           error: 'Este operador ya se encuentra asignado a otra mesa (conflicto de concurrencia).'

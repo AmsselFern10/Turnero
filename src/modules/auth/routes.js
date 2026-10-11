@@ -191,7 +191,7 @@ module.exports = async function authRoutes (fastify) {
   })
 
   // ── POST /auth/seleccionar-mesa — Check-and-set atomico (INC-4) ───────────
-  // Solo rol 'operador'. Admin/supervisor van a admin.html directamente.
+  // Todos los roles pueden operar una mesa (operador, admin, supervisor).
   fastify.post('/seleccionar-mesa', {
     preHandler: [fastify.authenticate],
     schema: {
@@ -207,13 +207,6 @@ module.exports = async function authRoutes (fastify) {
   }, async (request, reply) => {
     const { mesa_id } = request.body
     const userId = request.user.id
-
-    // Solo operadores pueden auto-asignarse a una mesa
-    if (request.user.rol !== 'operador') {
-      return reply.status(403).send({
-        error: { codigo: 'sin_permiso', mensaje: 'No tiene permiso para esta accion.' }
-      })
-    }
 
     const client = await fastify.db.connect()
     try {
@@ -283,8 +276,13 @@ module.exports = async function authRoutes (fastify) {
 
       await client.query('COMMIT')
 
-      // Notificar al panel admin en tiempo real
+      // Notificar al panel admin (actualiza tabla de mesas)
       await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa: mesaAsignada })
+      // Notificar a TODOS los logins abiertos: alguien tomó esta mesa — actualizar grilla
+      await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', {
+        mesa: mesaAsignada,
+        accion: 'tomada'
+      })
 
       return reply.status(200).send({ mesa: mesaAsignada })
 
@@ -313,25 +311,22 @@ module.exports = async function authRoutes (fastify) {
     }
   })
 
-  // ── POST /auth/liberar-mesa — Operador libera su mesa (INC-3) ─────────────
-  // Llamado cuando el operador elige "Cambiar de mesa" en el modal.
+  // ── POST /auth/liberar-mesa — El usuario libera su mesa (INC-3) ──────────
+  // Todos los roles que operan una mesa pueden liberarla.
+  // Al liberar: la mesa vuelve a 'activa' sin operador → reaparece en la grilla.
+
   fastify.post('/liberar-mesa', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const userId = request.user.id
 
-    if (request.user.rol !== 'operador') {
-      return reply.status(403).send({
-        error: { codigo: 'sin_permiso', mensaje: 'No tiene permiso para esta accion.' }
-      })
-    }
-
     const client = await fastify.db.connect()
     try {
       await client.query('BEGIN')
 
+      // La mesa vuelve a 'activa' (disponible) al liberarse — no 'inactiva'
       const { rows: [mesa] } = await client.query(
-        `UPDATE mesas SET operador_id = NULL, estado = 'inactiva'
+        `UPDATE mesas SET operador_id = NULL, estado = 'activa'
          WHERE operador_id = $1
          RETURNING id, numero, nombre, estado`,
         [userId]
@@ -339,7 +334,6 @@ module.exports = async function authRoutes (fastify) {
 
       if (!mesa) {
         await client.query('ROLLBACK')
-        // No habia mesa asignada — 200 idempotente
         return reply.status(200).send({ liberada: false })
       }
 
@@ -351,7 +345,12 @@ module.exports = async function authRoutes (fastify) {
 
       await client.query('COMMIT')
 
+      // Notificar a admin y a todos los logins en grilla
       await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
+      await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', {
+        mesa,
+        accion: 'liberada'
+      })
 
       return reply.status(200).send({ liberada: true, mesa })
 
