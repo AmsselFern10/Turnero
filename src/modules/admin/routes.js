@@ -82,7 +82,7 @@ module.exports = async function adminRoutes (fastify) {
           username:       { type: 'string', minLength: 3, maxLength: 30 },
           nombre_completo:{ type: 'string', minLength: 2, maxLength: 100 },
           password:       { type: 'string', minLength: 8, maxLength: 128 },
-          rol:            { type: 'string', enum: ['operador', 'admin', 'admin'] }
+          rol:            { type: 'string', enum: ['operador', 'admin'] }
         }
       }
     }
@@ -116,7 +116,7 @@ module.exports = async function adminRoutes (fastify) {
         properties: {
           nombre_completo: { type: 'string', minLength: 2, maxLength: 100 },
           username:        { type: 'string', minLength: 3, maxLength: 50 },
-          rol:             { type: 'string', enum: ['operador', 'admin', 'admin'] },
+          rol:             { type: 'string', enum: ['operador', 'admin'] },
           activo:          { type: 'boolean' },
           password:        { type: 'string', minLength: 8, maxLength: 128 }
         }
