@@ -54,8 +54,8 @@ function validarCanalAutorizado (user, canalSolicitado, queryMesaId) {
     return 'tv:global'
   }
 
-  // 2. Administrador o supervisor: acceso a admin:all, tv:global o cualquier mesa
-  if (user.rol === 'admin' || user.rol === 'supervisor') {
+  // 2. Administrador: acceso a admin:all, tv:global o cualquier mesa
+  if (user.rol === 'admin' || user.rol === 'admin') {
     if (canalSolicitado === 'admin:all' || canalSolicitado === 'tv:global' || canalSolicitado.startsWith('mesa:')) {
       return canalSolicitado
     }
@@ -572,3 +572,4 @@ module.exports.broadcastLocal = broadcastLocal
 module.exports.suscribir = suscribir
 module.exports.desuscribir = desuscribir
 module.exports.validarCanalAutorizado = validarCanalAutorizado
+

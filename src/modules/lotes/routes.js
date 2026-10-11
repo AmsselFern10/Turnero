@@ -9,7 +9,7 @@ module.exports = async function lotesRoutes (fastify) {
 
   // ── GET /lotes — Listar todos los lotes ───────────────────────────────────
   fastify.get('/', {
-    preHandler: [fastify.authorizeRol('admin', 'supervisor')]
+    preHandler: [fastify.authorizeRol('admin')]
   }, async (request, reply) => {
     const { rows } = await fastify.db.query(
       `SELECT lv.id, lv.numero_lote, lv.numero_desde, lv.numero_hasta,
@@ -257,3 +257,4 @@ module.exports = async function lotesRoutes (fastify) {
     })
   })
 }
+

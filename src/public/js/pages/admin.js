@@ -123,7 +123,7 @@ export function adminView() {
     async init() {
       try {
         const { usuario } = await api.get('/auth/me');
-        if (!usuario || (usuario.rol !== 'admin' && usuario.rol !== 'supervisor')) {
+        if (!usuario || (usuario.rol !== 'admin' && usuario.rol !== 'admin')) {
           api.clearSession(true);
           return;
         }
@@ -862,3 +862,4 @@ if (window.Alpine) {
 } else {
   document.addEventListener('alpine:init', registerAdminWithAlpine);
 }
+

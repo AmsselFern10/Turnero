@@ -484,7 +484,7 @@
           <div>
             <label for="cfg-alerta-vouchers" class="font-semibold block mb-1">Alerta turnos restantes:</label>
             <input id="cfg-alerta-vouchers" type="number" x-model.number="config.alerta_vouchers_restantes" min="1" class="input-field font-mono-num">
-            <p class="text-[11px] text-slate-400 mt-1">Umbral para notificar al supervisor.</p>
+            <p class="text-[11px] text-slate-400 mt-1">Umbral para notificar al admin.</p>
           </div>
           <div class="flex items-center space-x-2 pt-5">
             <input id="cfg-voz-activa" type="checkbox" x-model="config.voz_anuncio_activa" class="rounded border-slate-300 text-blue-600">
@@ -505,7 +505,7 @@
             <select x-model="filtroUsuarios" aria-label="Filtrar usuarios" class="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-slate-700 font-medium cursor-pointer">
               <option value="todos">Todos los usuarios</option>
               <option value="operador">Operadores</option>
-              <option value="supervisor">Supervisores</option>
+              
               <option value="admin">Administradores</option>
               <option value="activos">Solo Activos</option>
               <option value="inactivos">Solo Inactivos</option>
@@ -686,7 +686,7 @@
         <div>
           <label for="nueva-mesa-nombre" class="font-semibold text-slate-700 block mb-1">Nombre / Identificador de Ventanilla:</label>
           <input id="nueva-mesa-nombre" type="text" x-model="nuevaMesa.nombre" placeholder="ej. Mesa 5 — Matrícula" class="input-field text-sm">
-          <p class="text-[11px] text-slate-400 mt-1">Nombre descriptivo que verán los operadores y supervisores.</p>
+          <p class="text-[11px] text-slate-400 mt-1">Nombre descriptivo que verán los operadores y admines.</p>
         </div>
         <div class="flex justify-end space-x-2 pt-3 border-t border-slate-100">
           <button type="button" @click="modalMesa = false" class="btn-ghost btn-sm">Cancelar</button>
@@ -729,7 +729,7 @@
           <label for="usr-rol" class="font-semibold text-slate-700 block mb-1">Rol en el sistema:</label>
           <select id="usr-rol" x-model="nuevoUsuario.rol" class="select-field text-sm">
             <option value="operador">Operador de Ventanilla</option>
-            <option value="supervisor">Supervisor</option>
+            
             <option value="admin">Administrador General</option>
           </select>
         </div>
@@ -783,7 +783,7 @@
         <div><label for="edit-usr-nombre" class="font-semibold block mb-1">Nombre completo:</label><input id="edit-usr-nombre" type="text" x-model="usuarioEditando.nombre_completo" required class="input-field"></div>
         <div><label for="edit-usr-username" class="font-semibold block mb-1">Usuario / DNI:</label><input id="edit-usr-username" type="text" x-model="usuarioEditando.username" required class="input-field font-mono-num"></div>
         <div><label for="edit-usr-password" class="font-semibold block mb-1">Nueva contraseña (opcional):</label><input id="edit-usr-password" type="password" x-model="usuarioEditando.password" placeholder="Dejar vacío si no cambia" class="input-field"></div>
-        <div><label for="edit-usr-rol" class="font-semibold block mb-1">Rol:</label><select id="edit-usr-rol" x-model="usuarioEditando.rol" class="select-field"><option value="operador">Operador</option><option value="supervisor">Supervisor</option><option value="admin">Admin</option></select></div>
+        <div><label for="edit-usr-rol" class="font-semibold block mb-1">Rol:</label><select id="edit-usr-rol" x-model="usuarioEditando.rol" class="select-field"><option value="operador">Operador</option><option value="admin">Admin</option></select></div>
         <div class="flex items-center space-x-2 pt-1"><input id="edit-usr-activo" type="checkbox" x-model="usuarioEditando.activo" class="rounded border-slate-300 text-blue-600"><label for="edit-usr-activo" class="font-semibold">Usuario Activo</label></div>
         <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100"><button type="button" @click="modalEditarUsuario = false" class="btn-ghost btn-sm">Cancelar</button><button type="submit" class="btn-primary btn-sm">Guardar</button></div>
       </form>
@@ -795,3 +795,4 @@
   <script defer src="/vendor/alpine-3.13.3.min.js"></script>
 </body>
 </html>
+

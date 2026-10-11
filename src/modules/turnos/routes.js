@@ -16,7 +16,7 @@ module.exports = async function turnosRoutes (fastify) {
   // ── POST /turnos/llamar — EL ENDPOINT PRINCIPAL (RF-TURN-01) ──────────────
   // Rate limit: máx 5 llamados/seg por operador (RNF-SEG-07)
   fastify.post('/llamar', {
-    preHandler: [fastify.authorizeRol('operador', 'supervisor')],
+    preHandler: [fastify.authorizeRol('operador', 'admin')],
     config: {
       rateLimit: {
         max:        30,
@@ -149,7 +149,7 @@ module.exports = async function turnosRoutes (fastify) {
 
   // ── POST /turnos/:id/cancelar — No se presentó (RF-TURN-05) ───────────────
   fastify.post('/:id/cancelar', {
-    preHandler: [fastify.authorizeRol('operador', 'supervisor')],
+    preHandler: [fastify.authorizeRol('operador', 'admin')],
     schema: {
       params: {
         type: 'object',
@@ -184,7 +184,7 @@ module.exports = async function turnosRoutes (fastify) {
 
   // ── POST /turnos/:id/rellamar — Re-llamar turno actual (RF-MESA / TV) ─────────
   fastify.post('/:id/rellamar', {
-    preHandler: [fastify.authorizeRol('operador', 'supervisor')],
+    preHandler: [fastify.authorizeRol('operador', 'admin')],
     schema: {
       params: {
         type: 'object',
@@ -439,3 +439,4 @@ module.exports = async function turnosRoutes (fastify) {
     return reply.send(configMap)
   })
 }
+

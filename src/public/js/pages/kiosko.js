@@ -290,3 +290,4 @@ if (window.Alpine) {
 } else {
   document.addEventListener('alpine:init', registerKioskoWithAlpine);
 }
+

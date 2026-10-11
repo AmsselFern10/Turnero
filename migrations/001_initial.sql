@@ -37,13 +37,13 @@ CREATE TABLE usuarios (
     nombre_completo VARCHAR(100) NOT NULL,
     password_hash   TEXT         NOT NULL,       -- bcrypt cost >= 12 obligatorio
     rol             VARCHAR(20)  NOT NULL DEFAULT 'operador'
-                        CHECK (rol IN ('operador', 'supervisor', 'admin')),
+                        CHECK (rol IN ('operador', 'admin')),
     activo          BOOLEAN      NOT NULL DEFAULT TRUE,
     creado_en       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     actualizado_en  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-COMMENT ON TABLE  usuarios               IS 'Operadores, supervisores y administradores del sistema';
+COMMENT ON TABLE  usuarios               IS 'Operadores y administradores del sistema';
 COMMENT ON COLUMN usuarios.password_hash IS 'Hash bcrypt cost >= 12. Nunca texto plano.';
 
 -- =============================================================================
@@ -498,8 +498,7 @@ END $$;
 
 INSERT INTO usuarios (username, nombre_completo, password_hash, rol) VALUES
     ('admin',       'Administrador del Sistema',  '$2b$12$PLACEHOLDER_ADMIN',  'admin'),
-    ('supervisor1', 'Supervisor Principal',        '$2b$12$PLACEHOLDER_SUP',    'supervisor'),
-    ('op1',         'Operador Mesa 1',             '$2b$12$PLACEHOLDER_OP1',    'operador'),
+    (    ('op1',         'Operador Mesa 1',             '$2b$12$PLACEHOLDER_OP1',    'operador'),
     ('op2',         'Operador Mesa 2',             '$2b$12$PLACEHOLDER_OP2',    'operador'),
     ('op3',         'Operador Mesa 3',             '$2b$12$PLACEHOLDER_OP3',    'operador'),
     ('op4',         'Operador Mesa 4',             '$2b$12$PLACEHOLDER_OP4',    'operador'),

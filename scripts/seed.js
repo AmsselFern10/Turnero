@@ -28,7 +28,6 @@ async function seed () {
   const hashes = {}
   const usuarios = [
     { username: 'admin',      password: 'Admin2026!',     nombre: 'Administrador del Sistema',  rol: 'admin' },
-    { username: 'supervisor1',password: 'Super2026!',     nombre: 'Supervisor Principal',         rol: 'supervisor' },
     { username: 'op1',        password: 'Operador2026!',  nombre: 'Operador Mesa 1',              rol: 'operador' },
     { username: 'op2',        password: 'Operador2026!',  nombre: 'Operador Mesa 2',              rol: 'operador' },
     { username: 'op3',        password: 'Operador2026!',  nombre: 'Operador Mesa 3',              rol: 'operador' },
@@ -98,8 +97,7 @@ async function seed () {
     console.log('\n🎉 Seed completado exitosamente!')
     console.log('\n📋 Credenciales de acceso:')
     console.log('   admin       → Admin2026!')
-    console.log('   supervisor1 → Super2026!')
-    console.log('   op1-op5     → Operador2026!')
+    console.log('       console.log('   op1-op5     → Operador2026!')
     console.log('   porton      → Porton2026!')
     console.log('\n⚠️  Cambiar todas las contraseñas antes de producción.\n')
 
@@ -114,3 +112,4 @@ async function seed () {
 }
 
 seed()
+

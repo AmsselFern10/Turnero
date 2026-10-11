@@ -161,7 +161,7 @@ module.exports = async function authRoutes (fastify) {
     return reply.send({ mesas: rows })
   })
 
-  // ── GET /auth/mesas — Mantener por retrocompatibilidad; solo rol admin/supervisor ──
+  // ── GET /auth/mesas — Mantener por retrocompatibilidad; solo rol admin ──
   // (el operador usa /auth/mesas/disponibles)
   fastify.get('/mesas', {
     preHandler: [fastify.authenticate]
@@ -177,7 +177,7 @@ module.exports = async function authRoutes (fastify) {
                ORDER BY m.numero`
       params = []
     } else {
-      // Admin/supervisor: todas las mesas
+      // Admin: todas las mesas
       query = `SELECT m.id, m.numero, m.nombre, m.estado,
                       u.nombre_completo AS operador_nombre
                FROM mesas m
@@ -191,7 +191,7 @@ module.exports = async function authRoutes (fastify) {
   })
 
   // ── POST /auth/seleccionar-mesa — Check-and-set atomico (INC-4) ───────────
-  // Todos los roles pueden operar una mesa (operador, admin, supervisor).
+  // Todos los roles pueden operar una mesa (operador, admin).
   fastify.post('/seleccionar-mesa', {
     preHandler: [fastify.authenticate],
     schema: {
@@ -362,3 +362,5 @@ module.exports = async function authRoutes (fastify) {
     }
   })
 }
+
+

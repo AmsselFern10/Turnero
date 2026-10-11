@@ -11,7 +11,7 @@ module.exports = async function adminRoutes (fastify) {
   // Cache Redis 1 s: el panel admin refresca cada segundo via WS kpi_update;
   // esta ruta es el snapshot inicial y la usan los supervisores — limitar queries.
   fastify.get('/kpis', {
-    preHandler: [fastify.authorizeRol('admin', 'supervisor')]
+    preHandler: [fastify.authorizeRol('admin')]
   }, async (request, reply) => {
     const CACHE_KEY = 'admin:kpis'
     try {
@@ -82,7 +82,7 @@ module.exports = async function adminRoutes (fastify) {
           username:       { type: 'string', minLength: 3, maxLength: 30 },
           nombre_completo:{ type: 'string', minLength: 2, maxLength: 100 },
           password:       { type: 'string', minLength: 8, maxLength: 128 },
-          rol:            { type: 'string', enum: ['operador', 'supervisor', 'admin'] }
+          rol:            { type: 'string', enum: ['operador', 'admin', 'admin'] }
         }
       }
     }
@@ -116,7 +116,7 @@ module.exports = async function adminRoutes (fastify) {
         properties: {
           nombre_completo: { type: 'string', minLength: 2, maxLength: 100 },
           username:        { type: 'string', minLength: 3, maxLength: 50 },
-          rol:             { type: 'string', enum: ['operador', 'supervisor', 'admin'] },
+          rol:             { type: 'string', enum: ['operador', 'admin', 'admin'] },
           activo:          { type: 'boolean' },
           password:        { type: 'string', minLength: 8, maxLength: 128 }
         }
@@ -224,7 +224,7 @@ module.exports = async function adminRoutes (fastify) {
 
   // ── GET /admin/auditoria — Historial por fecha (RF-ADM-09) ───────────────
   fastify.get('/auditoria', {
-    preHandler: [fastify.authorizeRol('admin', 'supervisor')],
+    preHandler: [fastify.authorizeRol('admin')],
     schema: {
       querystring: {
         type: 'object',
@@ -263,7 +263,7 @@ module.exports = async function adminRoutes (fastify) {
 
   // ── GET /admin/reporte/csv — Exportar reporte del día (RF-ADM-08) (Retrocompatibilidad) ──
   fastify.get('/reporte/csv', {
-    preHandler: [fastify.authorizeRol('admin', 'supervisor')],
+    preHandler: [fastify.authorizeRol('admin')],
     schema: {
       querystring: {
         type: 'object',
@@ -305,7 +305,7 @@ module.exports = async function adminRoutes (fastify) {
 
   // ── GET /admin/reportes/datos — Consulta filtrada de reportes y métricas ────
   fastify.get('/reportes/datos', {
-    preHandler: [fastify.authorizeRol('admin', 'supervisor')]
+    preHandler: [fastify.authorizeRol('admin')]
   }, async (request, reply) => {
     const { fecha, mesa_id, operador_id, estado } = request.query
     const fechaRef = fecha || new Date().toISOString().slice(0, 10)
@@ -414,7 +414,7 @@ module.exports = async function adminRoutes (fastify) {
     }
   }
   fastify.get('/reportes/exportar-xls', {
-    preHandler: [fastify.authorizeRol('admin', 'supervisor'), semáforoReporte]
+    preHandler: [fastify.authorizeRol('admin'), semáforoReporte]
   }, async (request, reply) => {
     fastify._reporteSemaforo++
     try {
@@ -591,7 +591,7 @@ module.exports = async function adminRoutes (fastify) {
 
   // ── GET /admin/configuracion — Obtener parámetros (RF-ADM-07) ─────────────
   fastify.get('/configuracion', {
-    preHandler: [fastify.authorizeRol('admin', 'supervisor')]
+    preHandler: [fastify.authorizeRol('admin')]
   }, async (request, reply) => {
     const { rows } = await fastify.db.query(
       `SELECT clave, valor, descripcion, actualizado_en FROM configuracion ORDER BY clave`
@@ -642,3 +642,4 @@ module.exports = async function adminRoutes (fastify) {
     return reply.send({ configuracion: cfg })
   })
 }
+

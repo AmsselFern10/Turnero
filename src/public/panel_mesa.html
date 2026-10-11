@@ -223,7 +223,7 @@
           :class="proximoNumero ? 'text-7xl lg:text-8xl text-slate-900' : 'text-2xl sm:text-3xl text-rose-600 font-bold'"
           x-text="proximoNumero ? String(proximoNumero).padStart(3, '0') : (vouchersRestantes === 0 || !loteActivo ? 'Lote agotado' : '---')"></div>
         <p class="text-xs text-slate-500 max-w-xs leading-relaxed"
-          x-text="proximoNumero ? 'Se llamará automáticamente a tu mesa al presionar \"Llamar Siguiente\".' : 'No hay vouchers disponibles en el lote actual. Notifique al supervisor.'">
+          x-text="proximoNumero ? 'Se llamará automáticamente a tu mesa al presionar \"Llamar Siguiente\".' : 'No hay vouchers disponibles en el lote actual. Notifique al admin.'">
         </p>
 
         <div

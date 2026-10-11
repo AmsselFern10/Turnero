@@ -61,7 +61,7 @@ module.exports = async function mesasRoutes (fastify) {
 
   // ── PATCH /mesas/:id/asignar — Asignar operador a mesa (RF-ADM-04) ─────────
   fastify.patch('/:id/asignar', {
-    preHandler: [fastify.authorizeRol('admin', 'supervisor')],
+    preHandler: [fastify.authorizeRol('admin')],
     schema: {
       body: {
         type: 'object',
@@ -136,7 +136,7 @@ module.exports = async function mesasRoutes (fastify) {
 
   // ── PATCH /mesas/:id/estado — Pausar/activar mesa (RF-ADM-05) ─────────────
   fastify.patch('/:id/estado', {
-    preHandler: [fastify.authorizeRol('admin', 'supervisor', 'operador')],
+    preHandler: [fastify.authorizeRol('admin', 'operador')],
     schema: {
       body: {
         type: 'object',
@@ -290,3 +290,4 @@ module.exports = async function mesasRoutes (fastify) {
     }
   })
 }
+

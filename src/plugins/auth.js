@@ -52,7 +52,7 @@ async function authPlugin (fastify) {
 
   /**
    * Factory de preHandler que verifica rol.
-   * Ejemplo: preHandler: [fastify.authorizeRol('admin', 'supervisor')]
+   * Ejemplo: preHandler: [fastify.authorizeRol('admin')]
    */
   fastify.decorate('authorizeRol', function (...roles) {
     return async function (request, reply) {
@@ -69,3 +69,4 @@ async function authPlugin (fastify) {
 }
 
 module.exports = fp(authPlugin, { name: 'auth', dependencies: ['db', 'redis'] })
+

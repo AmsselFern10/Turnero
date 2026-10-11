@@ -4,7 +4,7 @@
  * Sistema Turnero de Matriculas 2026 (v2.1)
  *
  * Flujo:
- *   - Caso A: rol 'admin'/'supervisor' -> step 'admin_choice' (ir a admin o ventanilla)
+ *   - Caso A: rol 'admin'/'admin' -> step 'admin_choice' (ir a admin o ventanilla)
  *   - Caso B: Usuario con mesa_asignada -> modal 'mesa_asignada' (INC-3)
  *   - Caso C: Sin mesa -> step 'mesas_grid' + WS tv:global en vivo
  *
@@ -12,7 +12,7 @@
  *   - 'mesas_disponibles_actualizadas': actualiza la grilla al instante.
  *   - 'operador_asignado_por_admin': si coincide el userId, redirige automaticamente.
  *
- * Roles permitidos para operar mesa: operador, admin, supervisor.
+ * Roles permitidos para operar mesa: operador, admin.
  * ==============================================================================
  */
 
@@ -55,7 +55,7 @@ export function loginView() {
     },
 
     _decidirPasoPostLogin(usuario) {
-      if (usuario.rol === 'admin' || usuario.rol === 'supervisor') {
+      if (usuario.rol === 'admin') {
         this.step = 'admin_choice';
         return;
       }
@@ -278,3 +278,5 @@ if (window.Alpine) {
 } else {
   document.addEventListener('alpine:init', registerWithAlpine);
 }
+
+
