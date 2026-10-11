@@ -42,11 +42,13 @@ export function adminView() {
 
     extensionVouchers: 50,
     extensionCantidad: 50,
-    modalLote:         false,
-    modalExtender:     false,
-    modalMesa:         false,
-    modalUsuario:      false,
-    nuevoLoteHasta:    500,
+    modalLote:             false,
+    modalExtender:         false,
+    modalMesa:             false,
+    modalUsuario:          false,
+    modalCambioLote:       false,
+    lotePendienteActivar:  null,
+    nuevoLoteHasta:        500,
 
     nuevaMesa: {
       numero: 1,
@@ -203,16 +205,75 @@ export function adminView() {
     },
 
     async activarLote(loteId) {
+      const loteObjetivo = this.lotes.find(l => l.id === loteId) || { id: loteId, numero_lote: loteId };
+      // Si ya hay un lote activo distinto al que se quiere activar, abrir modal de confirmación
+      if (this.loteActivo && this.loteActivo.id !== loteId && this.loteActivo.estado === 'activo') {
+        this.lotePendienteActivar = loteObjetivo;
+        this.modalCambioLote = true;
+        return;
+      }
+      await this._ejecutarActivacion(loteId);
+    },
+
+    async _ejecutarActivacion(loteId) {
       if (this._loading) return;
       this._loading = true;
       try {
         await api.patch(`/lotes/${loteId}/activar`);
-        showToast({ message: 'Lote activado', type: 'success' });
+        showToast({ message: 'Lote activado en sala', type: 'success' });
         await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
       } catch (err) {
-        showToast({ message: err.status === 409 ? 'El lote cambio. Vista actualizada.' : (err.mensaje || 'Error'), type: err.status === 409 ? 'warning' : 'danger' });
+        showToast({ message: err.status === 409 ? 'El lote cambió. Vista actualizada.' : (err.mensaje || 'Error al activar lote'), type: err.status === 409 ? 'warning' : 'danger' });
         await this.cargarLotes();
       } finally { this._loading = false; }
+    },
+
+    async pausarYActivarNuevo() {
+      if (!this.loteActivo || !this.lotePendienteActivar) return;
+      if (this._loading) return;
+      this._loading = true;
+      const idActivo = this.loteActivo.id;
+      const numActivo = this.loteActivo.numero_lote;
+      const idNuevo = this.lotePendienteActivar.id;
+      const numNuevo = this.lotePendienteActivar.numero_lote;
+
+      try {
+        await api.patch(`/lotes/${idActivo}/pausar`);
+        await api.patch(`/lotes/${idNuevo}/activar`);
+        showToast({ message: `Lote ${numActivo} pausado y Lote ${numNuevo} activado en sala`, type: 'success' });
+        this.modalCambioLote = false;
+        this.lotePendienteActivar = null;
+        await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
+      } catch (err) {
+        showToast({ message: err.mensaje || 'Error al cambiar de lote', type: 'danger' });
+        await this.cargarLotes();
+      } finally {
+        this._loading = false;
+      }
+    },
+
+    async cerrarYActivarNuevo() {
+      if (!this.loteActivo || !this.lotePendienteActivar) return;
+      if (this._loading) return;
+      this._loading = true;
+      const idActivo = this.loteActivo.id;
+      const numActivo = this.loteActivo.numero_lote;
+      const idNuevo = this.lotePendienteActivar.id;
+      const numNuevo = this.lotePendienteActivar.numero_lote;
+
+      try {
+        await api.patch(`/lotes/${idActivo}/cerrar`);
+        await api.patch(`/lotes/${idNuevo}/activar`);
+        showToast({ message: `Lote ${numActivo} cerrado definitivamente y Lote ${numNuevo} activado en sala`, type: 'success' });
+        this.modalCambioLote = false;
+        this.lotePendienteActivar = null;
+        await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
+      } catch (err) {
+        showToast({ message: err.mensaje || 'Error al cambiar de lote', type: 'danger' });
+        await this.cargarLotes();
+      } finally {
+        this._loading = false;
+      }
     },
 
     calcularProgresoLote() {

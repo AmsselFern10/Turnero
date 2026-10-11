@@ -114,7 +114,7 @@
             <button type="button" @click="modalLote = true"
                     class="btn-primary btn-sm text-xs font-bold px-3.5 h-9 flex items-center gap-1.5 shadow-xs cursor-pointer">
               <svg class="w-3.5 h-3.5 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-              <span>+ Nuevo Lote</span>
+              <span>Nuevo Lote</span>
             </button>
 
             <button type="button" @click="loteActivo.estado === 'activo' ? pausarLote(loteActivo.id) : activarLote(loteActivo.id)"
@@ -189,7 +189,7 @@
           <span class="font-bold text-xs uppercase text-slate-700">Historial de Lotes</span>
           <button type="button" @click="modalLote = true" class="btn-primary btn-sm flex items-center gap-1.5 shadow-xs cursor-pointer">
             <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-            <span>+ Nuevo Lote</span>
+            <span>Nuevo Lote</span>
           </button>
         </div>
         <table class="table-base">
@@ -290,13 +290,63 @@
         <div>
           <label for="nuevo-lote-hasta" class="font-semibold block mb-1">Número hasta (límite del lote):</label>
           <input id="nuevo-lote-hasta" type="number" x-model.number="nuevoLoteHasta" required min="1" class="input-field font-mono-num text-sm">
-          <p class="text-[11px] text-slate-400 mt-1">El lote iniciará secuencialmente y se activará de inmediato.</p>
+          <p class="text-[11px] text-slate-400 mt-1">El lote iniciará secuencialmente para la jornada.</p>
         </div>
         <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100">
           <button type="button" @click="modalLote = false" class="btn-ghost btn-sm">Cancelar</button>
-          <button type="submit" class="btn-primary btn-sm">Crear y Activar</button>
+          <button type="submit" class="btn-primary btn-sm">Crear Lote</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal: Confirmar Cambio de Lote Activo -->
+  <div x-show="modalCambioLote" x-cloak class="modal-backdrop">
+    <div class="modal-box space-y-4 max-w-md">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center">
+            <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+          </div>
+          <h3 class="text-base font-bold text-slate-900">Lote en Curso sin Terminar</h3>
+        </div>
+        <button type="button" @click="modalCambioLote = false; lotePendienteActivar = null" title="Cerrar modal" aria-label="Cerrar modal" class="text-slate-400 hover:text-slate-600 cursor-pointer">
+          <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+
+      <div class="text-xs text-slate-600 space-y-3">
+        <p class="leading-relaxed">
+          El <strong class="text-slate-900" x-text="'Lote ' + (loteActivo?.numero_lote || '')"></strong> aún está activo en sala y tiene turnos disponibles. Para habilitar el <strong class="text-[#1D4ED8]" x-text="'Lote ' + (lotePendienteActivar?.numero_lote || '')"></strong>, debe pausar o cerrar el lote actual:
+        </p>
+
+        <div class="bg-amber-50/60 p-3 rounded-xl border border-amber-200/80 space-y-1.5">
+          <div class="flex justify-between items-center">
+            <span class="text-slate-500 font-medium">Lote activo actual:</span>
+            <span class="font-mono-num font-bold text-slate-900" x-text="'Lote ' + (loteActivo?.numero_lote || '')"></span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-slate-500 font-medium">Turnos restantes sin llamar:</span>
+            <span class="font-mono-num font-bold text-amber-800" x-text="calcularTurnosRestantesLote() + ' turnos'"></span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-slate-500 font-medium">Rango correlativo:</span>
+            <span class="font-mono-num text-slate-700" x-text="'#' + (loteActivo?.numero_desde || 1) + ' — #' + (loteActivo?.numero_hasta || 0)"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row justify-end gap-2">
+        <button type="button" @click="modalCambioLote = false; lotePendienteActivar = null" class="btn-ghost btn-sm text-xs font-semibold order-3 sm:order-1 cursor-pointer">
+          Cancelar
+        </button>
+        <button type="button" @click="cerrarYActivarNuevo()" class="btn-ghost btn-sm text-xs font-semibold bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 order-2 cursor-pointer">
+          Cerrar y Activar
+        </button>
+        <button type="button" @click="pausarYActivarNuevo()" class="btn-primary btn-sm text-xs font-bold order-1 sm:order-3 cursor-pointer">
+          Pausar y Activar
+        </button>
+      </div>
     </div>
   </div>
 
