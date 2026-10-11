@@ -102,6 +102,7 @@ services:
       target: ${NODE_ENV:-development}
     container_name: turnero-app
     restart: unless-stopped
+    stop_grace_period: 15s
     environment:
       NODE_ENV:         ${NODE_ENV:-development}
       PORT:             ${APP_PORT:-3000}

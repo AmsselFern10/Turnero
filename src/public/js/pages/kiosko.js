@@ -12,6 +12,7 @@
  */
 
 import { api } from '../api.js';
+import { TurneroWSClient } from '../ws-client.js';
 
 export function kioskoView() {
   return {
@@ -219,35 +220,49 @@ export function kioskoView() {
     },
 
     /**
-     * Modo Smartphone: Inicia la consulta y polling del turno por token (RF-GEN-03)
+     * Modo Smartphone: Inicia seguimiento en tiempo real vía WebSocket (RF-WS-01: Cero polling)
      */
     async iniciarSeguimiento(token) {
-      const consultar = async () => {
-        try {
-          const res = await api.get(`/turnos/mi-turno/${token}`);
+      // 1. Consulta inicial para renderizar estado de inmediato
+      try {
+        const res = await api.get(`/turnos/mi-turno/${token}`);
+        this.seguimientoData = {
+          numero: res.numero,
+          estado: res.estado,
+          posicion: res.posicion || 0,
+          mesa: res.mesa || null,
+          llamado_en: res.llamado_en || null
+        };
+      } catch (err) {
+        console.error('[Seguimiento] Error consultando mi turno:', err);
+        this.errorMessage = 'No se encontró el turno solicitado o el enlace ha caducado.';
+        return;
+      }
+
+      // 2. Conexión WebSocket push al canal dedicado kiosko:<token>
+      this.ws = new TurneroWSClient({
+        canal: `kiosko:${token}`,
+        token: ''
+      });
+
+      this.ws.on('turno_actualizado', (payload) => {
+        if (payload) {
           this.seguimientoData = {
-            numero: res.numero,
-            estado: res.estado,
-            posicion: res.posicion || 0,
-            mesa: res.mesa || null,
-            llamado_en: res.llamado_en || null
+            numero: payload.numero,
+            estado: payload.estado,
+            posicion: payload.posicion || 0,
+            mesa: payload.mesa || null,
+            llamado_en: payload.llamado_en || null
           };
 
-          // Si ya fue llamado a ventanilla, vibrar y alertar
-          if (res.estado === 'en_atencion' && typeof navigator !== 'undefined' && navigator.vibrate) {
+          // Si ya fue llamado a ventanilla, vibrar y alertar al estudiante
+          if (payload.estado === 'en_atencion' && typeof navigator !== 'undefined' && navigator.vibrate) {
             navigator.vibrate([200, 100, 200]);
           }
-        } catch (err) {
-          console.error('[Seguimiento] Error consultando mi turno:', err);
-          this.errorMessage = 'No se encontró el turno solicitado o el enlace ha caducado.';
         }
-      };
+      });
 
-      // Consulta inmediata
-      await consultar();
-
-      // Polling cada 5 segundos para seguir avance en la cola
-      this.pollingTimer = setInterval(consultar, 5000);
+      this.ws.connect();
     },
 
     /**
@@ -261,11 +276,6 @@ export function kioskoView() {
       }, 3500);
     }
   };
-}
-
-// Registro global inmediato para expresiones x-data="kioskoView()"
-if (typeof window !== 'undefined') {
-  window.kioskoView = kioskoView;
 }
 
 // Registro seguro para Alpine.js x-data="kioskoView"

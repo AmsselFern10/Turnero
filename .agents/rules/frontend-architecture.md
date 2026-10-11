@@ -24,7 +24,10 @@ src/public/
 │
 ├── css/                           ──► CAPA DE ESTILOS Y TOKENS VISUALES
 │   ├── base.css                   (Tokens visuales, fondo #EEF2F6, variables CSS, fuentes Inter y JetBrains Mono)
-│   └── animations.css             (Keyframes de pulsos, glow de atención, transiciones y badges de estado)
+│   ├── animations.css             (Keyframes de pulsos, glow de atención, transiciones y badges de estado)
+│   └── tailwind.css               (CSS Tailwind PRECOMPILADO con Tailwind CLI standalone — commiteado en repo)
+│                                   NUNCA usar el CDN runtime de Tailwind en producción o LAN sin internet.
+│                                   Regenerar con: npm run build:css
 │
 ├── js/                            ──► CAPA DE LÓGICA Y TIEMPO REAL
 │   ├── api.js                     (Cliente HTTP fetch centralizado: interceptor JWT, refresh token y manejo de errores)
@@ -38,9 +41,17 @@ src/public/
 │       ├── admin.js               (Controlador de administración: KPIs en vivo, gestión de lotes, mesas, usuarios)
 │       └── kiosko.js              (Controlador de autoservicio: toma de turno táctil, QR dinámico, vista de voucher)
 │
+├── vendor/                        ──► DEPENDENCIAS JS DE TERCEROS (autoalojadas, sin CDN)
+│   └── alpine-3.x.x.min.js        (Alpine.js con VERSIÓN EXACTA fijada — nunca versiones flotantes)
+│                                   Actualizar: descargar de jsdelivr con la versión específica y commitear.
+│
 ├── assets/                        ──► RECURSOS ESTÁTICOS Y VECTORIALES
 │   ├── audio/
 │   │   └── bell.mp3               (Tono institucional discreto para anuncio de llamado en TV)
+│   ├── fonts/                     ──► FUENTES AUTOALOJADAS (operación sin internet)
+│   │   ├── inter-*.woff2          (Inter — UI general, varios pesos)
+│   │   └── jetbrains-mono-*.woff2 (JetBrains Mono — turnos, relojes, cronómetros)
+│   │   NOTA: @font-face en base.css con font-display: swap y fuente de sistema como respaldo.
 │   └── icons/                     (Iconografía vectorial SVG reusable con trazo fino 1.5px/2.0px)
 │
 │  ──► VISTAS LIMPIAS (Solo estructura HTML5 semántica y declarativa, sin lógica JS ni estilos inline)
@@ -151,3 +162,18 @@ Antes de dar por finalizada una vista o refactorización:
 - [ ] ¿Se respeta estrictamente la prohibición total de emojis (iconos SVG vectoriales puros)?
 - [ ] ¿El fondo general es `#EEF2F6` y las tarjetas usan blanco `#FFFFFF` con borde `#CBD5E1`?
 - [ ] ¿Las fuentes numéricas (turnos, reloj, cronómetro) emplean `JetBrains Mono` con números tabulares?
+- [ ] ¿Alpine.js se carga desde `vendor/alpine-X.Y.Z.min.js` (local, sin CDN)?
+- [ ] ¿El CSS de Tailwind es el precompilado `css/tailwind.css` (no el CDN runtime)?
+- [ ] ¿Los `setInterval` / `setTimeout` del controlador se limpian en `destroy()`?
+- [ ] ¿`destroy()` desconecta el WebSocket correctamente?
+
+---
+
+## 6. Excepción de Tamaño para `admin.html`
+
+El estándar de vistas limpias recomienda estructuras compactas, pero `admin.html` es la única vista que justifica una excepción de tamaño documentada:
+
+- **Razón:** Contiene 4 pestañas operativas, 2 modales funcionales, tablas de datos y formularios de configuración; la semántica HTML5 completa es inevitablemente más extensa.
+- **Límite permitido:** Hasta **~400 líneas** de HTML estructural puro.
+- **Condición:** El 100 % del contenido debe ser HTML5 semántico y directivas Alpine declarativas. Cero lógica de negocio, cero `<script>` inline, cero `style=""`.
+- **Toda la lógica reside en:** `src/public/js/pages/admin.js` (único controlador modular).

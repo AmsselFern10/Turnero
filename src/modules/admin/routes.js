@@ -103,6 +103,7 @@ module.exports = async function adminRoutes (fastify) {
         type: 'object',
         properties: {
           nombre_completo: { type: 'string', minLength: 2, maxLength: 100 },
+          username:        { type: 'string', minLength: 3, maxLength: 50 },
           rol:             { type: 'string', enum: ['operador', 'supervisor', 'admin'] },
           activo:          { type: 'boolean' },
           password:        { type: 'string', minLength: 8, maxLength: 128 }
@@ -119,10 +120,29 @@ module.exports = async function adminRoutes (fastify) {
       campos.push(`nombre_completo = $${i++}`)
       vals.push(request.body.nombre_completo)
     }
+    if (request.body.username !== undefined) {
+      const { rows: conflicto } = await fastify.db.query(
+        'SELECT id FROM usuarios WHERE username = $1 AND id != $2', [request.body.username, userId]
+      )
+      if (conflicto.length > 0) {
+        return reply.status(409).send({ error: `El usuario '${request.body.username}' ya existe.` })
+      }
+      campos.push(`username = $${i++}`)
+      vals.push(request.body.username)
+    }
     if (request.body.rol !== undefined) {
       campos.push(`rol = $${i++}`)
       vals.push(request.body.rol)
     }
+    if (userId === request.user.id) {
+      if (request.body.activo === false) {
+        return reply.status(400).send({ error: 'No puede desactivar su propio usuario mientras tiene la sesión activa.' })
+      }
+      if (request.body.rol && request.body.rol !== 'admin') {
+        return reply.status(400).send({ error: 'No puede degradar su propio rol de administrador.' })
+      }
+    }
+
     if (request.body.activo !== undefined) {
       campos.push(`activo = $${i++}`)
       vals.push(request.body.activo)
@@ -144,6 +164,8 @@ module.exports = async function adminRoutes (fastify) {
       vals
     )
 
+    if (!usuario) return reply.status(404).send({ error: 'Usuario no encontrado' })
+
     await fastify.db.query(
       `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
        VALUES ($1, 'USUARIO_EDITADO', $2, $3)`,
@@ -151,6 +173,41 @@ module.exports = async function adminRoutes (fastify) {
     )
 
     return reply.send({ usuario })
+  })
+
+  // ── DELETE /admin/usuarios/:id — Eliminar usuario (RF-ADM-06) ─────────────
+  fastify.delete('/usuarios/:id', {
+    preHandler: [fastify.authorizeRol('admin')]
+  }, async (request, reply) => {
+    const userId = parseInt(request.params.id)
+
+    if (userId === request.user.id) {
+      return reply.status(400).send({ error: 'No puede eliminar su propio usuario mientras tiene la sesión activa.' })
+    }
+
+    // Desasignar de cualquier mesa primero
+    await fastify.db.query('UPDATE mesas SET operador_id = NULL, estado = \'inactiva\' WHERE operador_id = $1', [userId])
+
+    try {
+      const { rows: [usuario] } = await fastify.db.query(
+        'DELETE FROM usuarios WHERE id = $1 RETURNING id, username',
+        [userId]
+      )
+      if (!usuario) return reply.status(404).send({ error: 'Usuario no encontrado' })
+
+      await fastify.db.query(
+        `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
+         VALUES ($1, 'ADMIN_ACTION', $2, $3)`,
+        [request.user.id, request.ip, JSON.stringify({ tipo: 'USUARIO_ELIMINADO', usuario_eliminado_id: userId, username: usuario.username })]
+      )
+      return reply.send({ success: true, message: `Usuario ${usuario.username} eliminado.` })
+    } catch (err) {
+      if (err.code === '23503') {
+        await fastify.db.query('UPDATE usuarios SET activo = false WHERE id = $1', [userId])
+        return reply.send({ success: true, message: 'Usuario desactivado debido a registros históricos vinculados.' })
+      }
+      throw err
+    }
   })
 
   // ── GET /admin/auditoria — Historial por fecha (RF-ADM-09) ───────────────
@@ -192,7 +249,7 @@ module.exports = async function adminRoutes (fastify) {
     return reply.send({ registros: rows, pagina, limite })
   })
 
-  // ── GET /admin/reporte/csv — Exportar reporte del día (RF-ADM-08) ─────────
+  // ── GET /admin/reporte/csv — Exportar reporte del día (RF-ADM-08) (Retrocompatibilidad) ──
   fastify.get('/reporte/csv', {
     preHandler: [fastify.authorizeRol('admin', 'supervisor')],
     schema: {
@@ -234,6 +291,279 @@ module.exports = async function adminRoutes (fastify) {
       .send(csv)
   })
 
+  // ── GET /admin/reportes/datos — Consulta filtrada de reportes y métricas ────
+  fastify.get('/reportes/datos', {
+    preHandler: [fastify.authorizeRol('admin', 'supervisor')]
+  }, async (request, reply) => {
+    const { fecha, mesa_id, operador_id, estado } = request.query
+    const fechaRef = fecha || new Date().toISOString().slice(0, 10)
+
+    const params = [fechaRef]
+    let whereExtra = ''
+    let idx = 2
+
+    if (mesa_id) {
+      whereExtra += ` AND t.mesa_id = $${idx++}`
+      params.push(parseInt(mesa_id))
+    }
+    if (operador_id) {
+      whereExtra += ` AND t.operador_id = $${idx++}`
+      params.push(parseInt(operador_id))
+    }
+    if (estado && estado !== 'todos') {
+      whereExtra += ` AND t.estado = $${idx++}`
+      params.push(estado)
+    }
+
+    // 1. KPIs Agregados
+    const { rows: [kpis] } = await fastify.db.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE t.estado = 'atendido') AS total_atendidos,
+         COUNT(*) FILTER (WHERE t.estado = 'cancelado') AS total_cancelados,
+         COUNT(*) AS total_turnos,
+         COALESCE(ROUND(AVG(t.duracion_atencion_seg) FILTER (WHERE t.estado = 'atendido')), 0) AS promedio_atencion_seg,
+         COALESCE(ROUND(AVG(t.duracion_espera_seg) FILTER (WHERE t.estado = 'atendido')), 0) AS promedio_espera_seg,
+         COUNT(DISTINCT t.mesa_id) FILTER (WHERE t.mesa_id IS NOT NULL) AS mesas_activas
+       FROM turnos t
+       WHERE t.creado_en >= ($1::date)::timestamptz
+         AND t.creado_en < (($1::date + 1)::timestamptz)
+         ${whereExtra}`,
+      params
+    )
+
+    // 2. Resumen por Mesa
+    const { rows: mesasResumen } = await fastify.db.query(
+      `SELECT
+         m.id AS mesa_id,
+         m.numero AS mesa_numero,
+         m.nombre AS mesa_nombre,
+         COUNT(t.id) FILTER (WHERE t.estado = 'atendido') AS atendidos,
+         COUNT(t.id) FILTER (WHERE t.estado = 'cancelado') AS cancelados,
+         COALESCE(ROUND(AVG(t.duracion_atencion_seg) FILTER (WHERE t.estado = 'atendido')), 0) AS promedio_atencion_seg
+       FROM mesas m
+       LEFT JOIN turnos t ON t.mesa_id = m.id
+         AND t.creado_en >= ($1::date)::timestamptz
+         AND t.creado_en < (($1::date + 1)::timestamptz)
+       GROUP BY m.id, m.numero, m.nombre
+       ORDER BY m.numero ASC`,
+      [fechaRef]
+    )
+
+    // 3. Listado Detallado de Turnos
+    const { rows: turnos } = await fastify.db.query(
+      `SELECT
+         t.id, t.numero, t.estado, t.origen,
+         t.llamado_en, t.finalizado_en,
+         t.duracion_atencion_seg, t.duracion_espera_seg,
+         m.numero AS mesa_numero, m.nombre AS mesa_nombre,
+         u.nombre_completo AS operador_nombre,
+         lv.numero_lote AS lote_numero
+       FROM turnos t
+       LEFT JOIN mesas m ON t.mesa_id = m.id
+       LEFT JOIN usuarios u ON t.operador_id = u.id
+       LEFT JOIN lotes_voucher lv ON t.lote_id = lv.id
+       WHERE t.creado_en >= ($1::date)::timestamptz
+         AND t.creado_en < (($1::date + 1)::timestamptz)
+         ${whereExtra}
+       ORDER BY t.id DESC
+       LIMIT 500`,
+      params
+    )
+
+    return reply.send({
+      fecha: fechaRef,
+      kpis: {
+        total_atendidos: parseInt(kpis?.total_atendidos || '0', 10),
+        total_cancelados: parseInt(kpis?.total_cancelados || '0', 10),
+        total_turnos: parseInt(kpis?.total_turnos || '0', 10),
+        promedio_atencion_seg: parseInt(kpis?.promedio_atencion_seg || '0', 10),
+        promedio_espera_seg: parseInt(kpis?.promedio_espera_seg || '0', 10),
+        mesas_activas: parseInt(kpis?.mesas_activas || '0', 10)
+      },
+      mesas_resumen: mesasResumen.map(m => ({
+        mesa_id: m.mesa_id,
+        mesa_numero: m.mesa_numero,
+        mesa_nombre: m.mesa_nombre,
+        atendidos: parseInt(m.atendidos || '0', 10),
+        cancelados: parseInt(m.cancelados || '0', 10),
+        promedio_atencion_seg: parseInt(m.promedio_atencion_seg || '0', 10)
+      })),
+      turnos
+    })
+  })
+
+  // ── GET /admin/reportes/exportar-xls — Exportar reporte en formato Excel XLS ────
+  fastify.get('/reportes/exportar-xls', {
+    preHandler: [fastify.authorizeRol('admin', 'supervisor')]
+  }, async (request, reply) => {
+    const { fecha, mesa_id, operador_id, estado } = request.query
+    const fechaRef = fecha || new Date().toISOString().slice(0, 10)
+
+    const params = [fechaRef]
+    let whereExtra = ''
+    let idx = 2
+
+    if (mesa_id) {
+      whereExtra += ` AND t.mesa_id = $${idx++}`
+      params.push(parseInt(mesa_id))
+    }
+    if (operador_id) {
+      whereExtra += ` AND t.operador_id = $${idx++}`
+      params.push(parseInt(operador_id))
+    }
+    if (estado && estado !== 'todos') {
+      whereExtra += ` AND t.estado = $${idx++}`
+      params.push(estado)
+    }
+
+    const { rows: [kpis] } = await fastify.db.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE t.estado = 'atendido') AS total_atendidos,
+         COUNT(*) FILTER (WHERE t.estado = 'cancelado') AS total_cancelados,
+         COUNT(*) AS total_turnos,
+         COALESCE(ROUND(AVG(t.duracion_atencion_seg) FILTER (WHERE t.estado = 'atendido')), 0) AS promedio_atencion_seg,
+         COALESCE(ROUND(AVG(t.duracion_espera_seg) FILTER (WHERE t.estado = 'atendido')), 0) AS promedio_espera_seg,
+         COUNT(DISTINCT t.mesa_id) FILTER (WHERE t.mesa_id IS NOT NULL) AS mesas_activas
+       FROM turnos t
+       WHERE t.creado_en >= ($1::date)::timestamptz
+         AND t.creado_en < (($1::date + 1)::timestamptz)
+         ${whereExtra}`,
+      params
+    )
+
+    const { rows: turnos } = await fastify.db.query(
+      `SELECT
+         t.id, t.numero, t.estado, t.origen,
+         t.llamado_en, t.finalizado_en,
+         t.duracion_atencion_seg, t.duracion_espera_seg,
+         m.numero AS mesa_numero, m.nombre AS mesa_nombre,
+         u.nombre_completo AS operador_nombre,
+         lv.numero_lote AS lote_numero
+       FROM turnos t
+       LEFT JOIN mesas m ON t.mesa_id = m.id
+       LEFT JOIN usuarios u ON t.operador_id = u.id
+       LEFT JOIN lotes_voucher lv ON t.lote_id = lv.id
+       WHERE t.creado_en >= ($1::date)::timestamptz
+         AND t.creado_en < (($1::date + 1)::timestamptz)
+         ${whereExtra}
+       ORDER BY t.llamado_en ASC NULLS LAST`,
+      params
+    )
+
+    const formatSeg = (seg) => {
+      if (!seg && seg !== 0) return '--';
+      const m = Math.floor(seg / 60);
+      const s = seg % 60;
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    const formatHora = (iso) => {
+      if (!iso) return '--';
+      const d = new Date(iso);
+      return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    // Armar tabla HTML con especificación XML/HTML para Microsoft Excel
+    const xlsContent = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:x="urn:schemas-microsoft-com:office:excel"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <!--[if gte mso 9]>
+  <xml>
+    <x:ExcelWorkbook>
+      <x:ExcelWorksheets>
+        <x:ExcelWorksheet>
+          <x:Name>Reporte ${fechaRef}</x:Name>
+          <x:WorksheetOptions>
+            <x:DisplayGridlines/>
+          </x:WorksheetOptions>
+        </x:ExcelWorksheet>
+      </x:ExcelWorksheets>
+    </x:ExcelWorkbook>
+  </xml>
+  <![endif]-->
+  <style>
+    body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; }
+    .title { font-size: 15pt; font-weight: bold; color: #1D4ED8; }
+    .subtitle { font-size: 10pt; color: #475569; margin-bottom: 12px; }
+    .kpi-table { border-collapse: collapse; margin-bottom: 18px; }
+    .kpi-table th { background-color: #EEF2F6; color: #1E293B; font-weight: bold; border: 1px solid #CBD5E1; padding: 6px 12px; text-align: center; }
+    .kpi-table td { background-color: #FFFFFF; font-weight: bold; font-size: 12pt; border: 1px solid #CBD5E1; padding: 6px 12px; text-align: center; color: #0F172A; }
+    .data-table { border-collapse: collapse; width: 100%; }
+    .data-table th { background-color: #1D4ED8; color: #FFFFFF; font-weight: bold; border: 1px solid #1E40AF; padding: 7px 10px; text-align: center; }
+    .data-table td { border: 1px solid #E2E8F0; padding: 6px 10px; font-size: 10pt; }
+    .num { mso-number-format:"\\@"; text-align: center; font-family: monospace; font-weight: bold; }
+    .center { text-align: center; }
+    .text { text-align: left; }
+  </style>
+</head>
+<body>
+  <div class="title">TURNERO DE MATRÍCULAS 2026 — REPORTE OPERATIVO</div>
+  <div class="subtitle">Fecha de atención: <strong>${fechaRef}</strong> | Generado el: ${new Date().toLocaleString('es-ES')}</div>
+
+  <h3>RESUMEN DE JORNADA</h3>
+  <table class="kpi-table">
+    <tr>
+      <th>Total Atendidos</th>
+      <th>Total Cancelados</th>
+      <th>Tiempo Medio Atención</th>
+      <th>Tiempo Medio Espera</th>
+      <th>Mesas Operativas</th>
+    </tr>
+    <tr>
+      <td>${kpis?.total_atendidos || 0}</td>
+      <td>${kpis?.total_cancelados || 0}</td>
+      <td>${formatSeg(parseInt(kpis?.promedio_atencion_seg || '0', 10))}</td>
+      <td>${formatSeg(parseInt(kpis?.promedio_espera_seg || '0', 10))}</td>
+      <td>${kpis?.mesas_activas || 0}</td>
+    </tr>
+  </table>
+
+  <h3>DETALLE DE TURNOS</h3>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Turno</th>
+        <th>Ventanilla</th>
+        <th>Operador</th>
+        <th>Lote</th>
+        <th>Origen</th>
+        <th>Estado</th>
+        <th>Hora Llamado</th>
+        <th>Hora Fin</th>
+        <th>Espera (mm:ss)</th>
+        <th>Atención (mm:ss)</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${turnos.map(t => `
+        <tr>
+          <td class="num">#${String(t.numero).padStart(3, '0')}</td>
+          <td class="center">${t.mesa_numero ? 'Mesa ' + t.mesa_numero : '--'}</td>
+          <td class="text">${t.operador_nombre || 'Sin asignar'}</td>
+          <td class="center">${t.lote_numero ? 'Lote ' + t.lote_numero : '--'}</td>
+          <td class="center">${t.origen || 'voucher_fisico'}</td>
+          <td class="center">${t.estado}</td>
+          <td class="center">${formatHora(t.llamado_en)}</td>
+          <td class="center">${formatHora(t.finalizado_en)}</td>
+          <td class="num">${formatSeg(t.duracion_espera_seg)}</td>
+          <td class="num">${formatSeg(t.duracion_atencion_seg)}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+</body>
+</html>
+`.trim();
+
+    return reply
+      .header('Content-Type', 'application/vnd.ms-excel; charset=utf-8')
+      .header('Content-Disposition', `attachment; filename="reporte_turnero_${fechaRef}.xls"`)
+      .send(xlsContent)
+  })
+
   // ── GET /admin/configuracion — Obtener parámetros (RF-ADM-07) ─────────────
   fastify.get('/configuracion', {
     preHandler: [fastify.authorizeRol('admin', 'supervisor')]
@@ -265,14 +595,13 @@ module.exports = async function adminRoutes (fastify) {
     const { valor } = request.body
 
     const { rows: [cfg] } = await fastify.db.query(
-      `UPDATE configuracion
-       SET valor = $1, actualizado_en = NOW(), actualizado_por = $2
-       WHERE clave = $3
+      `INSERT INTO configuracion (clave, valor, actualizado_en, actualizado_por)
+       VALUES ($3, $1, NOW(), $2)
+       ON CONFLICT (clave) DO UPDATE
+       SET valor = EXCLUDED.valor, actualizado_en = NOW(), actualizado_por = EXCLUDED.actualizado_por
        RETURNING clave, valor, descripcion`,
       [valor, request.user.id, clave]
     )
-
-    if (!cfg) return reply.status(404).send({ error: `Clave de configuración '${clave}' no encontrada` })
 
     await fastify.db.query(
       `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
@@ -280,7 +609,10 @@ module.exports = async function adminRoutes (fastify) {
       [request.user.id, request.ip, JSON.stringify({ clave, valor })]
     )
 
-    await fastify.broadcast('admin:all', 'config_actualizada', { clave, valor })
+    await Promise.all([
+      fastify.broadcast('admin:all', 'config_actualizada', { clave, valor }),
+      fastify.broadcast('tv:global', 'config_actualizada', { clave, valor })
+    ])
 
     return reply.send({ configuracion: cfg })
   })

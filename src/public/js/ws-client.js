@@ -5,12 +5,13 @@
  *
  * Cumple con:
  * - RF-WS-01: Cero polling, comunicación push en tiempo real.
- * - RF-WS-02: Canales segmentados (mesa:<id>, tv:global, admin:all).
- * - RF-WS-03: Handshake autenticado via JWT (query param token).
- * - RF-WS-04: Reconexión con backoff exponencial + jitter (fórmula estricta).
+ * - RF-WS-02: Canales segmentados (mesa:<id>, tv:global, admin:all, kiosko:<token>).
+ * - RF-WS-03: Handshake autenticado via ticket efímero / JWT.
+ * - RF-WS-04: Reconexión con backoff exponencial + Full Jitter.
  * - RF-WS-05: Solicitud y recepción de snapshot de sincronización al reconectar.
- * - RF-WS-06: Heartbeat cada 30s con detección de corte silencioso de red.
- * - RF-WS-07: Protocolo uniforme { tipo, payload, timestamp }.
+ * - RF-WS-06: Heartbeat cada 30s con detección de corte silencioso de red (simétrico).
+ * - RF-WS-07: Protocolo uniforme { tipo, payload, seq, timestamp }.
+ * - Invariantes 1-6: Secuencia monotónica, auto-sincronización y ciclo de vida de navegador.
  * ==============================================================================
  */
 
@@ -19,7 +20,8 @@ export class TurneroWSClient {
    * @param {Object} options
    * @param {string} [options.url] - URL base ws:// o wss://. Si no se indica, usa window.location.
    * @param {string} [options.token] - JWT válido del usuario (si aplica).
-   * @param {string} [options.canal='tv:global'] - Canal a suscribir ('mesa:X', 'tv:global', 'admin:all').
+   * @param {string} [options.ticket] - Ticket efímero de un solo uso (si aplica).
+   * @param {string} [options.canal='tv:global'] - Canal a suscribir ('mesa:X', 'tv:global', 'admin:all', 'kiosko:X').
    * @param {number|string} [options.mesaId] - ID numérico de la mesa si es operador.
    * @param {number} [options.baseDelay=1000] - Tiempo base en ms para backoff (1s).
    * @param {number} [options.maxDelay=30000] - Tiempo máximo en ms para backoff (30s).
@@ -28,6 +30,7 @@ export class TurneroWSClient {
    */
   constructor(options = {}) {
     this.token = options.token || '';
+    this.ticket = options.ticket || '';
     this.canal = options.canal || 'tv:global';
     this.mesaId = options.mesaId || null;
     this.baseDelay = options.baseDelay || 1000;
@@ -45,11 +48,16 @@ export class TurneroWSClient {
     }
 
     this.ws = null;
+    this.connectionGeneration = 0; // ID de generación para evitar condiciones de carrera en reconexiones
     this.reconnectAttempts = 0;
     this.reconnectTimer = null;
     this.heartbeatTimer = null;
+    this.stabilityTimer = null;
     this.lastActivityTime = Date.now();
     this.isForcedClosed = false;
+
+    // Control de secuencia de eventos monotónicos (Invariante 1)
+    this.lastSeq = 0;
 
     // Estados: 'CONECTANDO' | 'CONECTADO' | 'RECONECTANDO' | 'DESCONECTADO'
     this.status = 'DESCONECTADO';
@@ -57,6 +65,9 @@ export class TurneroWSClient {
     // Manejo de listeners
     this.listeners = new Map();
     this.statusListeners = new Set();
+
+    // Eventos de ciclo de vida del navegador (WS-015)
+    this._initBrowserLifecycle();
   }
 
   /**
@@ -110,55 +121,114 @@ export class TurneroWSClient {
   }
 
   /**
-   * Construye la URL de conexión con token y parámetros de canal.
+   * Construye la URL de conexión con parámetros de autenticación y canal.
    * @private
    */
   _buildUrl() {
     const url = new URL(this.baseUrl, typeof window !== 'undefined' ? window.location.href : 'http://localhost:3000');
-    if (this.token) url.searchParams.set('token', this.token);
+    if (this.ticket) {
+      url.searchParams.set('ticket', this.ticket);
+    } else if (this.token) {
+      url.searchParams.set('token', this.token);
+    }
     if (this.canal) url.searchParams.set('canal', this.canal);
     if (this.mesaId) url.searchParams.set('mesa_id', String(this.mesaId));
     return url.toString();
   }
 
   /**
+   * Obtiene un ticket efímero de conexión si hay un token JWT disponible (WS-005).
+   * @private
+   */
+  async _prepareTicket() {
+    if (!this.token || this.canal === 'tv:global' || this.canal.startsWith('kiosko:')) {
+      return;
+    }
+    try {
+      const resp = await fetch('/auth/ws-ticket', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Content-Type': 'application/json'
+        },
+        body: '{}'
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.ticket) {
+          this.ticket = data.ticket;
+        }
+      }
+    } catch (_) {
+      // Si falla obtener ticket, continúa con fallback de query token
+    }
+  }
+
+  /**
    * Inicia la conexión WebSocket.
    */
-  connect() {
+  async connect() {
     if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
       return;
     }
 
     this.isForcedClosed = false;
+    const currentGen = ++this.connectionGeneration;
     this._notifyStatus(this.reconnectAttempts === 0 ? 'CONECTANDO' : 'RECONECTANDO');
+
+    // Intentar obtener ticket efímero para no exponer JWT en logs
+    await this._prepareTicket();
+
+    // Si otra llamada a connect() o disconnect() ocurrió mientras preparaba el ticket, abortar
+    if (currentGen !== this.connectionGeneration || this.isForcedClosed) return;
 
     try {
       const fullUrl = this._buildUrl();
-      this.ws = new WebSocket(fullUrl);
+      const socket = new WebSocket(fullUrl);
+      this.ws = socket;
 
-      this.ws.onopen = () => {
+      socket.onopen = () => {
+        if (currentGen !== this.connectionGeneration) {
+          try { socket.close(1001, 'conexion_reemplazada'); } catch (_) {}
+          return;
+        }
+
         console.info(`[WS] Conexión establecida con éxito en canal: ${this.canal}`);
         const wasReconnecting = this.reconnectAttempts > 0;
-        this.reconnectAttempts = 0;
         this.lastActivityTime = Date.now();
         this._notifyStatus('CONECTADO');
 
-        // Iniciar ciclo de Heartbeat cada 30 segundos
+        // La estabilidad se confirma tras 10 segundos continuos o primer mensaje de datos (WS-009)
+        if (this.stabilityTimer) clearTimeout(this.stabilityTimer);
+        this.stabilityTimer = setTimeout(() => {
+          if (this.status === 'CONECTADO') {
+            this.reconnectAttempts = 0;
+          }
+        }, 10000);
+
+        // Iniciar ciclo simétrico de Heartbeat cada 30 segundos
         this._startHeartbeat();
 
-        // Si fue una reconexión tras micro-corte, solicitar snapshot explícito de sincronización
+        // Si fue una reconexión, solicitar snapshot de sincronización (RF-WS-05)
         if (wasReconnecting) {
           this.solicitarSnapshot();
         }
       };
 
-      this.ws.onmessage = (event) => {
+      socket.onmessage = (event) => {
+        if (currentGen !== this.connectionGeneration) return;
         this.lastActivityTime = Date.now();
         this._handleMessage(event.data);
       };
 
-      this.ws.onclose = (event) => {
+      socket.onclose = (event) => {
+        if (currentGen !== this.connectionGeneration) return;
+
         this._stopHeartbeat();
+        if (this.stabilityTimer) {
+          clearTimeout(this.stabilityTimer);
+          this.stabilityTimer = null;
+        }
 
         if (this.isForcedClosed) {
           this._notifyStatus('DESCONECTADO');
@@ -167,9 +237,17 @@ export class TurneroWSClient {
 
         console.warn(`[WS] Conexión cerrada (código: ${event.code}, razón: ${event.reason || 'sin especificar'}).`);
 
-        // Error 1008: No autorizado (token revocado o inválido)
-        if (event.code === 1008) {
-          console.error('[WS] Error 1008: No autorizado. Cancelando reintentos hasta nuevo token.');
+        // Código 4401 / 1008: No autorizado o sesión expirada
+        if (event.code === 4401 || event.code === 1008) {
+          console.error('[WS] No autorizado / Sesión expirada. Cancelando reconexión automática.');
+          this._notifyStatus('DESCONECTADO');
+          this._dispatchAuthError(event.code, event.reason);
+          return;
+        }
+
+        // Código 4403: Canal prohibido (IDOR detectado por servidor)
+        if (event.code === 4403) {
+          console.error('[WS] Error 4403: Acceso denegado al canal solicitado.');
           this._notifyStatus('DESCONECTADO');
           return;
         }
@@ -177,7 +255,8 @@ export class TurneroWSClient {
         this._scheduleReconnect();
       };
 
-      this.ws.onerror = (err) => {
+      socket.onerror = (err) => {
+        if (currentGen !== this.connectionGeneration) return;
         console.warn('[WS] Evento de error en socket:', err);
       };
     } catch (err) {
@@ -188,26 +267,38 @@ export class TurneroWSClient {
 
   /**
    * Procesa mensajes de entrada conforme al protocolo estándar:
-   * { tipo, payload, timestamp }
+   * { tipo, payload, seq, timestamp }
    * @private
    */
   _handleMessage(rawData) {
     try {
       const msg = JSON.parse(rawData);
-      const { tipo, payload, timestamp } = msg;
+      const { tipo, payload, seq, timestamp } = msg;
 
-      // Responder a pings del servidor con un pong de aplicación
+      // Resetear intentos de reconexión al recibir primer mensaje válido
+      this.reconnectAttempts = 0;
+
+      // Control de secuencia monotónica: detectar posibles huecos
+      if (seq !== undefined && seq !== null) {
+        if (this.lastSeq > 0 && seq > this.lastSeq + 1) {
+          console.warn(`[WS] Detectado salto de secuencia en canal ${this.canal}: esperado ${this.lastSeq + 1}, recibido ${seq}. Solicitando snapshot...`);
+          this.solicitarSnapshot();
+        }
+        this.lastSeq = seq;
+      }
+
+      // 1. Responder a pings del servidor con un pong de aplicación
       if (tipo === 'ping') {
         this.send('pong', { clientTime: Date.now() });
         return;
       }
 
-      // Si es un pong, simplemente actualizar marca de actividad
+      // 2. Si es pong del servidor, confirma salud de red
       if (tipo === 'pong') {
         return;
       }
 
-      // Disparar listeners del tipo de mensaje correspondiente
+      // 3. Disparar listeners registrados para este tipo de mensaje
       if (tipo && this.listeners.has(tipo)) {
         for (const callback of this.listeners.get(tipo)) {
           try {
@@ -218,7 +309,7 @@ export class TurneroWSClient {
         }
       }
 
-      // Listener comodín '*'
+      // 4. Listener comodín '*'
       if (this.listeners.has('*')) {
         for (const callback of this.listeners.get('*')) {
           try {
@@ -249,15 +340,19 @@ export class TurneroWSClient {
       timestamp: new Date().toISOString()
     });
 
-    this.ws.send(message);
-    return true;
+    try {
+      this.ws.send(message);
+      return true;
+    } catch (err) {
+      console.error('[WS] Error al enviar mensaje:', err);
+      return false;
+    }
   }
 
   /**
    * Solicita el snapshot de estado más reciente al servidor central (RF-WS-05).
    */
   solicitarSnapshot() {
-    console.info('[WS] Solicitando snapshot de sincronización...');
     return this.send('solicitar_snapshot', {
       canal: this.canal,
       mesaId: this.mesaId
@@ -265,7 +360,7 @@ export class TurneroWSClient {
   }
 
   /**
-   * Inicia el latido (Heartbeat) de 30s y monitoreo de silencio de red (60s).
+   * Inicia el latido simétrico (Heartbeat) de 30s y monitoreo de silencio de red (60s).
    * @private
    */
   _startHeartbeat() {
@@ -274,9 +369,9 @@ export class TurneroWSClient {
       // 1. Detectar corte silencioso: si han pasado más de 60s sin actividad, forzar reconexión
       const elapsedSilence = Date.now() - this.lastActivityTime;
       if (elapsedSilence > this.silenceTimeout) {
-        console.warn(`[WS] Corte silencioso detectado (${(elapsedSilence / 1000).toFixed(0)}s de inactividad). Reiniciando conexión...`);
+        console.warn(`[WS] Corte silencioso detectado (${(elapsedSilence / 1000).toFixed(0)}s sin tráfico). Reiniciando socket...`);
         if (this.ws) {
-          try { this.ws.close(); } catch {}
+          try { this.ws.close(1001, 'silencio_detectado'); } catch (_) {}
         }
         return;
       }
@@ -298,8 +393,8 @@ export class TurneroWSClient {
   }
 
   /**
-   * Programa la reconexión con Backoff Exponencial + Jitter exacto:
-   * delay = min(base * 2^intentos + random(0, 1000), 30000)
+   * Programa la reconexión con Backoff Exponencial + Full Jitter (WS-009):
+   * delay = random(500, min(maxDelay, baseDelay * 2^(intentos-1)))
    * @private
    */
   _scheduleReconnect() {
@@ -308,9 +403,10 @@ export class TurneroWSClient {
     }
 
     this.reconnectAttempts++;
-    const exponential = this.baseDelay * Math.pow(2, Math.min(this.reconnectAttempts - 1, 6));
-    const jitter = Math.random() * 1000;
-    const delay = Math.min(Math.round(exponential + jitter), this.maxDelay);
+
+    // Full Jitter para evitar efecto manada en 50 pantallas tras reinicio (WS-009)
+    const maxInterval = Math.min(this.maxDelay, this.baseDelay * Math.pow(2, Math.min(this.reconnectAttempts - 1, 6)));
+    const delay = Math.max(500, Math.floor(Math.random() * maxInterval));
 
     console.info(`[WS] Reconectando en ${(delay / 1000).toFixed(1)}s (intento #${this.reconnectAttempts})...`);
     this._notifyStatus('RECONECTANDO', delay);
@@ -321,11 +417,58 @@ export class TurneroWSClient {
   }
 
   /**
-   * Actualiza el token JWT (ej: tras refresh token transparente) y reconecta de ser necesario.
+   * Integra eventos de ciclo de vida del navegador (WS-015).
+   * @private
+   */
+  _initBrowserLifecycle() {
+    if (typeof window === 'undefined') return;
+
+    // Al restaurarse la conexión física a la red, reconectar de inmediato
+    window.addEventListener('online', () => {
+      console.info('[WS] Evento online detectado. Reconectando de inmediato...');
+      this.reconnectAttempts = 0;
+      this.connect();
+    });
+
+    // Al volver a la pestaña, verificar estado y solicitar snapshot
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+          console.info('[WS] Pestaña visible y socket cerrado. Reconectando...');
+          this.connect();
+        } else {
+          this.solicitarSnapshot();
+        }
+      }
+    });
+
+    // Cierre limpio al cerrar o navegar fuera de la página
+    window.addEventListener('pagehide', () => {
+      if (this.ws) {
+        try { this.ws.close(1000, 'Página descargada'); } catch (_) {}
+      }
+    });
+  }
+
+  /**
+   * Notifica errores de autenticación a posibles manejadores externos.
+   * @private
+   */
+  _dispatchAuthError(code, reason) {
+    if (this.listeners.has('auth_error')) {
+      for (const cb of this.listeners.get('auth_error')) {
+        try { cb({ code, reason }); } catch (_) {}
+      }
+    }
+  }
+
+  /**
+   * Actualiza el token JWT (ej: tras refresh token transparente) y reconecta de inmediato.
    * @param {string} newToken
    */
   setToken(newToken) {
     this.token = newToken;
+    this.ticket = ''; // Limpiar ticket previo
     if (this.status === 'CONECTADO') {
       this.disconnect();
       this.connect();
@@ -337,7 +480,13 @@ export class TurneroWSClient {
    */
   disconnect() {
     this.isForcedClosed = true;
+    this.connectionGeneration++;
     this._stopHeartbeat();
+
+    if (this.stabilityTimer) {
+      clearTimeout(this.stabilityTimer);
+      this.stabilityTimer = null;
+    }
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -345,14 +494,9 @@ export class TurneroWSClient {
     if (this.ws) {
       try {
         this.ws.close(1000, 'Cliente cerró sesión');
-      } catch {}
+      } catch (_) {}
       this.ws = null;
     }
     this._notifyStatus('DESCONECTADO');
   }
-}
-
-// Compatibilidad con entornos sin módulos ES6
-if (typeof window !== 'undefined') {
-  window.TurneroWSClient = TurneroWSClient;
 }

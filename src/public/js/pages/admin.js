@@ -42,15 +42,28 @@ export function adminView() {
 
     extensionVouchers: 50,
     extensionCantidad: 50,
+    filtroMesasDashboard: 'todas',
+    filtroLotes:          'todos',
+    filtroMesas:          'todas',
+    filtroUsuarios:       'todos',
+
     modalLote:             false,
     modalExtender:         false,
     modalMesa:             false,
+    modalEditarMesa:       false,
     modalUsuario:          false,
+    modalEditarUsuario:    false,
     modalCambioLote:       false,
     lotePendienteActivar:  null,
     nuevoLoteHasta:        500,
 
     nuevaMesa: {
+      numero: 1,
+      nombre: ''
+    },
+
+    mesaEditando: {
+      id: null,
       numero: 1,
       nombre: ''
     },
@@ -62,12 +75,41 @@ export function adminView() {
       rol:             'operador'
     },
 
+    usuarioEditando: {
+      id: null,
+      nombre_completo: '',
+      username:        '',
+      password:        '',
+      rol:             'operador',
+      activo:          true
+    },
+
     config: {
-      tiempo_max_atencion_min:   5,
       alerta_vouchers_restantes: 20,
-      kiosko_web_activo:         false
+      kiosko_web_activo:         false,
+      voz_anuncio_activa:        true
     },
     _configSnapshot: null,
+
+    filtroReporte: {
+      fecha:       new Date().toISOString().slice(0, 10),
+      mesa_id:     '',
+      operador_id: '',
+      estado:      'todos'
+    },
+    reporteData: {
+      kpis: {
+        total_atendidos:       0,
+        total_cancelados:      0,
+        total_turnos:          0,
+        promedio_atencion_seg: 0,
+        promedio_espera_seg:   0,
+        mesas_activas:         0
+      },
+      mesas_resumen: [],
+      turnos:        []
+    },
+    cargandoReporte: false,
 
     ws:          null,
     wsConnected: false,
@@ -177,9 +219,9 @@ export function adminView() {
       const res = await api.get('/admin/configuracion');
       if (res && res.configuracion) {
         const c = res.configuracion;
-        this.config.tiempo_max_atencion_min   = parseInt(c.tiempo_max_atencion_min   || '5',  10) || 0;
         this.config.alerta_vouchers_restantes = parseInt(c.alerta_vouchers_restantes || '20', 10) || 20;
         this.config.kiosko_web_activo         = c.kiosko_web_activo === 'true' || c.kiosko_web_activo === true;
+        this.config.voz_anuncio_activa        = c.voz_anuncio_activa !== 'false';
       }
       this._configSnapshot = { ...this.config };
     },
@@ -456,6 +498,83 @@ export function adminView() {
       this.abrirModalMesa();
     },
 
+    abrirEditarMesa(mesa) {
+      this.mesaEditando = {
+        id: mesa.id,
+        numero: mesa.numero,
+        nombre: mesa.nombre || ''
+      };
+      this.modalEditarMesa = true;
+    },
+
+    async editarMesaSubmit() {
+      if (!this.mesaEditando.id) return;
+      const num = parseInt(this.mesaEditando.numero, 10);
+      if (!num || num < 1) {
+        showToast({ message: 'Número de mesa debe ser mayor a 0', type: 'warning' });
+        return;
+      }
+      if (this._loading) return;
+      this._loading = true;
+      try {
+        await api.patch(`/mesas/${this.mesaEditando.id}`, {
+          numero: num,
+          nombre: (this.mesaEditando.nombre || '').trim() || `Mesa ${num}`
+        });
+        showToast({ message: `Mesa ${num} actualizada`, type: 'success' });
+        this.modalEditarMesa = false;
+        await Promise.allSettled([this.cargarMesas(), this.cargarKPIs()]);
+      } catch (err) {
+        showToast({ message: err.mensaje || 'Error al actualizar mesa', type: 'danger' });
+      } finally {
+        this._loading = false;
+      }
+    },
+
+    async eliminarMesa(mesaId, mesaNumero) {
+      if (!confirm(`¿Desea eliminar la Mesa ${mesaNumero}? Esta acción no se puede deshacer.`)) return;
+      if (this._loading) return;
+      this._loading = true;
+      try {
+        await api.delete(`/mesas/${mesaId}`);
+        showToast({ message: `Mesa ${mesaNumero} eliminada`, type: 'info' });
+        await Promise.allSettled([this.cargarMesas(), this.cargarKPIs()]);
+      } catch (err) {
+        showToast({ message: err.mensaje || 'Error al eliminar mesa', type: 'danger' });
+        await this.cargarMesas();
+      } finally {
+        this._loading = false;
+      }
+    },
+
+    // =========================================================================
+    // FILTROS
+    // =========================================================================
+
+    getMesasFiltradasDashboard() {
+      if (this.filtroMesasDashboard === 'todas') return this.mesas;
+      return this.mesas.filter(m => m.estado === this.filtroMesasDashboard);
+    },
+
+    getLotesFiltrados() {
+      if (this.filtroLotes === 'todos') return this.lotes;
+      return this.lotes.filter(l => l.estado === this.filtroLotes);
+    },
+
+    getMesasFiltradasConfig() {
+      if (this.filtroMesas === 'todas') return this.mesas;
+      if (this.filtroMesas === 'con_operador') return this.mesas.filter(m => m.operador_id);
+      if (this.filtroMesas === 'sin_operador') return this.mesas.filter(m => !m.operador_id);
+      return this.mesas.filter(m => m.estado === this.filtroMesas);
+    },
+
+    getUsuariosFiltrados() {
+      if (this.filtroUsuarios === 'todos') return this.usuarios;
+      if (this.filtroUsuarios === 'activos') return this.usuarios.filter(u => u.activo);
+      if (this.filtroUsuarios === 'inactivos') return this.usuarios.filter(u => !u.activo);
+      return this.usuarios.filter(u => u.rol === this.filtroUsuarios);
+    },
+
     // =========================================================================
     // USUARIOS
     // =========================================================================
@@ -466,7 +585,7 @@ export function adminView() {
         showToast({ message: 'Complete todos los campos', type: 'warning' }); return;
       }
       if (password.length < 8) {
-        showToast({ message: 'Contrasena de al menos 8 caracteres', type: 'warning' }); return;
+        showToast({ message: 'Contraseña de al menos 8 caracteres', type: 'warning' }); return;
       }
       if (this._loading) return;
       this._loading = true;
@@ -483,30 +602,97 @@ export function adminView() {
       } finally { this._loading = false; }
     },
 
+    abrirEditarUsuario(usr) {
+      this.usuarioEditando = {
+        id: usr.id,
+        nombre_completo: usr.nombre_completo || '',
+        username: usr.username || '',
+        rol: usr.rol || 'operador',
+        password: '',
+        activo: Boolean(usr.activo)
+      };
+      this.modalEditarUsuario = true;
+    },
+
+    async editarUsuarioSubmit() {
+      if (!this.usuarioEditando.id) return;
+      if (!this.usuarioEditando.nombre_completo.trim() || !this.usuarioEditando.username.trim()) {
+        showToast({ message: 'Nombre y usuario son requeridos', type: 'warning' });
+        return;
+      }
+      if (this._loading) return;
+      this._loading = true;
+      try {
+        const payload = {
+          nombre_completo: this.usuarioEditando.nombre_completo.trim(),
+          username:        this.usuarioEditando.username.trim(),
+          rol:             this.usuarioEditando.rol,
+          activo:          this.usuarioEditando.activo
+        };
+        if (this.usuarioEditando.password && this.usuarioEditando.password.length >= 8) {
+          payload.password = this.usuarioEditando.password;
+        }
+        await api.patch(`/admin/usuarios/${this.usuarioEditando.id}`, payload);
+        showToast({ message: 'Usuario actualizado', type: 'success' });
+        this.modalEditarUsuario = false;
+        await Promise.allSettled([this.cargarUsuarios(), this.cargarMesas()]);
+      } catch (err) {
+        showToast({ message: err.mensaje || 'Error al actualizar usuario', type: 'danger' });
+      } finally {
+        this._loading = false;
+      }
+    },
+
+    async toggleActivoUsuario(usr) {
+      if (this._loading) return;
+      this._loading = true;
+      const nuevoEstado = !usr.activo;
+      try {
+        await api.patch(`/admin/usuarios/${usr.id}`, { activo: nuevoEstado });
+        showToast({ message: `Usuario ${usr.username} ${nuevoEstado ? 'activado' : 'desactivado'}`, type: 'info' });
+        await Promise.allSettled([this.cargarUsuarios(), this.cargarMesas()]);
+      } catch (err) {
+        showToast({ message: err.mensaje || 'Error al cambiar estado de usuario', type: 'danger' });
+      } finally {
+        this._loading = false;
+      }
+    },
+
+    async eliminarUsuario(usrId, username) {
+      if (!confirm(`¿Está seguro de eliminar al usuario ${username}?`)) return;
+      if (this._loading) return;
+      this._loading = true;
+      try {
+        await api.delete(`/admin/usuarios/${usrId}`);
+        showToast({ message: `Usuario ${username} eliminado`, type: 'info' });
+        await Promise.allSettled([this.cargarUsuarios(), this.cargarMesas()]);
+      } catch (err) {
+        showToast({ message: err.mensaje || 'Error al eliminar usuario', type: 'danger' });
+      } finally {
+        this._loading = false;
+      }
+    },
+
     // =========================================================================
     // CONFIGURACION (INC-4)
     // =========================================================================
 
     async guardarConfiguracion() {
-      const tiempo = this.config.tiempo_max_atencion_min;
       const alerta = this.config.alerta_vouchers_restantes;
 
-      if (tiempo !== 0 && (!Number.isInteger(tiempo) || tiempo < 0 || tiempo > 240)) {
-        showToast({ message: 'Tiempo de referencia: 0 (sin umbral) o entero 1-240', type: 'warning' }); return;
-      }
       if (!Number.isInteger(alerta) || alerta < 1) {
-        showToast({ message: 'Alerta de vouchers debe ser entero >= 1', type: 'warning' }); return;
+        showToast({ message: 'Alerta de turnos debe ser entero >= 1', type: 'warning' }); return;
       }
       if (this._loading) return;
       this._loading = true;
       try {
         await Promise.all([
-          api.patch('/admin/configuracion/tiempo_max_atencion_min',   { valor: String(tiempo) }),
           api.patch('/admin/configuracion/alerta_vouchers_restantes', { valor: String(alerta) }),
-          api.patch('/admin/configuracion/kiosko_web_activo',         { valor: String(this.config.kiosko_web_activo) })
+          api.patch('/admin/configuracion/kiosko_web_activo',         { valor: String(this.config.kiosko_web_activo) }),
+          api.patch('/admin/configuracion/voz_anuncio_activa',        { valor: String(this.config.voz_anuncio_activa) })
         ]);
         this._configSnapshot = { ...this.config };
-        showToast({ message: 'Ajustes guardados', type: 'success' });
+        showToast({ message: 'Ajustes guardados correctamente', type: 'success' });
       } catch (err) {
         if (this._configSnapshot) this.config = { ...this._configSnapshot };
         showToast({ message: err.mensaje || 'Error al guardar. Valores revertidos.', type: 'danger' });
@@ -514,37 +700,91 @@ export function adminView() {
     },
 
     // =========================================================================
-    // EXPORTAR CSV
+    // REPORTES Y EXPORTACIÓN XLS
     // =========================================================================
 
-    async exportarCSV() {
+    cambiarTab(nuevoTab) {
+      this.tab = nuevoTab;
+      if (nuevoTab === 'reportes') {
+        this.cargarReporte();
+      }
+    },
+
+    async cargarReporte() {
+      this.cargandoReporte = true;
+      try {
+        const query = new URLSearchParams();
+        if (this.filtroReporte.fecha)       query.set('fecha', this.filtroReporte.fecha);
+        if (this.filtroReporte.mesa_id)     query.set('mesa_id', this.filtroReporte.mesa_id);
+        if (this.filtroReporte.operador_id) query.set('operador_id', this.filtroReporte.operador_id);
+        if (this.filtroReporte.estado)      query.set('estado', this.filtroReporte.estado);
+
+        const res = await api.get(`/admin/reportes/datos?${query.toString()}`);
+        if (res) {
+          this.reporteData = {
+            kpis:          res.kpis          || this.reporteData.kpis,
+            mesas_resumen: res.mesas_resumen || [],
+            turnos:        res.turnos        || []
+          };
+        }
+      } catch (err) {
+        showToast({ message: err.mensaje || 'Error al cargar reporte', type: 'danger' });
+      } finally {
+        this.cargandoReporte = false;
+      }
+    },
+
+    async exportarReporteXLS() {
       if (this._loading) return;
       this._loading = true;
       try {
-        const fecha = new Date().toISOString().slice(0, 10);
-        const blob  = await api.getBlob(`/admin/reporte/csv?fecha=${fecha}`);
-        const url   = URL.createObjectURL(blob);
-        const a     = document.createElement('a');
-        a.href = url; a.download = `turnero_reporte_${fecha}.csv`;
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        const query = new URLSearchParams();
+        const fecha = this.filtroReporte.fecha || new Date().toISOString().slice(0, 10);
+        query.set('fecha', fecha);
+        if (this.filtroReporte.mesa_id)     query.set('mesa_id', this.filtroReporte.mesa_id);
+        if (this.filtroReporte.operador_id) query.set('operador_id', this.filtroReporte.operador_id);
+        if (this.filtroReporte.estado)      query.set('estado', this.filtroReporte.estado);
+
+        const blob = await api.getBlob(`/admin/reportes/exportar-xls?${query.toString()}`);
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = `reporte_turnero_${fecha}.xls`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 5000);
-        showToast({ message: `Reporte ${fecha} descargado`, type: 'success' });
+        showToast({ message: `Reporte Excel descargado (${fecha}.xls)`, type: 'success' });
       } catch (err) {
-        showToast({ message: err.mensaje || 'Error al generar CSV', type: 'danger' });
-      } finally { this._loading = false; }
+        showToast({ message: err.mensaje || 'Error al exportar XLS', type: 'danger' });
+      } finally {
+        this._loading = false;
+      }
     },
 
     // =========================================================================
-    // SEMAFORO (INC-4)
+    // SEMAFORO
     // =========================================================================
 
-    /** Verde <= umbral; Ambar <= 1.5x; Rojo > 1.5x. 0 = sin umbral (gris). */
+    /** Verde <= 5 min; Ambar <= 8 min; Rojo > 8 min. */
     semaforoClass(tiempoMin) {
-      const u = this.config.tiempo_max_atencion_min || 0;
-      if (!u || !tiempoMin) return 'bg-slate-300';
-      if (tiempoMin <= u)       return 'bg-emerald-500';
-      if (tiempoMin <= u * 1.5) return 'bg-amber-500';
+      if (!tiempoMin) return 'bg-slate-300';
+      if (tiempoMin <= 5) return 'bg-emerald-500';
+      if (tiempoMin <= 8) return 'bg-amber-500';
       return 'bg-rose-500';
+    },
+
+    formatSegMin(seg) {
+      if (!seg && seg !== 0) return '--';
+      const m = Math.floor(seg / 60);
+      const s = seg % 60;
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    },
+
+    formatHora(iso) {
+      if (!iso) return '--';
+      const d = new Date(iso);
+      return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     },
 
     _actualizarAlertaLote() {

@@ -121,46 +121,44 @@ export function panelMesaView() {
     /**
      * Restaura el estado de la mesa y el turno en curso (GET /turnos/estado?mesa_id=X)
      */
+    /**
+     * Restaura el estado de la mesa y el turno en curso (GET /turnos/estado?mesa_id=X)
+     * Una sola consulta consolidada al cargar o reconectar (presupuesto <= 2 queries).
+     */
     async cargarEstado() {
       try {
-        const [resEstado, resMesas] = await Promise.allSettled([
-          api.get(`/turnos/estado?mesa_id=${this.mesa.id}`),
-          api.get('/mesas')
-        ]);
+        const data = await api.get(`/turnos/estado?mesa_id=${this.mesa.id}`);
+        if (!data) return;
 
-        if (resEstado.status === 'fulfilled') {
-          const data = resEstado.value;
-          this.turnoActual = data.turno_actual || null;
-          this.atendidosHoy = data.atendidos_hoy || 0;
-          this.proximoNumero = data.proximo_numero || null;
-          this.loteActivo = data.lote || null;
-          this.vouchersRestantes = data.lote
-            ? Math.max(0, data.lote.numero_hasta - data.lote.ultimo_numero_llamado)
-            : 0;
+        this.turnoActual = data.turno_actual || null;
+        this.atendidosHoy = data.atendidos_hoy || 0;
+        this.proximoNumero = data.proximo_numero ?? null;
+        this.loteActivo = data.lote || null;
+        this.vouchersRestantes = data.lote
+          ? Math.max(0, data.lote.numero_hasta - data.lote.ultimo_numero_llamado)
+          : 0;
 
-          if (this.turnoActual && this.turnoActual.llamado_en) {
-            this.iniciarCronometro(this.turnoActual.llamado_en);
-            const numFormatted = String(this.turnoActual.numero).padStart(3, '0');
-            this.feedbackData = {
-              titulo: 'LLAMADO EMITIDO CON ÉXITO',
-              detalle: `Turno ${numFormatted} convocado a Mesa ${this.mesa.numero || '-'} • Sonando en pantalla TV`
-            };
-          } else {
-            this.detenerCronometro();
-            this.feedbackData = {
-              titulo: 'VENTANILLA DISPONIBLE',
-              detalle: 'Listo para convocar al siguiente estudiante.'
-            };
+        if (data.mesa) {
+          this.mesaPausada = data.mesa.estado === 'pausada';
+          if (data.mesa.nombre) this.mesa.nombre = data.mesa.nombre;
+          if (data.mesa.numero !== undefined && data.mesa.numero !== null) {
+            this.mesa.numero = data.mesa.numero;
           }
         }
 
-        if (resMesas.status === 'fulfilled') {
-          const todas = resMesas.value.mesas || [];
-          const actual = todas.find(m => m.id === this.mesa.id);
-          if (actual) {
-            this.mesaPausada = actual.estado === 'pausada';
-            if (actual.nombre) this.mesa.nombre = actual.nombre;
-          }
+        if (this.turnoActual && this.turnoActual.llamado_en) {
+          this.iniciarCronometro(this.turnoActual.llamado_en);
+          const numFormatted = String(this.turnoActual.numero).padStart(3, '0');
+          this.feedbackData = {
+            titulo: 'LLAMADO EMITIDO CON ÉXITO',
+            detalle: `Turno ${numFormatted} convocado a Mesa ${this.mesa.numero || '-'} • Sonando en pantalla TV`
+          };
+        } else {
+          this.detenerCronometro();
+          this.feedbackData = {
+            titulo: 'VENTANILLA DISPONIBLE',
+            detalle: 'Listo para convocar al siguiente estudiante.'
+          };
         }
       } catch (err) {
         console.error('[MESA] Error al cargar estado inicial:', err);
@@ -234,18 +232,22 @@ export function panelMesaView() {
      * Acción 1: "Llamar Siguiente" (1 Clic Atómico — POST /turnos/llamar)
      */
     async llamarSiguiente() {
-      if (this.loadingAction || this.mesaPausada) return;
+      if (this.loadingAction || this.mesaPausada || this._cooldown) return;
 
       this.loadingAction = true;
+      // Idempotency-Key por intento: si la red falla y el usuario reintenta,
+      // el mismo UUID devuelve el turno ya creado sin quemar un nuevo número.
+      if (!this._llamarKey) this._llamarKey = crypto.randomUUID();
+      const idempotencyKey = this._llamarKey;
       try {
         const res = await api.post('/turnos/llamar', {
           mesa_id: this.mesa.id
-        });
+        }, { headers: { 'Idempotency-Key': idempotencyKey } });
 
         const { turno, proximo_numero, vouchers_restantes } = res;
         this.turnoActual = turno;
-        this.proximoNumero = proximo_numero;
-        this.vouchersRestantes = vouchers_restantes;
+        this.proximoNumero = proximo_numero ?? null;
+        this.vouchersRestantes = vouchers_restantes ?? 0;
         this.atendidosHoy++;
 
         // Iniciar cronómetro desde la marca temporal devuelta por la BD
@@ -276,6 +278,12 @@ export function panelMesaView() {
         }
       } finally {
         this.loadingAction = false;
+        // Cooldown breve (800ms) tras éxito para proteger contra ráfaga/doble-clic accidental
+        this._cooldown = true;
+        setTimeout(() => {
+          this._cooldown = false;
+          this._llamarKey = null;
+        }, 800);
       }
     },
 
@@ -313,7 +321,7 @@ export function panelMesaView() {
      * Acción 3: "No se presentó" (POST /turnos/:id/cancelar — Acción directa silenciosa y sin modales)
      */
     async cancelarTurno() {
-      if (!this.turnoActual || this.loadingAction) return;
+      if (!this.turnoActual || this.loadingAction || this._cooldown) return;
 
       this.loadingAction = true;
       try {
@@ -329,6 +337,8 @@ export function panelMesaView() {
         console.error('[MESA] Error al cancelar turno:', err);
       } finally {
         this.loadingAction = false;
+        this._cooldown = true;
+        setTimeout(() => { this._cooldown = false; }, 500);
       }
     },
 
@@ -336,7 +346,7 @@ export function panelMesaView() {
      * Acción 4: "Re-llamar Turno" (POST /turnos/:id/rellamar)
      */
     async rellamarTurno() {
-      if (!this.turnoActual || this.loadingAction) return;
+      if (!this.turnoActual || this.loadingAction || this._cooldown) return;
 
       this.loadingAction = true;
       try {
@@ -355,6 +365,8 @@ export function panelMesaView() {
         showToast({ message: err.message || 'Error al re-llamar turno', type: 'danger' });
       } finally {
         this.loadingAction = false;
+        this._cooldown = true;
+        setTimeout(() => { this._cooldown = false; }, 500);
       }
     },
 
@@ -427,8 +439,9 @@ export function panelMesaView() {
         const isSpace = (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.keyCode === 32);
         const isEnter = (e.code === 'Enter' || e.code === 'NumpadEnter' || e.key === 'Enter' || e.keyCode === 13);
 
-        // Barra Espaciadora o Enter -> Llamar Siguiente (ambos ejecutan exclusivamente llamar siguiente)
-        if (isSpace || isEnter) {
+        // Barra Espaciadora o Enter -> Llamar Siguiente
+        // e.repeat === true cuando la tecla está MANTENIDA: ignorar para evitar N llamados
+        if ((isSpace || isEnter) && !e.repeat) {
           e.preventDefault();
           e.stopPropagation();
 
@@ -439,10 +452,15 @@ export function panelMesaView() {
 
           this.llamarSiguiente();
           return;
+        } else if ((isSpace || isEnter) && e.repeat) {
+          // Absorber el evento sin llamar, para no hacer scroll ni activar botones enfocados
+          e.preventDefault();
+          e.stopPropagation();
+          return;
         }
 
         // Tecla R -> Re-llamar a TV (coincide con el botón [R])
-        if (e.key === 'r' || e.key === 'R') {
+        if ((e.key === 'r' || e.key === 'R') && !e.repeat) {
           e.preventDefault();
           e.stopPropagation();
           if (document.activeElement && typeof document.activeElement.blur === 'function') {
@@ -453,7 +471,7 @@ export function panelMesaView() {
         }
 
         // Tecla N o Escape -> No se presentó (coincide con el botón [N])
-        if (e.key === 'n' || e.key === 'N' || e.key === 'Escape') {
+        if ((e.key === 'n' || e.key === 'N' || e.key === 'Escape') && !e.repeat) {
           e.preventDefault();
           e.stopPropagation();
           if (document.activeElement && typeof document.activeElement.blur === 'function') {
@@ -464,7 +482,7 @@ export function panelMesaView() {
         }
 
         // Tecla P -> Pausar o Reanudar Mesa
-        if (e.key === 'p' || e.key === 'P') {
+        if ((e.key === 'p' || e.key === 'P') && !e.repeat) {
           e.preventDefault();
           e.stopPropagation();
           if (document.activeElement && typeof document.activeElement.blur === 'function') {
@@ -519,6 +537,10 @@ export function panelMesaView() {
       const token = api.getToken();
       if (!token || !this.mesa.id) return;
 
+      if (this.ws) {
+        try { this.ws.disconnect(); } catch (_) {}
+      }
+
       this.ws = new TurneroWSClient({
         token,
         canal: `mesa:${this.mesa.id}`,
@@ -532,12 +554,12 @@ export function panelMesaView() {
       // Evento de turno llamado para esta mesa (idempotente)
       this.ws.on('turno_llamado', (payload) => {
         if (payload && payload.turno) {
-          if (this.turnoActual && this.turnoActual.id === payload.turno.id) {
+          if (this.turnoActual && Number(this.turnoActual.id) === Number(payload.turno.id)) {
             return; // Ya procesado
           }
           this.turnoActual = payload.turno;
-          this.proximoNumero = payload.proximo_numero;
-          this.vouchersRestantes = payload.vouchers_restantes;
+          this.proximoNumero = payload.proximo_numero ?? null;
+          this.vouchersRestantes = payload.vouchers_restantes ?? 0;
           this.iniciarCronometro(payload.turno.llamado_en);
         }
       });
@@ -551,7 +573,20 @@ export function panelMesaView() {
         this.mesaPausada = false;
       });
 
-      // Snapshot tras reconexión por micro-corte
+      // Actualización en caliente del próximo turno cuando CUALQUIER mesa llama o el lote avanza (RF-TURN-09)
+      // Recibido a través del canal lote:activo al que todos los operarios están suscritos.
+      this.ws.on('proximo_actualizado', (payload) => {
+        if (!payload) return;
+        this.proximoNumero = payload.proximo_numero ?? null;
+        if (payload.vouchers_restantes !== undefined) {
+          this.vouchersRestantes = payload.vouchers_restantes;
+        }
+        if (payload.lote && this.loteActivo) {
+          this.loteActivo.numero_lote = payload.lote;
+        }
+      });
+
+      // Snapshot tras reconexión por micro-corte (RF-WS-05)
       this.ws.on('snapshot', (payload) => {
         if (payload) {
           if (payload.turno_actual) {
@@ -562,7 +597,11 @@ export function panelMesaView() {
             this.detenerCronometro();
           }
           if (payload.atendidos_hoy !== undefined) this.atendidosHoy = payload.atendidos_hoy;
-          if (payload.proximo_numero !== undefined) this.proximoNumero = payload.proximo_numero;
+          this.proximoNumero = payload.proximo_numero ?? null;
+          if (payload.lote) {
+            this.loteActivo = payload.lote;
+            this.vouchersRestantes = Math.max(0, payload.lote.numero_hasta - payload.lote.ultimo_numero_llamado);
+          }
         }
       });
 

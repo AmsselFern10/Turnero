@@ -95,10 +95,10 @@ async function login (fastify, { username, password, ip }) {
 /**
  * Logout: revoca el JWT actual añadiéndolo a la blacklist de Redis.
  */
-async function logout (fastify, { userId, jti, ip }) {
-  // Calcular TTL restante del token (para que expire de Redis cuando expire el JWT)
-  const decoded = fastify.jwt.decode(fastify.request?.headers?.authorization?.split(' ')[1] || '')
-  const ttl     = decoded?.exp ? decoded.exp - Math.floor(Date.now() / 1000) : 7200
+async function logout (fastify, { userId, jti, exp, ip }) {
+  // TTL = segundos restantes hasta que el JWT expire (viene del claim exp del token).
+  // Si exp no está disponible, usar 2h como fallback conservador.
+  const ttl = exp ? exp - Math.floor(Date.now() / 1000) : 7200
 
   if (ttl > 0) {
     await fastify.redis.setex(`bl:${jti}`, ttl, '1')

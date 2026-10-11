@@ -2,6 +2,10 @@
 
 // Captura errores no controlados ANTES de levantar Fastify (RNF-MAN-05)
 process.on('uncaughtException', (err) => {
+  if (err && (err.code === 'ECONNRESET' || err.code === 'EPIPE' || err.code === 'ECONNABORTED')) {
+    console.warn('[WARN] Error de socket de red absorbido (cliente desconectado):', err.message)
+    return
+  }
   console.error('[FATAL] uncaughtException:', err)
   process.exit(1)
 })

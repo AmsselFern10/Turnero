@@ -189,7 +189,11 @@ export async function playCallChime() {
     if (!ctx) return;
 
     // Anti-solapamiento: si el chime anterior todavía suena, omitir
-    if (ctx.currentTime < _chimeEndTime) return;
+    if (ctx.currentTime < _chimeEndTime) {
+      const restante = Math.max(0, (_chimeEndTime - ctx.currentTime) * 1000);
+      await new Promise(r => setTimeout(r, restante));
+      return;
+    }
 
     // Intentar bell.mp3 (solo UNA descarga de red; si falló antes, usa síntesis)
     const buffer = await _loadBell();
@@ -199,14 +203,18 @@ export async function playCallChime() {
       source.buffer = buffer;
       source.connect(ctx.destination);
       source.start();
+      const durMs = Math.min(Math.round(buffer.duration * 1000), 1000);
       _chimeEndTime = ctx.currentTime + buffer.duration + 0.05;
+      await new Promise(r => setTimeout(r, durMs));
     } else {
       // Fallback: síntesis sin red
       synthesizeInstitutionalChime();
+      await new Promise(r => setTimeout(r, Math.round(CHIME_DURATION * 1000)));
     }
   } catch (err) {
     console.warn('[AUDIO] Error al reproducir chime:', err);
     synthesizeInstitutionalChime();
+    await new Promise(r => setTimeout(r, Math.round(CHIME_DURATION * 1000)));
   }
 }
 

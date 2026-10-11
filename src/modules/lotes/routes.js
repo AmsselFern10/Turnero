@@ -92,38 +92,47 @@ module.exports = async function lotesRoutes (fastify) {
   }, async (request, reply) => {
     const loteId = parseInt(request.params.id)
 
-    // Verificar que no haya otro lote activo (garantía extra — el UNIQUE index lo impide)
-    const { rows: [activo] } = await fastify.db.query(
-      `SELECT id, numero_lote FROM lotes_voucher WHERE estado = 'activo' LIMIT 1`
-    )
+    try {
+      // Verificar que no haya otro lote activo (garantía extra — el UNIQUE index lo impide)
+      const { rows: [activo] } = await fastify.db.query(
+        `SELECT id, numero_lote FROM lotes_voucher WHERE estado = 'activo' LIMIT 1`
+      )
 
-    if (activo && activo.id !== loteId) {
-      return reply.status(409).send({
-        error: `Ya hay un lote activo (Lote ${activo.numero_lote}). Debe pausarlo o cerrarlo primero.`
-      })
+      if (activo && activo.id !== loteId) {
+        return reply.status(409).send({
+          error: `Ya hay un lote activo (Lote ${activo.numero_lote}). Debe pausarlo o cerrarlo primero.`
+        })
+      }
+
+      const { rows: [lote] } = await fastify.db.query(
+        `UPDATE lotes_voucher
+         SET estado = 'activo', fecha_activacion = COALESCE(fecha_activacion, NOW())
+         WHERE id = $1 AND estado IN ('preparado', 'pausado')
+         RETURNING id, numero_lote, numero_hasta, ultimo_numero_llamado, estado`,
+        [loteId]
+      )
+
+      if (!lote) {
+        return reply.status(400).send({ error: 'El lote no puede activarse desde su estado actual' })
+      }
+
+      await fastify.db.query(
+        `INSERT INTO audit_log (lote_id, operador_id, accion, ip_origen)
+         VALUES ($1, $2, 'LOTE_ACTIVADO', $3)`,
+        [loteId, request.user.id, request.ip]
+      )
+
+      await fastify.broadcast('admin:all', 'lote_activado', { lote })
+
+      return reply.send({ lote })
+    } catch (err) {
+      if (err.code === '23505') {
+        return reply.status(409).send({
+          error: 'Ya existe otro lote activo en el sistema (conflicto de concurrencia).'
+        })
+      }
+      throw err
     }
-
-    const { rows: [lote] } = await fastify.db.query(
-      `UPDATE lotes_voucher
-       SET estado = 'activo', fecha_activacion = COALESCE(fecha_activacion, NOW())
-       WHERE id = $1 AND estado IN ('preparado', 'pausado')
-       RETURNING id, numero_lote, numero_hasta, ultimo_numero_llamado, estado`,
-      [loteId]
-    )
-
-    if (!lote) {
-      return reply.status(400).send({ error: 'El lote no puede activarse desde su estado actual' })
-    }
-
-    await fastify.db.query(
-      `INSERT INTO audit_log (lote_id, operador_id, accion, ip_origen)
-       VALUES ($1, $2, 'LOTE_ACTIVADO', $3)`,
-      [loteId, request.user.id, request.ip]
-    )
-
-    await fastify.broadcast('admin:all', 'lote_activado', { lote })
-
-    return reply.send({ lote })
   })
 
   // ── PATCH /lotes/:id/pausar (RF-LOTE-04) ──────────────────────────────────

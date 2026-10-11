@@ -25,6 +25,12 @@ async function buildApp (opts = {}) {
   await app.register(require('./plugins/redis'))    // Redis (caché + pub/sub)
   await app.register(require('./plugins/auth'))     // JWT + cookies HttpOnly
 
+  // Cache de idempotencia para POST /turnos/llamar (protege timeout + reintento = 2 turnos)
+  // Map en memoria: { [Idempotency-Key]: responseBody } con TTL de 60s por entrada.
+  // Suficiente para LAN de un solo nodo; en multi-nodo usar Redis.
+  app.decorate('_idempotencyCache', new Map())
+  app.decorate('_idempotencyPromises', new Map())
+
   // ── Plugins de seguridad ────────────────────────────────────────────────────
   await app.register(require('@fastify/helmet'), {
     contentSecurityPolicy: {

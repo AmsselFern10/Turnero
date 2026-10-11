@@ -244,6 +244,8 @@ CREATE TABLE audit_log (
                           'MESA_PAUSADA',
                           'MESA_INACTIVADA',
                           'OPERADOR_ASIGNADO',
+                          'OPERADOR_LIBERADO',
+                          'TURNO_RELLAMADO',
                           -- Sesión
                           'LOGIN_EXITOSO',
                           'LOGIN_FALLIDO',
@@ -305,7 +307,7 @@ CREATE UNIQUE INDEX ux_turnos_lote_numero
 -- Turno activo de una mesa. Usado en:
 --   UPDATE turnos SET estado='atendido' WHERE mesa_id=$1 AND estado='en_atencion'
 -- Cardinalidad muy baja (1 fila por mesa activa) → O(1) siempre.
-CREATE INDEX ix_turnos_mesa_activa
+CREATE UNIQUE INDEX uq_turnos_mesa_activa
     ON turnos (mesa_id)
     WHERE estado = 'en_atencion';
 
@@ -325,6 +327,10 @@ CREATE INDEX ix_turnos_lote_estado
 CREATE INDEX ix_turnos_fecha
     ON turnos (creado_en DESC);
 
+-- Índices en Foreign Keys (evitan Seq Scans en cascada y joins)
+CREATE INDEX ix_turnos_operador_id ON turnos (operador_id);
+CREATE INDEX ix_turnos_mesa_id     ON turnos (mesa_id);
+
 -- Pantalla pública de TV (RF-TV-01, RF-TV-02) — últimos llamados ordenados rápidamente
 CREATE INDEX ix_turnos_tv_recientes
     ON turnos (llamado_en DESC NULLS LAST)
@@ -336,17 +342,24 @@ CREATE INDEX ix_turnos_mesa_atendidos_hoy
 
 -- ── mesas ────────────────────────────────────────────────────────────────────
 
--- Validación de operador ya asignado a otra mesa.
--- Usado en: SELECT id FROM mesas WHERE operador_id=$1 AND estado='activa'
-CREATE INDEX ix_mesas_operador
+-- Un operador como máximo en 1 mesa asignada (Garantía RF-AUTH-07 e Invariante 4)
+CREATE UNIQUE INDEX ux_mesas_operador_unico
     ON mesas (operador_id)
     WHERE operador_id IS NOT NULL;
+
+-- ── usuarios ─────────────────────────────────────────────────────────────────
+
+-- Login sin duplicados por mayúsculas
+CREATE UNIQUE INDEX uq_usuarios_username_lower
+    ON usuarios (LOWER(username));
 
 -- ── audit_log ────────────────────────────────────────────────────────────────
 
 CREATE INDEX ix_audit_operador_ts  ON audit_log (operador_id, timestamp DESC);
 CREATE INDEX ix_audit_accion_ts    ON audit_log (accion, timestamp DESC);
 CREATE INDEX ix_audit_lote         ON audit_log (lote_id, timestamp DESC);
+CREATE INDEX ix_audit_turno_id     ON audit_log (turno_id);
+CREATE INDEX ix_audit_mesa_id      ON audit_log (mesa_id);
 
 -- =============================================================================
 -- TRIGGERS
@@ -464,11 +477,201 @@ CREATE TRIGGER trg_audit_turnos_update
     WHEN (OLD.estado IS DISTINCT FROM NEW.estado)
     EXECUTE FUNCTION fn_audit_turno();
 
+-- ── 4. Inmutabilidad estricta de audit_log (solo-INSERT) ─────────────────────
+CREATE OR REPLACE FUNCTION fn_bloquear_modificacion_audit_log()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'audit_log es inmutable. No se permite UPDATE ni DELETE (SQLSTATE: 42501)';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_audit_log_inmutable ON audit_log;
+CREATE TRIGGER trg_audit_log_inmutable
+    BEFORE UPDATE OR DELETE ON audit_log
+    FOR EACH STATEMENT EXECUTE FUNCTION fn_bloquear_modificacion_audit_log();
+
+-- ── 5. Control de no-regresión en lotes_voucher.ultimo_numero_llamado ─────────
+CREATE OR REPLACE FUNCTION fn_check_lote_no_regresion()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.ultimo_numero_llamado < OLD.ultimo_numero_llamado THEN
+        RAISE EXCEPTION 'El progreso del lote no puede retroceder de % a %',
+            OLD.ultimo_numero_llamado, NEW.ultimo_numero_llamado;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_lotes_no_regresion ON lotes_voucher;
+CREATE TRIGGER trg_lotes_no_regresion
+    BEFORE UPDATE ON lotes_voucher
+    FOR EACH ROW EXECUTE FUNCTION fn_check_lote_no_regresion();
+
+-- ── 6. Función transaccional atómica de 1 Round-Trip fn_llamar_siguiente ─────
+CREATE OR REPLACE FUNCTION fn_llamar_siguiente(
+    p_mesa_id BIGINT,
+    p_operador_id BIGINT
+)
+RETURNS TABLE (
+    turno_id BIGINT,
+    turno_numero INTEGER,
+    llamado_en TIMESTAMPTZ,
+    mesa_id BIGINT,
+    mesa_numero INTEGER,
+    mesa_nombre VARCHAR(60),
+    lote_id BIGINT,
+    lote_numero INTEGER,
+    numero_hasta INTEGER,
+    ultimo_llamado INTEGER,
+    vouchers_restantes INTEGER,
+    proximo_numero INTEGER,
+    es_lote_agotado BOOLEAN,
+    es_idempotente BOOLEAN
+) LANGUAGE plpgsql AS $$
+DECLARE
+    v_mesa RECORD;
+    v_lote RECORD;
+    v_turno_existente RECORD;
+    v_nuevo_numero INTEGER;
+    v_turno_nuevo_id BIGINT;
+    v_llamado_en TIMESTAMPTZ;
+    v_vouchers_restantes INTEGER;
+    v_proximo INTEGER;
+    v_es_agotado BOOLEAN := FALSE;
+BEGIN
+    -- 1. Bloqueo y verificación de la mesa
+    SELECT m.id, m.numero, m.nombre, m.estado, m.operador_id
+    INTO v_mesa
+    FROM mesas m
+    WHERE m.id = p_mesa_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Mesa % no encontrada', p_mesa_id USING ERRCODE = 'P0002';
+    END IF;
+
+    IF v_mesa.estado <> 'activa' THEN
+        RAISE EXCEPTION 'Mesa en estado "%". Solo mesas activas pueden llamar.', v_mesa.estado USING ERRCODE = 'P0001';
+    END IF;
+
+    IF v_mesa.operador_id IS DISTINCT FROM p_operador_id THEN
+        RAISE EXCEPTION 'Esta mesa no te está asignada' USING ERRCODE = 'P0001';
+    END IF;
+
+    -- 2. Idempotencia ante doble clic rápido (< 1.5 segundos)
+    SELECT t.id, t.numero, t.llamado_en, t.lote_id
+    INTO v_turno_existente
+    FROM turnos t
+    WHERE t.mesa_id = p_mesa_id AND t.estado = 'en_atencion'
+    LIMIT 1;
+
+    IF FOUND AND (NOW() - v_turno_existente.llamado_en) < INTERVAL '1.5 second' THEN
+        SELECT lv.numero_lote, lv.numero_hasta, lv.ultimo_numero_llamado
+        INTO v_lote
+        FROM lotes_voucher lv WHERE lv.id = v_turno_existente.lote_id;
+
+        v_vouchers_restantes := GREATEST(0, v_lote.numero_hasta - v_lote.ultimo_numero_llamado);
+        IF v_lote.ultimo_numero_llamado + 1 <= v_lote.numero_hasta THEN
+            v_proximo := v_lote.ultimo_numero_llamado + 1;
+        ELSE
+            v_proximo := NULL;
+        END IF;
+
+        RETURN QUERY SELECT
+            v_turno_existente.id,
+            v_turno_existente.numero,
+            v_turno_existente.llamado_en,
+            v_mesa.id,
+            v_mesa.numero,
+            v_mesa.nombre,
+            v_turno_existente.lote_id,
+            v_lote.numero_lote,
+            v_lote.numero_hasta,
+            v_lote.ultimo_numero_llamado,
+            v_vouchers_restantes,
+            v_proximo,
+            FALSE,
+            TRUE;
+        RETURN;
+    END IF;
+
+    -- 3. Bloqueo y verificación del lote activo (FOR UPDATE serializado)
+    SELECT lv.id, lv.numero_lote, lv.numero_desde, lv.numero_hasta, lv.ultimo_numero_llamado
+    INTO v_lote
+    FROM lotes_voucher lv
+    WHERE lv.estado = 'activo'
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'No hay un lote activo. El admin debe activar un lote antes de llamar turnos.' USING ERRCODE = 'P0001';
+    END IF;
+
+    -- 4. Verificar si el lote ya estaba agotado antes de este llamado
+    IF v_lote.ultimo_numero_llamado >= v_lote.numero_hasta THEN
+        UPDATE lotes_voucher
+        SET estado = 'agotado', fecha_cierre = NOW()
+        WHERE id = v_lote.id AND estado = 'activo';
+
+        RAISE EXCEPTION 'El lote de vouchers se ha agotado. El admin debe extenderlo o crear uno nuevo.' USING ERRCODE = 'P0001';
+    END IF;
+
+    -- 5. Finalizar turno anterior de esta mesa (si existía)
+    UPDATE turnos
+    SET estado = 'atendido'
+    WHERE turnos.mesa_id = p_mesa_id AND turnos.estado = 'en_atencion';
+
+    -- 6. Avanzar contador del lote de forma atómica
+    v_nuevo_numero := v_lote.ultimo_numero_llamado + 1;
+
+    UPDATE lotes_voucher
+    SET ultimo_numero_llamado = v_nuevo_numero
+    WHERE id = v_lote.id;
+
+    -- 7. Crear el nuevo turno directo en 'en_atencion'
+    v_llamado_en := NOW();
+    INSERT INTO turnos (
+        numero, lote_id, estado, origen, mesa_id, operador_id, llamado_en
+    ) VALUES (
+        v_nuevo_numero, v_lote.id, 'en_atencion', 'voucher_fisico', p_mesa_id, p_operador_id, v_llamado_en
+    )
+    RETURNING id INTO v_turno_nuevo_id;
+
+    -- 8. Si este llamado fue el último voucher, marcar agotado atómicamente
+    IF v_nuevo_numero >= v_lote.numero_hasta THEN
+        UPDATE lotes_voucher
+        SET estado = 'agotado', fecha_cierre = NOW()
+        WHERE id = v_lote.id;
+        v_es_agotado := TRUE;
+    END IF;
+
+    v_vouchers_restantes := GREATEST(0, v_lote.numero_hasta - v_nuevo_numero);
+    IF v_nuevo_numero + 1 <= v_lote.numero_hasta THEN
+        v_proximo := v_nuevo_numero + 1;
+    ELSE
+        v_proximo := NULL;
+    END IF;
+
+    RETURN QUERY SELECT
+        v_turno_nuevo_id,
+        v_nuevo_numero,
+        v_llamado_en,
+        v_mesa.id,
+        v_mesa.numero,
+        v_mesa.nombre,
+        v_lote.id,
+        v_lote.numero_lote,
+        v_lote.numero_hasta,
+        v_nuevo_numero,
+        v_vouchers_restantes,
+        v_proximo,
+        v_es_agotado,
+        FALSE;
+END;
+$$;
+
 -- =============================================================================
 -- SEGURIDAD
--- Descomentar tras crear el usuario de BD (ver .env → DB_USER)
 -- =============================================================================
--- REVOKE UPDATE, DELETE ON audit_log FROM turnero_app;
 
 -- =============================================================================
 -- pg_cron: mantenimiento nocturno 11:30 PM (si la extensión está disponible)

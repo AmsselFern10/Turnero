@@ -13,6 +13,22 @@
  *   6. Retorna datos para broadcast WS
  */
 
+// Cache de umbral de alerta (TTL 5 min) — evita una query extra en cada llamado
+let _alertaUmbralCache = null
+let _alertaUmbralExpira = 0
+const ALERTA_CACHE_TTL_MS = 5 * 60 * 1000
+
+async function _getAlertaUmbral (fastify) {
+  if (_alertaUmbralCache !== null && Date.now() < _alertaUmbralExpira) {
+    return _alertaUmbralCache
+  }
+  const { rows: [cfg] } = await fastify.db.query(
+    `SELECT valor FROM configuracion WHERE clave = 'alerta_vouchers_restantes' LIMIT 1`
+  )
+  _alertaUmbralCache = parseInt(cfg?.valor || '20', 10)
+  _alertaUmbralExpira = Date.now() + ALERTA_CACHE_TTL_MS
+  return _alertaUmbralCache
+}
 /**
  * Llamar siguiente turno — 1 clic, 1 transacción.
  *
@@ -23,144 +39,64 @@
  * @returns {object} Datos del turno creado
  */
 async function llamarSiguiente (fastify, { mesaId, operadorId }) {
-  const client = await fastify.db.connect()
-
   try {
-    await client.query('BEGIN')
-
-    // ── Paso 1: Verificar que la mesa existe y está activa ─────────────────
-    const { rows: [mesa] } = await client.query(
-      `SELECT id, numero, nombre, estado, operador_id
-       FROM mesas WHERE id = $1`,
-      [mesaId]
+    const { rows } = await fastify.db.query(
+      `SELECT * FROM fn_llamar_siguiente($1, $2)`,
+      [mesaId, operadorId]
     )
 
-    if (!mesa) {
-      throw Object.assign(new Error('Mesa no encontrada'), { statusCode: 404 })
-    }
-    if (mesa.estado !== 'activa') {
-      throw Object.assign(new Error(`Mesa en estado "${mesa.estado}". Solo mesas activas pueden llamar.`), { statusCode: 409 })
-    }
-    if (mesa.operador_id !== operadorId) {
-      throw Object.assign(new Error('Esta mesa no te está asignada'), { statusCode: 403 })
+    const r = rows[0]
+    if (!r) {
+      throw Object.assign(new Error('Error inesperado al llamar turno'), { statusCode: 500 })
     }
 
-    // ── Paso 2: Obtener y bloquear el lote activo (FOR UPDATE) ────────────
-    // Este bloqueo a nivel de fila es la PRIMERA y PRINCIPAL defensa
-    // contra race conditions. Solo una transacción puede estar aquí a la vez.
-    const { rows: [lote] } = await client.query(
-      `SELECT id, numero_lote, numero_desde, numero_hasta, ultimo_numero_llamado, estado
-       FROM lotes_voucher
-       WHERE estado = 'activo'
-       FOR UPDATE`,   // ← mutex de fila: garantiza orden serial
-    )
-
-    if (!lote) {
-      throw Object.assign(new Error('No hay un lote activo. El admin debe activar un lote antes de llamar turnos.'), { statusCode: 409 })
-    }
-
-    // ── Paso 3: Verificar que el lote no está agotado ─────────────────────
-    if (lote.ultimo_numero_llamado >= lote.numero_hasta) {
-      await client.query('ROLLBACK')
-
-      // Marcar lote como agotado (si no lo está ya)
-      await fastify.db.query(
-        `UPDATE lotes_voucher SET estado = 'agotado', fecha_cierre = NOW()
-         WHERE id = $1 AND estado = 'activo'`,
-        [lote.id]
-      )
-
+    // Alertas WS al admin post-commit
+    if (r.es_lote_agotado) {
       await fastify.broadcast('admin:all', 'lote_agotado', {
-        lote_id:     lote.id,
-        numero_lote: lote.numero_lote,
-        numero_hasta: lote.numero_hasta
+        lote_id:        r.lote_id,
+        numero_lote:    r.lote_numero,
+        numero_hasta:   r.numero_hasta,
+        ultimo_llamado: r.ultimo_llamado
       })
-
-      throw Object.assign(new Error('El lote de vouchers se ha agotado. El admin debe extenderlo o crear uno nuevo.'), { statusCode: 409 })
-    }
-
-    const nuevoNumero = lote.ultimo_numero_llamado + 1
-
-    // ── Paso 4: Finalizar turno anterior de esta mesa (si existe) ─────────
-    await client.query(
-      `UPDATE turnos SET estado = 'atendido'
-       WHERE mesa_id = $1 AND estado = 'en_atencion'`,
-      [mesaId]
-    )
-    // El trigger fn_calcular_duraciones_turno se dispara aquí automáticamente
-
-    // ── Paso 5: Avanzar el contador del lote ──────────────────────────────
-    await client.query(
-      `UPDATE lotes_voucher
-       SET ultimo_numero_llamado = $1
-       WHERE id = $2`,
-      [nuevoNumero, lote.id]
-    )
-
-    // ── Paso 6: Crear el nuevo turno ──────────────────────────────────────
-    // En el flujo voucher_fisico los turnos nacen directamente en 'en_atencion'
-    const { rows: [turnoNuevo] } = await client.query(
-      `INSERT INTO turnos
-         (numero, lote_id, estado, origen, mesa_id, operador_id, llamado_en)
-       VALUES
-         ($1, $2, 'en_atencion', 'voucher_fisico', $3, $4, NOW())
-       RETURNING id, numero, llamado_en`,
-      [nuevoNumero, lote.id, mesaId, operadorId]
-    )
-    // El trigger fn_audit_turno se dispara aquí automáticamente (TURNO_LLAMADO)
-
-    await client.query('COMMIT')
-
-    // ── Paso 7: Verificar si se agotó el lote tras este llamado ───────────
-    const vouchersRestantes = lote.numero_hasta - nuevoNumero
-    const umbralAlerta = parseInt(
-      (await fastify.db.query(
-        `SELECT valor FROM configuracion WHERE clave = 'alerta_vouchers_restantes'`
-      )).rows[0]?.valor || '20'
-    )
-
-    if (nuevoNumero >= lote.numero_hasta) {
-      // Lote completamente agotado
-      await fastify.db.query(
-        `UPDATE lotes_voucher SET estado = 'agotado', fecha_cierre = NOW() WHERE id = $1`,
-        [lote.id]
-      )
-      await fastify.broadcast('admin:all', 'lote_agotado', {
-        lote_id:          lote.id,
-        numero_lote:      lote.numero_lote,
-        numero_hasta:     lote.numero_hasta,
-        ultimo_llamado:   nuevoNumero
-      })
-    } else if (vouchersRestantes <= umbralAlerta) {
-      // Alerta de vouchers bajos (RF-LOTE-07)
-      await fastify.broadcast('admin:all', 'lote_alerta_vouchers', {
-        lote_id:           lote.id,
-        numero_lote:       lote.numero_lote,
-        vouchers_restantes: vouchersRestantes,
-        numero_hasta:      lote.numero_hasta
-      })
+    } else {
+      // Alerta preventiva cuando restan <= N vouchers (RF-LOTE-07 / WS-018: edge-triggered)
+      const alertaUmbral = await _getAlertaUmbral(fastify)
+      if (r.vouchers_restantes === alertaUmbral) {
+        await fastify.broadcast('admin:all', 'alerta_vouchers_restantes', {
+          lote_id:            r.lote_id,
+          numero_lote:        r.lote_numero,
+          vouchers_restantes: r.vouchers_restantes,
+          umbral:             alertaUmbral
+        })
+      }
     }
 
     return {
       turno: {
-        id:          turnoNuevo.id,
-        numero:      turnoNuevo.numero,
-        llamado_en:  turnoNuevo.llamado_en,
-        mesa_id:     mesaId,
-        mesa_numero: mesa.numero,
-        mesa_nombre: mesa.nombre,
-        lote_numero: lote.numero_lote
+        id:          r.turno_id,
+        numero:      r.turno_numero,
+        llamado_en:  r.llamado_en,
+        mesa_id:     r.mesa_id,
+        mesa_numero: r.mesa_numero,
+        mesa_nombre: r.mesa_nombre,
+        lote_numero: r.lote_numero
       },
-      vouchers_restantes: vouchersRestantes,
-      proximo_numero:     nuevoNumero + 1 <= lote.numero_hasta ? nuevoNumero + 1 : null
+      vouchers_restantes: r.vouchers_restantes,
+      proximo_numero:     r.proximo_numero,
+      es_idempotente:     r.es_idempotente
     }
-
   } catch (err) {
-    // Solo hacer ROLLBACK si la transacción no fue commiteada ni revertida ya
-    try { await client.query('ROLLBACK') } catch (_) {}
+    const msg = err.message || ''
+    if (msg.includes('no encontrada')) {
+      throw Object.assign(new Error(msg), { statusCode: 404 })
+    }
+    if (msg.includes('no te está asignada')) {
+      throw Object.assign(new Error(msg), { statusCode: 403 })
+    }
+    if (msg.includes('Solo mesas activas') || msg.includes('lote activo') || msg.includes('agotado')) {
+      throw Object.assign(new Error(msg), { statusCode: 409 })
+    }
     throw err
-  } finally {
-    client.release()
   }
 }
 

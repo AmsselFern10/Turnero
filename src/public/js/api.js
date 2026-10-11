@@ -51,14 +51,33 @@ class ApiClient {
   }
 
   /**
-   * Limpia la sesión actual y redirige a la pantalla de acceso.
+   * Limpia la sesion actual y opcionalmente redirige a la pantalla de acceso.
+   * Elimina todas las claves de sesion para evitar fugas en PCs compartidas.
    */
   clearSession(redirect = true) {
     sessionStorage.removeItem('token');
     sessionStorage.removeItem('usuario');
     sessionStorage.removeItem('mesa_seleccionada');
+    sessionStorage.removeItem('turnero_mesa');
+    sessionStorage.removeItem('turnero_jwt');
+    sessionStorage.removeItem('turnero_user');
     if (redirect && window.location.pathname !== '/index.html' && window.location.pathname !== '/') {
       window.location.href = '/index.html';
+    }
+  }
+
+  /**
+   * Cierra sesion del lado servidor (blacklist JWT en Redis) y limpia sessionStorage.
+   * Siempre intentar el logout remoto; si falla la red, limpiar igual.
+   * @param {boolean} [redirect=true] - Si redirigir a /index.html tras limpiar
+   */
+  async logout(redirect = true) {
+    try {
+      await this.request('/auth/logout', { method: 'POST' });
+    } catch (_) {
+      // Silencioso: si el servidor no responde, igual limpiamos la sesion local
+    } finally {
+      this.clearSession(redirect);
     }
   }
 
@@ -179,12 +198,43 @@ class ApiClient {
     }
 
     // Manejo de errores HTTP 4xx / 5xx
+    // Normalizar siempre al contrato { codigo, mensaje } para que los controladores
+    // de pagina no tengan que manejar multiples formatos de error.
     if (!response.ok) {
-      const errorMsg = (responseData && (responseData.message || responseData.error)) ||
-        `Error HTTP ${response.status}: ${response.statusText}`;
-      const httpError = new Error(errorMsg);
-      httpError.status = response.status;
-      httpError.data = responseData;
+      let codigo = 'error_interno';
+      let mensaje = `Error HTTP ${response.status}`;
+
+      if (responseData && responseData.error) {
+        if (typeof responseData.error === 'object') {
+          // Formato del contrato: { error: { codigo, mensaje } }
+          codigo  = responseData.error.codigo  || codigo;
+          mensaje = responseData.error.mensaje || mensaje;
+        } else if (typeof responseData.error === 'string') {
+          // Legado: { error: 'texto' }
+          mensaje = responseData.error;
+        }
+      } else if (responseData && responseData.message) {
+        mensaje = responseData.message;
+      }
+
+      // Mapeo de codigos HTTP a codigos semanticos cuando el servidor no los provee
+      if (codigo === 'error_interno') {
+        const httpCodigos = {
+          400: 'validacion_invalida',
+          401: 'credenciales_invalidas',
+          403: 'sin_permiso',
+          404: 'mesa_no_encontrada',
+          409: 'conflicto',
+          429: 'demasiados_intentos'
+        };
+        codigo = httpCodigos[response.status] || 'error_interno';
+      }
+
+      const httpError = new Error(mensaje);
+      httpError.status  = response.status;
+      httpError.codigo  = codigo;
+      httpError.mensaje = mensaje;   // alias para compatibilidad con el contrato { codigo, mensaje }
+      httpError.data    = responseData;
       throw httpError;
     }
 
@@ -228,12 +278,32 @@ class ApiClient {
   delete(url, options = {}) {
     return this.request(url, { ...options, method: 'DELETE' });
   }
+
+  /**
+   * Descarga un recurso como Blob (útil para CSV, PDF).
+   * Pasa el JWT en cabecera Authorization — no en la URL.
+   * @param {string} url
+   * @returns {Promise<Blob>}
+   */
+  async getBlob(url) {
+    const token = this.getToken();
+    const response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Accept': '*/*',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    });
+    if (!response.ok) {
+      const err = new Error(`Error al descargar: HTTP ${response.status}`);
+      err.status  = response.status;
+      err.mensaje = err.message;
+      throw err;
+    }
+    return response.blob();
+  }
 }
 
 // Instancia singleton para importación como módulo ES6
 export const api = new ApiClient();
-
-// Exposición global opcional en ventana para retrocompatibilidad
-if (typeof window !== 'undefined') {
-  window.api = api;
-}

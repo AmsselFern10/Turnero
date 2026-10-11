@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es" class="h-full">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,7 +10,9 @@
   <link rel="stylesheet" href="/css/animations.css">
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body x-data="panelMesaView()" x-init="init()" x-cloak class="screen-fixed flex flex-col justify-between bg-app antialiased text-slate-800 select-none">
+
+<body x-data="panelMesaView()" x-cloak
+  class="screen-fixed flex flex-col justify-between bg-app antialiased text-slate-800 select-none">
 
   <!-- ── 1. ENCABEZADO INSTITUCIONAL COMPACTO (h-14) ── -->
   <header class="app-header h-14 px-6 flex items-center justify-between z-40">
@@ -19,12 +22,13 @@
       </div>
       <div class="flex flex-col">
         <span class="text-xs font-bold text-slate-900 leading-tight" x-text="operador.nombre_completo"></span>
-        <span class="text-[11px] text-slate-500 font-normal leading-tight" x-text="mesa.nombre || 'Ventanilla de Atención'"></span>
+        <span class="text-[11px] text-slate-500 font-normal leading-tight"
+          x-text="mesa.nombre || 'Ventanilla de Atención'"></span>
       </div>
       <span class="text-slate-300">|</span>
-      <div class="pill text-[11px]"
-           :class="wsConnected ? 'pill-success' : 'pill-warning'">
-        <span class="w-1.5 h-1.5 rounded-full" :class="wsConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'"></span>
+      <div class="pill text-[11px]" :class="wsConnected ? 'pill-success' : 'pill-warning'">
+        <span class="w-1.5 h-1.5 rounded-full"
+          :class="wsConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'"></span>
         <span x-text="wsConnected ? 'En línea' : 'Reconectando'"></span>
       </div>
     </div>
@@ -36,45 +40,65 @@
         <div class="text-[10px] text-slate-400 font-medium" x-text="relojFecha"></div>
       </div>
       <span class="text-slate-200 hidden sm:inline">|</span>
-      <button type="button" @click="mesaPausada ? reanudarMesa() : pausarMesa()" title="Pausar o reanudar mesa" aria-label="Pausar o reanudar mesa" class="btn-ghost btn-sm" :class="mesaPausada ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : ''">
-        <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path x-show="!mesaPausada" stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" /><path x-show="mesaPausada" stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" /></svg>
+      <button type="button" @click="mesaPausada ? reanudarMesa() : pausarMesa()" title="Pausar o reanudar mesa"
+        aria-label="Pausar o reanudar mesa" class="btn-ghost btn-sm"
+        :class="mesaPausada ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : ''">
+        <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path x-show="!mesaPausada" stroke-linecap="round" stroke-linejoin="round"
+            d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+          <path x-show="mesaPausada" stroke-linecap="round" stroke-linejoin="round"
+            d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+        </svg>
         <span x-text="mesaPausada ? 'Reanudar' : 'Pausar Mesa'">Pausar Mesa</span>
       </button>
-      <button type="button" @click="logout()" title="Cerrar sesión" aria-label="Cerrar sesión" class="btn-ghost btn-sm text-slate-500 hover:text-rose-700 hover:bg-rose-50">
-        <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" /></svg>
+      <button type="button" @click="logout()" title="Cerrar sesión" aria-label="Cerrar sesión"
+        class="btn-ghost btn-sm text-slate-500 hover:text-rose-700 hover:bg-rose-50">
+        <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+        </svg>
       </button>
     </div>
   </header>
 
   <!-- ── 2. CANVAS CENTRAL (2 COLUMNAS ERGONÓMICAS — BOCETO IMAGEN 2) ── -->
   <main class="flex-1 w-full max-w-7xl mx-auto p-6 flex flex-col md:flex-row gap-6 overflow-hidden">
-    
+
     <!-- COLUMNA HERO (~65% Ancho): TURNO ACTUAL Y ACCIÓN DOMINANTE -->
     <section class="card-hero flex-1 md:w-[65%] flex flex-col justify-between p-7 transition-all duration-300 relative"
-             :class="{
+      :class="{
                'ring-4 ring-blue-500/30 border-blue-500 bg-blue-50/10 animate-pulse-call': feedbackEstado === 'llamando',
                'ring-4 ring-amber-500/30 border-amber-500 bg-amber-50/15 animate-pulse-call': feedbackEstado === 'rellamando',
                'border-slate-300 bg-white': feedbackEstado === 'idle' || feedbackEstado === 'ausente'
              }">
-      
+
       <!-- Barra Superior de Estado y Cronómetro (Boceto Imagen 2 + Stitch) -->
       <div class="flex items-center justify-between pb-4 border-b border-slate-100">
-        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold tracking-wide transition-all"
-             :class="{
+        <div
+          class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold tracking-wide transition-all"
+          :class="{
                'bg-blue-50 border border-blue-200 text-blue-700': feedbackEstado === 'llamando',
                'bg-amber-50 border border-amber-200 text-amber-700': feedbackEstado === 'rellamando',
                'bg-emerald-50 border border-emerald-200 text-emerald-700': feedbackEstado === 'idle' && turnoActual,
                'bg-slate-100 border border-slate-200 text-slate-500': (feedbackEstado === 'idle' && !turnoActual) || feedbackEstado === 'ausente'
              }">
-          
+
           <!-- Icono Megáfono animado para Llamar Siguiente -->
           <template x-if="feedbackEstado === 'llamando'">
-            <svg class="w-3.5 h-3.5 text-blue-600 animate-bounce stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+            <svg class="w-3.5 h-3.5 text-blue-600 animate-bounce stroke-[2]" fill="none" stroke="currentColor"
+              viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            </svg>
           </template>
 
           <!-- Icono Campana animada para Re-llamar -->
           <template x-if="feedbackEstado === 'rellamando'">
-            <svg class="w-3.5 h-3.5 text-amber-600 animate-bounce stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" /></svg>
+            <svg class="w-3.5 h-3.5 text-amber-600 animate-bounce stroke-[2]" fill="none" stroke="currentColor"
+              viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+            </svg>
           </template>
 
           <!-- Punto verde pulsante para En Atención normal -->
@@ -83,7 +107,8 @@
           </template>
 
           <!-- Punto gris para Ventanilla libre o ausente -->
-          <template x-if="(!turnoActual || feedbackEstado === 'ausente') && feedbackEstado !== 'llamando' && feedbackEstado !== 'rellamando'">
+          <template
+            x-if="(!turnoActual || feedbackEstado === 'ausente') && feedbackEstado !== 'llamando' && feedbackEstado !== 'rellamando'">
             <span class="w-2 h-2 rounded-full bg-slate-400"></span>
           </template>
 
@@ -94,8 +119,11 @@
           "></span>
         </div>
 
-        <div class="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500">
-          <svg class="w-4 h-4 text-slate-400 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        <div
+          class="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500">
+          <svg class="w-4 h-4 text-slate-400 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
           <span class="font-mono-num font-bold text-slate-800 text-base" x-text="cronometro">00:00</span>
           <span class="hidden sm:inline">en ventanilla</span>
         </div>
@@ -105,12 +133,18 @@
       <div class="flex-1 flex flex-col items-center justify-center py-6 text-center">
         <template x-if="turnoActual">
           <div class="animate-glow-cobalt flex flex-col items-center">
-            <div class="font-mono-num text-[110px] sm:text-[136px] lg:text-[148px] font-black text-slate-900 leading-none tracking-tight"
-                 x-text="String(turnoActual.numero).padStart(3, '0')"></div>
-            <p class="text-xs font-medium text-slate-500 mt-3">Sonando en la TV pública • Esperando que el alumno tome asiento</p>
-            
-            <div class="mt-4 inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-600">
-              <svg class="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+            <div
+              class="font-mono-num text-[110px] sm:text-[136px] lg:text-[148px] font-black text-slate-900 leading-none tracking-tight"
+              x-text="String(turnoActual.numero).padStart(3, '0')"></div>
+            <p class="text-xs font-medium text-slate-500 mt-3">Sonando en la TV pública • Esperando que el alumno tome
+              asiento</p>
+
+            <div
+              class="mt-4 inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-600">
+              <svg class="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" fill="none" stroke="currentColor"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
               <span>Atendidos hoy en esta mesa:</span>
               <span class="font-bold text-slate-900 font-mono-num" x-text="atendidosHoy + ' turnos'"></span>
             </div>
@@ -119,10 +153,16 @@
 
         <template x-if="!turnoActual">
           <div class="flex flex-col items-center space-y-2">
-            <div class="font-mono-num text-[110px] sm:text-[136px] font-bold text-slate-300 leading-none tracking-tight">---</div>
+            <div
+              class="font-mono-num text-[110px] sm:text-[136px] font-bold text-slate-300 leading-none tracking-tight">
+              ---</div>
             <p class="text-xs font-medium text-slate-400">Presione el botón para despachar al siguiente alumno</p>
-            <div class="mt-3 inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-600">
-              <svg class="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+            <div
+              class="mt-3 inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-600">
+              <svg class="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" fill="none" stroke="currentColor"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
               <span>Atendidos hoy en esta mesa:</span>
               <span class="font-bold text-slate-900 font-mono-num" x-text="atendidosHoy + ' turnos'"></span>
             </div>
@@ -132,22 +172,38 @@
 
       <!-- Barra de Acciones del Operador (Igual a la Imagen 1 como pidió el usuario) -->
       <div class="space-y-3 pt-4 border-t border-slate-100">
-        <button type="button" @click="llamarSiguiente()" :disabled="loadingAction || mesaPausada" title="Llamar al siguiente voucher del lote (Espacio o Enter)" aria-label="Llamar siguiente turno" class="btn-call flex items-center justify-center space-x-3">
-          <svg class="w-6 h-6 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" /></svg>
+        <button type="button" @click="llamarSiguiente()" :disabled="loadingAction || mesaPausada"
+          title="Llamar al siguiente voucher del lote (Espacio o Enter)" aria-label="Llamar siguiente turno"
+          class="btn-call flex items-center justify-center space-x-3">
+          <svg class="w-6 h-6 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" />
+          </svg>
           <span x-text="loadingAction ? 'Llamando...' : 'LLAMAR SIGUIENTE'">LLAMAR SIGUIENTE</span>
-          <span class="text-[11px] font-mono-num font-semibold uppercase bg-white/20 text-white px-2 py-0.5 rounded-md ml-2 hidden sm:inline">Espacio / Enter</span>
+          <span
+            class="text-[11px] font-mono-num font-semibold uppercase bg-white/20 text-white px-2 py-0.5 rounded-md ml-2 hidden sm:inline">Espacio
+            / Enter</span>
         </button>
 
         <div class="grid grid-cols-2 gap-3" x-show="turnoActual !== null">
-          <button type="button" @click="cancelarTurno()" :disabled="loadingAction" title="Marcar como ausente (N / Esc)" aria-label="No se presentó" class="btn-danger h-11 w-full text-xs">
-            <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          <button type="button" @click="cancelarTurno()" :disabled="loadingAction" title="Marcar como ausente (N / Esc)"
+            aria-label="No se presentó" class="btn-danger h-11 w-full text-xs">
+            <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
             <span>No se presentó</span>
-            <span class="text-[10px] font-mono-num bg-rose-200/60 px-1.5 py-0.5 rounded text-rose-800 hidden sm:inline">N</span>
+            <span
+              class="text-[10px] font-mono-num bg-rose-200/60 px-1.5 py-0.5 rounded text-rose-800 hidden sm:inline">N</span>
           </button>
-          <button type="button" @click="rellamarTurno()" :disabled="loadingAction" title="Re-anunciar en TV (R)" aria-label="Re-llamar turno" class="btn-ghost h-11 w-full text-xs text-[#1D4ED8] border-blue-200 bg-blue-50/50 hover:bg-blue-100">
-            <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.757 3.63 8.25 4.51 8.25H6.75z" /></svg>
+          <button type="button" @click="rellamarTurno()" :disabled="loadingAction" title="Re-anunciar en TV (R)"
+            aria-label="Re-llamar turno"
+            class="btn-ghost h-11 w-full text-xs text-[#1D4ED8] border-blue-200 bg-blue-50/50 hover:bg-blue-100">
+            <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.757 3.63 8.25 4.51 8.25H6.75z" />
+            </svg>
             <span>Re-llamar a TV</span>
-            <span class="text-[10px] font-mono-num bg-blue-200/60 px-1.5 py-0.5 rounded text-blue-800 hidden sm:inline">R</span>
+            <span
+              class="text-[10px] font-mono-num bg-blue-200/60 px-1.5 py-0.5 rounded text-blue-800 hidden sm:inline">R</span>
           </button>
         </div>
       </div>
@@ -160,68 +216,82 @@
       </div>
 
       <!-- Tarjeta Interior Centrada con el Turno Siguiente -->
-      <div class="rounded-2xl border border-slate-200 bg-slate-50/60 p-7 flex flex-col items-center justify-center text-center my-auto">
+      <div
+        class="rounded-2xl border border-slate-200 bg-slate-50/60 p-7 flex flex-col items-center justify-center text-center my-auto">
         <span class="text-xs font-bold uppercase tracking-wider text-slate-400">TURNO SIGUIENTE</span>
-        <div class="font-mono-num text-7xl lg:text-8xl font-black text-slate-900 tracking-tight my-3"
-             x-text="proximoNumero ? String(proximoNumero).padStart(3, '0') : '---'"></div>
-        <p class="text-xs text-slate-500 max-w-xs leading-relaxed">
-          Se llamará automáticamente a tu mesa al presionar "Llamar Siguiente".
+        <div class="font-mono-num font-black tracking-tight my-3"
+          :class="proximoNumero ? 'text-7xl lg:text-8xl text-slate-900' : 'text-2xl sm:text-3xl text-rose-600 font-bold'"
+          x-text="proximoNumero ? String(proximoNumero).padStart(3, '0') : (vouchersRestantes === 0 || !loteActivo ? 'Lote agotado' : '---')"></div>
+        <p class="text-xs text-slate-500 max-w-xs leading-relaxed"
+          x-text="proximoNumero ? 'Se llamará automáticamente a tu mesa al presionar \"Llamar Siguiente\".' : 'No hay vouchers disponibles en el lote actual. Notifique al supervisor.'">
         </p>
-        
-        <div class="mt-4 pt-3 border-t border-slate-200/80 w-full flex items-center justify-between text-[11px] text-slate-400">
+
+        <div
+          class="mt-4 pt-3 border-t border-slate-200/80 w-full flex items-center justify-between text-[11px] text-slate-400">
           <span x-text="loteActivo ? ('Lote ' + loteActivo.numero_lote) : 'Sin lote activo'"></span>
           <span x-text="vouchersRestantes + ' vouchers restantes'"></span>
         </div>
       </div>
 
       <!-- Callout Inferior de Confirmación / Estado del Llamado (Stitch Dynamic Feedback) -->
-      <div class="rounded-xl border p-4 flex items-start gap-3 transition-all duration-300 text-xs"
-           :class="{
+      <div class="rounded-xl border p-4 flex items-start gap-3 transition-all duration-300 text-xs" :class="{
              'bg-emerald-50/80 border-emerald-200 text-emerald-800': feedbackEstado === 'llamando' || (feedbackEstado === 'idle' && turnoActual),
              'bg-amber-50/80 border-amber-200 text-amber-800': feedbackEstado === 'rellamando',
              'bg-rose-50/80 border-rose-200 text-rose-800': feedbackEstado === 'ausente',
              'bg-slate-50/70 border-slate-200 text-slate-700': feedbackEstado === 'idle' && !turnoActual
            }">
-        
-        <div class="flex-shrink-0 mt-0.5"
-             :class="{
+
+        <div class="flex-shrink-0 mt-0.5" :class="{
                'text-emerald-600': feedbackEstado === 'llamando' || (feedbackEstado === 'idle' && turnoActual),
                'text-amber-600': feedbackEstado === 'rellamando',
                'text-rose-600': feedbackEstado === 'ausente',
                'text-slate-400': feedbackEstado === 'idle' && !turnoActual
              }">
           <template x-if="feedbackEstado === 'llamando' || (feedbackEstado === 'idle' && turnoActual)">
-            <svg class="w-5 h-5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"></circle><path stroke-linecap="round" stroke-linejoin="round" d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"></path></svg>
+            <svg class="w-5 h-5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="2"></circle>
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14">
+              </path>
+            </svg>
           </template>
           <template x-if="feedbackEstado === 'rellamando'">
-            <svg class="w-5 h-5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path stroke-linecap="round" stroke-linejoin="round" d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+            <svg class="w-5 h-5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9">
+              </path>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
           </template>
           <template x-if="feedbackEstado === 'ausente'">
-            <svg class="w-5 h-5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="17" y1="8" x2="22" y2="13"></line><line x1="22" y1="8" x2="17" y2="13"></line></svg>
+            <svg class="w-5 h-5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <line x1="17" y1="8" x2="22" y2="13"></line>
+              <line x1="22" y1="8" x2="17" y2="13"></line>
+            </svg>
           </template>
           <template x-if="feedbackEstado === 'idle' && !turnoActual">
-            <svg class="w-5 h-5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline stroke-linecap="round" stroke-linejoin="round" points="12 6 12 12 16 14"></polyline></svg>
+            <svg class="w-5 h-5 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline stroke-linecap="round" stroke-linejoin="round" points="12 6 12 12 16 14"></polyline>
+            </svg>
           </template>
         </div>
 
         <div class="text-left flex-1 min-w-0">
-          <div class="text-xs font-bold uppercase tracking-wider"
-               :class="{
+          <div class="text-xs font-bold uppercase tracking-wider" :class="{
                  'text-emerald-800': feedbackEstado === 'llamando' || (feedbackEstado === 'idle' && turnoActual),
                  'text-amber-800': feedbackEstado === 'rellamando',
                  'text-rose-800': feedbackEstado === 'ausente',
                  'text-slate-700': feedbackEstado === 'idle' && !turnoActual
-               }"
-               x-text="feedbackData.titulo"></div>
-          
-          <div class="text-xs font-medium mt-0.5 leading-relaxed"
-               :class="{
+               }" x-text="feedbackData.titulo"></div>
+
+          <div class="text-xs font-medium mt-0.5 leading-relaxed" :class="{
                  'text-emerald-700': feedbackEstado === 'llamando' || (feedbackEstado === 'idle' && turnoActual),
                  'text-amber-700': feedbackEstado === 'rellamando',
                  'text-rose-700': feedbackEstado === 'ausente',
                  'text-slate-500': feedbackEstado === 'idle' && !turnoActual
-               }"
-               x-text="feedbackData.detalle"></div>
+               }" x-text="feedbackData.detalle"></div>
         </div>
       </div>
     </aside>
@@ -232,31 +302,40 @@
   <footer class="app-footer h-11 px-6 flex items-center justify-between text-xs select-none">
     <div class="flex items-center space-x-4 overflow-x-auto py-1">
       <span class="font-bold text-slate-700 flex items-center gap-1.5 whitespace-nowrap">
-        <svg class="w-3.5 h-3.5 text-slate-500 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" /></svg>
+        <svg class="w-3.5 h-3.5 text-slate-500 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" />
+        </svg>
         <span>Atajos de Teclado Operativo:</span>
       </span>
       <span class="flex items-center gap-1.5 whitespace-nowrap">
-        <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">Espacio</kbd>
+        <kbd
+          class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">Espacio</kbd>
         <span class="text-slate-400">/</span>
-        <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">Enter</kbd>
+        <kbd
+          class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">Enter</kbd>
         <span class="text-slate-600">Llamar Siguiente</span>
       </span>
       <span class="flex items-center gap-1.5 whitespace-nowrap">
-        <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">R</kbd>
+        <kbd
+          class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">R</kbd>
         <span class="text-slate-600">Re-llamar Turno</span>
       </span>
       <span class="flex items-center gap-1.5 whitespace-nowrap">
-        <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">Esc</kbd>
+        <kbd
+          class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">Esc</kbd>
         <span class="text-slate-400">/</span>
-        <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">N</kbd>
+        <kbd
+          class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">N</kbd>
         <span class="text-slate-600">No Presentado</span>
       </span>
       <span class="flex items-center gap-1.5 whitespace-nowrap">
-        <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">P</kbd>
+        <kbd
+          class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">P</kbd>
         <span class="text-slate-600">Pausar Mesa</span>
       </span>
     </div>
-    
+
     <div class="hidden lg:flex items-center space-x-2 text-slate-500 whitespace-nowrap">
       <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
       <span class="text-[11px]">Sincronizado con Nodo Central de Admisiones</span>
@@ -267,14 +346,18 @@
   <div x-show="mesaPausada" x-cloak class="modal-backdrop">
     <div class="modal-box text-center space-y-4">
       <div class="w-12 h-12 mx-auto rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center">
-        <svg class="w-6 h-6 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" /></svg>
+        <svg class="w-6 h-6 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+        </svg>
       </div>
       <div>
         <h3 class="text-base font-bold text-slate-900">Mesa en Pausa</h3>
-        <p class="text-xs text-slate-500 mt-1 leading-relaxed">Ventanilla en receso. La fila física permanece activa en el auditorio.</p>
+        <p class="text-xs text-slate-500 mt-1 leading-relaxed">Ventanilla en receso. La fila física permanece activa en
+          el auditorio.</p>
       </div>
       <div class="text-left space-y-1">
-        <label for="select-motivo-pausa" class="block text-[11px] font-semibold text-slate-700">Motivo del receso:</label>
+        <label for="select-motivo-pausa" class="block text-[11px] font-semibold text-slate-700">Motivo del
+          receso:</label>
         <select id="select-motivo-pausa" x-model="motivoPausa" title="Motivo del receso" class="select-field text-xs">
           <option>Descanso programado / Almuerzo</option>
           <option>Soporte técnico / Validación</option>
@@ -283,7 +366,10 @@
         </select>
       </div>
       <button type="button" @click="reanudarMesa()" class="btn-primary w-full h-11 text-xs">
-        <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" /></svg>
+        <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+        </svg>
         <span>Reanudar Atención</span>
       </button>
     </div>
@@ -293,4 +379,5 @@
   <script type="module" src="/js/pages/panel_mesa.js?v=3.0"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
 </body>
+
 </html>
