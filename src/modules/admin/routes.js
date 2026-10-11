@@ -8,9 +8,17 @@
 module.exports = async function adminRoutes (fastify) {
 
   // ── GET /admin/kpis — KPIs en tiempo real (RF-ADM-01) ────────────────────
+  // Cache Redis 1 s: el panel admin refresca cada segundo via WS kpi_update;
+  // esta ruta es el snapshot inicial y la usan los supervisores — limitar queries.
   fastify.get('/kpis', {
     preHandler: [fastify.authorizeRol('admin', 'supervisor')]
   }, async (request, reply) => {
+    const CACHE_KEY = 'admin:kpis'
+    try {
+      const cached = await fastify.redis.get(CACHE_KEY)
+      if (cached) return reply.header('X-Cache', 'HIT').send(JSON.parse(cached))
+    } catch (_) {}
+
     const [kpisTurnos, loteActivo, mesasActivas] = await Promise.all([
       fastify.db.query(`
         SELECT
@@ -37,7 +45,7 @@ module.exports = async function adminRoutes (fastify) {
     const t = kpisTurnos.rows[0]
     const m = mesasActivas.rows[0]
 
-    return reply.send({
+    const resultado = {
       atendidos_hoy:     parseInt(t.atendidos_hoy),
       cancelados_hoy:    parseInt(t.cancelados_hoy),
       en_atencion_ahora: parseInt(t.en_atencion_ahora),
@@ -45,7 +53,11 @@ module.exports = async function adminRoutes (fastify) {
       mesas_activas:     parseInt(m.activas),
       mesas_pausadas:    parseInt(m.pausadas),
       lote:              loteActivo.rows[0] || null
-    })
+    }
+
+    try { await fastify.redis.set(CACHE_KEY, JSON.stringify(resultado), 'EX', 1) } catch (_) {}
+
+    return reply.header('X-Cache', 'MISS').send(resultado)
   })
 
   // ── GET /admin/usuarios — Listar usuarios (RF-ADM-06) ────────────────────
@@ -392,10 +404,20 @@ module.exports = async function adminRoutes (fastify) {
     })
   })
 
-  // ── GET /admin/reportes/exportar-xls — Exportar reporte en formato Excel XLS ────
+  // ── GET /admin/reportes/exportar-xls — Exportar reporte Excel XLS ────────────
+  // Semaforo: solo 1 descarga concurrente para evitar saturar BD y RAM.
+  const semáforoReporte = async (request, reply) => {
+    if (fastify._reporteSemaforo >= 1) {
+      return reply.status(429).header('Retry-After', '15').send({
+        error: { codigo: 'reporte_en_proceso', mensaje: 'Ya hay un reporte generándose. Intente en unos segundos.' }
+      })
+    }
+  }
   fastify.get('/reportes/exportar-xls', {
-    preHandler: [fastify.authorizeRol('admin', 'supervisor')]
+    preHandler: [fastify.authorizeRol('admin', 'supervisor'), semáforoReporte]
   }, async (request, reply) => {
+    fastify._reporteSemaforo++
+    try {
     const { fecha, mesa_id, operador_id, estado } = request.query
     const fechaRef = fecha || new Date().toISOString().slice(0, 10)
 
@@ -562,6 +584,9 @@ module.exports = async function adminRoutes (fastify) {
       .header('Content-Type', 'application/vnd.ms-excel; charset=utf-8')
       .header('Content-Disposition', `attachment; filename="reporte_turnero_${fechaRef}.xls"`)
       .send(xlsContent)
+    } finally {
+      fastify._reporteSemaforo--
+    }
   })
 
   // ── GET /admin/configuracion — Obtener parámetros (RF-ADM-07) ─────────────

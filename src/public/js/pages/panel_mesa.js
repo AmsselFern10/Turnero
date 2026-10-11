@@ -263,8 +263,28 @@ export function panelMesaView() {
 
       } catch (err) {
         console.error('[MESA] Error al llamar siguiente:', err);
-        const msg = err.message || '';
-        if (msg.includes('409') || msg.toLowerCase().includes('agotado')) {
+        const msg = err.mensaje || err.message || '';
+
+        if (err.status === 429 || err.status === 503 || err.codigo === 'servidor_ocupado') {
+          // Servidor ocupado (under-pressure o rate-limit): esperar exactamente Retry-After
+          const waitMs = err.retryAfterMs || 10000;
+          const waitSeg = Math.round(waitMs / 1000);
+          showToast({
+            message: `Servidor ocupado. El botón se habilitará en ${waitSeg}s.`,
+            type: 'warning',
+            duration: waitMs
+          });
+          // Extender el cooldown al tiempo indicado por el servidor
+          this._cooldown = true;
+          setTimeout(() => {
+            this._cooldown = false;
+            this._llamarKey = null;
+            this.loadingAction = false;
+          }, waitMs);
+          return; // No ejecutar el finally normal
+        }
+
+        if (err.status === 409 || msg.toLowerCase().includes('agotado')) {
           showToast({
             message: 'ALERTA: El lote de vouchers se ha agotado. Notifique al supervisor.',
             type: 'warning',

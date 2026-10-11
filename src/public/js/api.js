@@ -225,7 +225,8 @@ class ApiClient {
           403: 'sin_permiso',
           404: 'mesa_no_encontrada',
           409: 'conflicto',
-          429: 'demasiados_intentos'
+          429: 'servidor_ocupado',
+          503: 'servidor_ocupado'
         };
         codigo = httpCodigos[response.status] || 'error_interno';
       }
@@ -235,6 +236,14 @@ class ApiClient {
       httpError.codigo  = codigo;
       httpError.mensaje = mensaje;   // alias para compatibilidad con el contrato { codigo, mensaje }
       httpError.data    = responseData;
+
+      // Extraer Retry-After del servidor (segundos) para que el cliente espere el tiempo correcto
+      // antes de reintentar — evita "thundering herd" al volver de sobrecarga.
+      const retryAfter = response.headers.get('Retry-After');
+      if (retryAfter && (response.status === 429 || response.status === 503)) {
+        httpError.retryAfterMs = parseInt(retryAfter, 10) * 1000 || 10000;
+      }
+
       throw httpError;
     }
 

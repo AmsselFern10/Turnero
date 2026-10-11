@@ -316,17 +316,39 @@ module.exports = async function turnosRoutes (fastify) {
   })
 
   // ── POST /turnos/generar — Kiosko web (RF-GEN-02) ─────────────────────────
-  fastify.post('/generar', async (request, reply) => {
+  // Rate limit: 1 turno por IP cada 3 segundos para evitar generacion masiva
+  fastify.post('/generar', {
+    config: {
+      rateLimit: {
+        max: 1,
+        timeWindow: '3 seconds',
+        keyGenerator: (req) => `kiosko:${req.ip}`,
+        errorResponseBuilder: () => ({
+          statusCode: 429,
+          error: { codigo: 'espere_antes_de_reintentar', mensaje: 'Solo puede generar un turno cada 3 segundos.' }
+        })
+      }
+    }
+  }, async (request, reply) => {
+    // Verificar limite de turnos en espera (maximo 200 simultaneos)
+    const { rows: [{ total }] } = await fastify.db.query(
+      `SELECT COUNT(*)::int AS total FROM turnos WHERE estado = 'esperando'`
+    )
+    if (total >= 200) {
+      return reply.status(503).header('Retry-After', '30').send({
+        error: { codigo: 'cola_llena', mensaje: 'La cola de espera esta llena. Intente en unos minutos.' }
+      })
+    }
+
     const resultado = await generarTurnoKiosko(fastify, { ip: request.ip })
 
-    await fastify.broadcast('admin:all', 'kiosko_turno_generado', {
-      numero: resultado.numero
-    })
+    await fastify.broadcast('admin:all', 'kiosko_turno_generado', { numero: resultado.numero })
 
     return reply.status(201).send(resultado)
   })
 
   // ── GET /turnos/mi-turno/:token — Consulta kiosko (RF-GEN-03) ─────────────
+  // Cache Redis 4 segundos: multiples consultas del mismo estudiante = 1 query a BD
   fastify.get('/mi-turno/:token', {
     schema: {
       params: {
@@ -335,8 +357,27 @@ module.exports = async function turnosRoutes (fastify) {
       }
     }
   }, async (request, reply) => {
-    const resultado = await consultarMiTurno(fastify, { token: request.params.token })
-    return reply.send(resultado)
+    const token = request.params.token
+    const cacheKey = `mi_turno:${token}`
+
+    // Intentar servir desde cache Redis (TTL 4s)
+    try {
+      const cached = await fastify.redis.get(cacheKey)
+      if (cached) {
+        return reply.header('X-Cache', 'HIT').send(JSON.parse(cached))
+      }
+    } catch (_) { /* Redis fallo — continuar sin cache */ }
+
+    const resultado = await consultarMiTurno(fastify, { token })
+
+    // Guardar en cache 4 segundos (solo si el turno sigue en espera)
+    if (resultado.estado === 'esperando') {
+      try {
+        await fastify.redis.set(cacheKey, JSON.stringify(resultado), 'EX', 4)
+      } catch (_) {}
+    }
+
+    return reply.header('X-Cache', 'MISS').send(resultado)
   })
 
   // ── GET /turnos/historial — Últimos N turnos del día ──────────────────────
