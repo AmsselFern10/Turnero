@@ -145,10 +145,18 @@ class ApiClient {
       config.body = JSON.stringify(config.body);
     }
 
-    // Inyección de token de autorización si existe
-    const token = this.getToken();
-    if (token && !config.headers['Authorization']) {
-      config.headers['Authorization'] = `Bearer ${token}`;
+    // Inyección de token de autorización si existe (solo en modo autenticado)
+    const isPublicPage = typeof window !== 'undefined' && (
+      window.location.pathname.includes('kiosko') ||
+      window.location.pathname.includes('tv')
+    );
+    const isPublic = options.public === true || (isPublicPage && !options.requireAuth);
+
+    if (!isPublic) {
+      const token = this.getToken();
+      if (token && !config.headers['Authorization']) {
+        config.headers['Authorization'] = `Bearer ${token}`;
+      }
     }
 
     let response;
@@ -159,8 +167,8 @@ class ApiClient {
       throw networkError;
     }
 
-    // Interceptor 401 Unauthorized: intento de renovación transparente
-    if (response.status === 401 && !options._isRetry) {
+    // Interceptor 401 Unauthorized: intento de renovación transparente (solo en modo autenticado)
+    if (response.status === 401 && !options._isRetry && !isPublic) {
       // Evitar loop infinito si la ruta que dio 401 era el propio /auth/refresh o /auth/login
       if (endpoint.includes('/auth/refresh') || endpoint.includes('/auth/login')) {
         this.clearSession(true);
@@ -204,17 +212,25 @@ class ApiClient {
       let codigo = 'error_interno';
       let mensaje = `Error HTTP ${response.status}`;
 
-      if (responseData && responseData.error) {
-        if (typeof responseData.error === 'object') {
-          // Formato del contrato: { error: { codigo, mensaje } }
-          codigo  = responseData.error.codigo  || codigo;
-          mensaje = responseData.error.mensaje || mensaje;
-        } else if (typeof responseData.error === 'string') {
-          // Legado: { error: 'texto' }
-          mensaje = responseData.error;
+      if (responseData) {
+        if (responseData.codigo) {
+          codigo = responseData.codigo;
         }
-      } else if (responseData && responseData.message) {
-        mensaje = responseData.message;
+        if (responseData.mensaje) {
+          mensaje = responseData.mensaje;
+        }
+        if (responseData.error) {
+          if (typeof responseData.error === 'object') {
+            // Formato del contrato: { error: { codigo, mensaje } }
+            codigo  = responseData.error.codigo  || codigo;
+            mensaje = responseData.error.mensaje || mensaje;
+          } else if (typeof responseData.error === 'string') {
+            // Legado: { error: 'texto' }
+            mensaje = responseData.error;
+          }
+        } else if (responseData.message) {
+          mensaje = responseData.message;
+        }
       }
 
       // Mapeo de codigos HTTP a codigos semanticos cuando el servidor no los provee

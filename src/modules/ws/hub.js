@@ -49,13 +49,18 @@ const SNAPSHOT_CACHE_TTL = 3000 // 3 segundos
  * @returns {string} Canal normalizado autorizado
  */
 function validarCanalAutorizado (user, canalSolicitado, queryMesaId) {
-  // 1. Pantalla pública TV
-  if (user.rol === 'tv' || user.id === 0) {
+  // 1. Estudiante / Kiosko: únicamente su canal de turno tokenizado o canal público
+  if (user.rol === 'kiosko' || (canalSolicitado && (canalSolicitado.startsWith('kiosko:') || canalSolicitado === 'kiosko:publico'))) {
+    return canalSolicitado
+  }
+
+  // 2. Pantalla pública TV
+  if (user.rol === 'tv' || user.id === 0 || canalSolicitado === 'tv:global') {
     return 'tv:global'
   }
 
-  // 2. Administrador: acceso a admin:all, tv:global o cualquier mesa
-  if (user.rol === 'admin' || user.rol === 'admin') {
+  // 3. Administrador: acceso a admin:all, tv:global o cualquier mesa
+  if (user.rol === 'admin') {
     if (canalSolicitado === 'admin:all' || canalSolicitado === 'tv:global' || canalSolicitado.startsWith('mesa:')) {
       return canalSolicitado
     }
@@ -219,31 +224,45 @@ async function enviarSnapshot (ws, fastify, user) {
 
       const { rows: [snapData] } = await fastify.db.query(
         `SELECT
+           (SELECT valor FROM configuracion WHERE clave = 'modo_generacion_turnos' LIMIT 1) AS modo,
            (SELECT row_to_json(l) FROM (
               SELECT id, numero_lote, numero_hasta, ultimo_numero_llamado, estado
               FROM lotes_voucher WHERE estado = 'activo' LIMIT 1
             ) l) AS lote,
+           (SELECT numero FROM turnos
+            WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = CURRENT_DATE
+            ORDER BY numero ASC LIMIT 1
+           ) AS proximo_kiosko,
            (SELECT json_agg(h) FROM (
               SELECT t.numero, m.numero AS mesa_numero, m.nombre AS mesa_nombre, t.llamado_en
               FROM turnos t
               JOIN mesas m ON t.mesa_id = m.id
               WHERE t.estado IN ('en_atencion', 'atendido')
                 AND t.creado_en >= CURRENT_DATE
+                AND (
+                  ((SELECT valor FROM configuracion WHERE clave = 'modo_generacion_turnos' LIMIT 1) = 'kiosko_web' AND t.origen = 'kiosko_web')
+                  OR
+                  ((SELECT COALESCE(valor, 'voucher_fisico') FROM configuracion WHERE clave = 'modo_generacion_turnos' LIMIT 1) != 'kiosko_web' AND t.origen = 'voucher_fisico')
+                )
               ORDER BY t.llamado_en DESC
               LIMIT 5
             ) h) AS historial`
       )
 
+      const modo = snapData?.modo || 'voucher_fisico'
       const lote = snapData?.lote || null
       const historial = snapData?.historial || []
       const ultimoLlamado = historial.length > 0 ? historial[0] : null
-      const proximoNumero = lote ? lote.ultimo_numero_llamado + 1 : null
+      const proximoNumero = modo === 'kiosko_web'
+        ? (snapData?.proximo_kiosko || null)
+        : (lote ? (lote.ultimo_numero_llamado < lote.numero_hasta ? lote.ultimo_numero_llamado + 1 : null) : null)
 
       const payload = {
         ultimo_llamado: ultimoLlamado,
         historial: historial.slice(1, 5), // Exactamente los 4 turnos precedentes
         proximo_numero: proximoNumero,
-        lote
+        lote: modo === 'kiosko_web' ? null : lote,
+        modo
       }
 
       snapshotCacheTv = payload
@@ -259,9 +278,12 @@ async function enviarSnapshot (ws, fastify, user) {
       return
     }
 
-    // 2. Operador de ventanilla — snapshot consolidado en 2 queries
+    // 2. Operador de ventanilla — snapshot consolidado
     if (user.rol === 'operador' && user.mesa_id) {
-      const [resLote, resMesa] = await Promise.all([
+      const [resConfig, resLote, resMesa] = await Promise.all([
+        fastify.db.query(
+          `SELECT valor FROM configuracion WHERE clave = 'modo_generacion_turnos' LIMIT 1`
+        ),
         fastify.db.query(
           `SELECT id, numero_lote, numero_hasta, ultimo_numero_llamado, estado
            FROM lotes_voucher WHERE estado = 'activo' LIMIT 1`
@@ -271,21 +293,42 @@ async function enviarSnapshot (ws, fastify, user) {
              (SELECT row_to_json(t) FROM (
                 SELECT id, numero, llamado_en, estado
                 FROM turnos
-                WHERE mesa_id = $1 AND estado = 'en_atencion'
+                WHERE mesa_id = $1 AND estado = 'en_atencion' AND llamado_en >= CURRENT_DATE
                 LIMIT 1
               ) t) AS turno_actual,
              (SELECT COUNT(*)::int
               FROM turnos
               WHERE mesa_id = $1 AND estado = 'atendido' AND llamado_en >= CURRENT_DATE
-             ) AS atendidos_hoy`,
+             ) AS atendidos_hoy,
+             (SELECT COUNT(*)::int
+              FROM turnos
+              WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = CURRENT_DATE
+             ) AS turnos_en_espera,
+             (SELECT numero
+              FROM turnos
+              WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = CURRENT_DATE
+              ORDER BY numero ASC LIMIT 1
+             ) AS proximo_kiosko`,
           [user.mesa_id]
         )
       ])
 
+      const modo = resConfig.rows[0]?.valor || 'voucher_fisico'
       const lote = resLote.rows[0] || null
       const mesaData = resMesa.rows[0] || { turno_actual: null, atendidos_hoy: 0 }
       const turnoActual = mesaData.turno_actual || null
       const count = mesaData.atendidos_hoy || 0
+
+      let proximoNumero = null
+      let vouchersRestantes = 0
+
+      if (modo === 'kiosko_web') {
+        proximoNumero = mesaData.proximo_kiosko || null
+        vouchersRestantes = mesaData.turnos_en_espera || 0
+      } else {
+        proximoNumero = lote && lote.ultimo_numero_llamado < lote.numero_hasta ? lote.ultimo_numero_llamado + 1 : null
+        vouchersRestantes = lote ? Math.max(0, lote.numero_hasta - lote.ultimo_numero_llamado) : 0
+      }
 
       if (ws.readyState === 1) {
         ws.send(JSON.stringify({
@@ -293,8 +336,10 @@ async function enviarSnapshot (ws, fastify, user) {
           payload: {
             turno_actual: turnoActual,
             atendidos_hoy: count,
-            lote,
-            proximo_numero: lote && lote.ultimo_numero_llamado < lote.numero_hasta ? lote.ultimo_numero_llamado + 1 : null
+            lote: modo === 'kiosko_web' ? null : lote,
+            proximo_numero: proximoNumero,
+            vouchers_restantes: vouchersRestantes,
+            modo
           },
           timestamp: new Date().toISOString()
         }))
@@ -304,17 +349,71 @@ async function enviarSnapshot (ws, fastify, user) {
 
     // 3. Panel de Administración (admin:all)
     if (user.canal === 'admin:all') {
-      const { rows: [lote] } = await fastify.db.query(
-        `SELECT id, numero_lote, numero_hasta, ultimo_numero_llamado, estado
-         FROM lotes_voucher WHERE estado = 'activo' LIMIT 1`
-      )
+      const [resCfg, resLote, resEsperando] = await Promise.all([
+        fastify.db.query(`SELECT valor FROM configuracion WHERE clave = 'modo_generacion_turnos' LIMIT 1`),
+        fastify.db.query(
+          `SELECT id, numero_lote, numero_hasta, ultimo_numero_llamado, estado
+           FROM lotes_voucher WHERE estado = 'activo' LIMIT 1`
+        ),
+        fastify.db.query(
+          `SELECT COUNT(*)::int AS count FROM turnos
+           WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = CURRENT_DATE`
+        )
+      ])
+
+      const modo = resCfg.rows[0]?.valor || 'voucher_fisico'
+      const lote = resLote.rows[0] || null
+      const enEspera = resEsperando.rows[0]?.count || 0
+
       if (ws.readyState === 1) {
         ws.send(JSON.stringify({
           tipo: 'snapshot',
-          payload: { lote: lote || null },
+          payload: {
+            lote: modo === 'kiosko_web' ? null : lote,
+            turnos_en_espera: enEspera,
+            modo
+          },
           timestamp: new Date().toISOString()
         }))
       }
+      return
+    }
+
+    // 4. Canal público Kiosko para smartphones
+    if (user.canal === 'kiosko:publico') {
+      const { rows } = await fastify.db.query(
+        `SELECT
+           (SELECT json_agg(h) FROM (
+              SELECT t.numero, m.numero AS mesa_numero, m.nombre AS mesa_nombre, t.llamado_en
+              FROM turnos t
+              JOIN mesas m ON t.mesa_id = m.id
+              WHERE t.estado IN ('en_atencion', 'atendido')
+                AND t.creado_en >= CURRENT_DATE
+              ORDER BY t.llamado_en DESC
+              LIMIT 10
+            ) h) AS ultimos_llamados,
+           (SELECT COUNT(*)::int FROM mesas WHERE estado = 'activa') AS mesas_activas,
+           (SELECT COUNT(*)::int FROM turnos WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = CURRENT_DATE) AS turnos_esperando,
+           (SELECT numero FROM turnos WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = CURRENT_DATE ORDER BY numero ASC LIMIT 1) AS proximo_numero`
+      )
+      const data = rows[0] || {}
+      const ultimosLlamados = data.ultimos_llamados || []
+      const ultimoLlamado = ultimosLlamados.length > 0 ? ultimosLlamados[0] : null
+
+      if (ws.readyState === 1) {
+        ws.send(JSON.stringify({
+          tipo: 'snapshot',
+          payload: {
+            ultimo_llamado: ultimoLlamado,
+            ultimos_llamados: ultimosLlamados,
+            mesas_activas: data.mesas_activas || 0,
+            turnos_esperando: data.turnos_esperando || 0,
+            proximo_numero: data.proximo_numero || null
+          },
+          timestamp: new Date().toISOString()
+        }))
+      }
+      return
     }
   } catch (err) {
     fastify.log.error({ err }, 'Error enviando snapshot WS')
@@ -465,6 +564,14 @@ async function hubPlugin (fastify) {
         // 3. Solicitud explícita de snapshot tras reconexión (RF-WS-05)
         if (msg.tipo === 'solicitar_snapshot') {
           await enviarSnapshot(ws, fastify, user)
+          return
+        }
+
+        // 4. Vista previa en vivo de escala de TV desde panel admin (sin esperar guardado en BD)
+        if (msg.tipo === 'preview_escala_tv') {
+          if (user.rol === 'admin' || user.rol === 'supervisor') {
+            await fastify.broadcast('tv:global', 'preview_escala_tv', msg.payload)
+          }
           return
         }
       } catch (err) {

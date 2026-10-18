@@ -7,7 +7,8 @@
   <link rel="stylesheet" href="/css/base.css">
   <link rel="stylesheet" href="/css/components.css">
   <link rel="stylesheet" href="/css/animations.css">
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/css/tailwind.css">
+  <link rel="icon" href="data:,">
 </head>
 <body class="bg-app text-slate-800 min-h-full flex flex-col justify-between antialiased selection:bg-blue-600 selection:text-white"
       x-data="loginView()" x-cloak>
@@ -15,7 +16,7 @@
   <!-- ── 1. ENCABEZADO INSTITUCIONAL ── -->
   <header class="app-header px-6 py-3 flex items-center justify-between sticky top-0 z-30">
     <div class="flex items-center space-x-3">
-      <div class="w-9 h-9 rounded-xl bg-[#1D4ED8] flex items-center justify-center text-white shadow-xs">
+      <div class="w-9 h-9 rounded-xl bg-blue-700 flex items-center justify-center text-white shadow-xs">
         <svg class="w-5 h-5 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01" />
         </svg>
@@ -25,11 +26,23 @@
         <span class="text-xs text-slate-500 font-normal leading-tight">Portal de Acceso y Despacho Académico</span>
       </div>
     </div>
-    <a href="/tv.html" target="_blank" rel="noopener noreferrer" class="btn-ghost btn-sm flex items-center gap-2">
-      <svg class="w-4 h-4 text-blue-700 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" /></svg>
-      <span>Abrir Pantalla TV</span>
-      <svg class="w-3 h-3 text-slate-400 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
-    </a>
+    <div class="flex items-center gap-2.5">
+      <a x-show="kioskoActivo" x-cloak
+         :href="kioskoHref"
+         target="_blank" rel="noopener noreferrer"
+         class="btn-accent btn-sm">
+        <svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 8.25h3m-3 3.75h3m-6-3.75H6.375a2.25 2.25 0 00-2.25 2.25v4.5a2.25 2.25 0 002.25 2.25h.75" />
+        </svg>
+        <span x-text="kioskoLabelHeader"></span>
+        <svg class="w-3 h-3 text-slate-400 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+      </a>
+      <a href="/tv.html" target="_blank" rel="noopener noreferrer" class="btn-ghost btn-sm">
+        <svg class="w-4 h-4 text-blue-700 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" /></svg>
+        <span>Abrir Pantalla TV</span>
+        <svg class="w-3 h-3 text-slate-400 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+      </a>
+    </div>
   </header>
 
   <!-- ── 2. CONTENEDOR PRINCIPAL ── -->
@@ -38,7 +51,7 @@
     <!-- Formulario de Acceso -->
     <div x-show="step === 'login'" class="card w-full max-w-md p-8">
       <div class="mb-6 text-center">
-        <div class="w-12 h-12 mx-auto mb-3 rounded-2xl bg-blue-50 border border-blue-100 text-[#1D4ED8] flex items-center justify-center">
+        <div class="w-12 h-12 mx-auto mb-3 rounded-2xl bg-blue-50 border border-blue-100 text-blue-700 flex items-center justify-center">
           <svg class="w-6 h-6 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>
         </div>
         <h1 class="text-xl font-bold text-slate-900 tracking-tight">Acceso al Sistema</h1>
@@ -54,23 +67,23 @@
 
       <form @submit.prevent="handleLogin" class="space-y-4">
         <div>
-          <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Usuario o DNI</label>
+          <label for="login-username" class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Usuario o DNI</label>
           <div class="relative">
             <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
               <svg class="w-4 h-4 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
             </div>
-            <input type="text" x-model="username" required autocomplete="username" placeholder="ej. operador1 o DNI" class="input-field pl-10 pr-4 text-sm font-medium">
+            <input id="login-username" type="text" x-model="username" required autocomplete="username" placeholder="ej. operador1 o DNI" class="input-field pl-10 pr-4 text-sm font-medium">
           </div>
         </div>
 
         <div>
-          <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Contraseña</label>
+          <label for="login-password" class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Contraseña</label>
           <div class="relative">
             <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
               <svg class="w-4 h-4 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
             </div>
-            <input :type="showPassword ? 'text' : 'password'" x-model="password" required autocomplete="current-password" placeholder="••••••••••••" class="input-field pl-10 pr-10 text-sm font-medium">
-            <button type="button" @click="showPassword = !showPassword" aria-label="Mostrar u ocultar contraseña" title="Mostrar u ocultar contraseña" class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer">
+            <input id="login-password" :type="showPassword ? 'text' : 'password'" x-model="password" required autocomplete="current-password" placeholder="••••••••••••" class="input-field pl-10 pr-10 text-sm font-medium">
+            <button type="button" @click="showPassword = !showPassword" aria-label="Mostrar u ocultar contraseña" title="Mostrar u ocultar contraseña" class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-600/25 rounded-md cursor-pointer">
               <svg class="w-4 h-4 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
             </button>
           </div>
@@ -85,20 +98,30 @@
         </div>
       </form>
 
-      <!-- Enlace directo a Pantalla Pública TV -->
-      <div class="mt-6 pt-5 border-t border-slate-100 text-center">
-        <a href="/tv.html" target="_blank" rel="noopener noreferrer" class="btn-ghost w-full h-11 text-xs font-semibold flex items-center justify-center gap-2 text-slate-700 hover:text-blue-700 hover:bg-blue-50/60 border border-slate-200 rounded-xl transition-all shadow-2xs">
-          <svg class="w-4 h-4 text-blue-600 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" /></svg>
+      <!-- Enlaces directos a Pantalla Pública TV y Kiosko Digital -->
+      <div class="mt-6 pt-5 border-t border-slate-100 flex flex-col gap-3.5 text-center">
+        <a x-show="kioskoActivo" x-cloak
+           :href="kioskoHref"
+           target="_blank" rel="noopener noreferrer"
+           class="btn-accent w-full h-11 text-xs">
+          <svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 8.25h3m-3 3.75h3m-6-3.75H6.375a2.25 2.25 0 00-2.25 2.25v4.5a2.25 2.25 0 002.25 2.25h.75" />
+          </svg>
+          <span x-text="kioskoLabelCard"></span>
+          <svg class="w-3.5 h-3.5 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+        </a>
+        <a href="/tv.html" target="_blank" rel="noopener noreferrer" class="btn-ghost w-full h-11 text-xs">
+          <svg class="w-4 h-4 text-blue-700 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" /></svg>
           <span>Ir a Pantalla TV</span>
           <svg class="w-3.5 h-3.5 text-slate-400 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
         </a>
       </div>
     </div>
 
-    <!-- Caso A: Decisión de Administrador / admin -->
+    <!-- Caso A: Decisión de Administrador -->
     <div x-show="step === 'admin_choice'" x-cloak class="card w-full max-w-lg p-8">
       <div class="text-center mb-6">
-        <div class="w-12 h-12 mx-auto mb-3 rounded-2xl bg-blue-50 border border-blue-200 text-[#1D4ED8] flex items-center justify-center">
+        <div class="w-12 h-12 mx-auto mb-3 rounded-2xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center">
           <svg class="w-6 h-6 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.75c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.75h-.152c-3.196 0-6.1-1.249-8.25-3.286zm0 13.036h.008v.008H12v-.008z" /></svg>
         </div>
         <h2 class="text-xl font-bold text-slate-900 tracking-tight">Acceso Privilegiado</h2>
@@ -106,8 +129,8 @@
       </div>
 
       <div class="space-y-3.5">
-        <button @click="irAdmin" class="card-subtle w-full p-4 text-left transition-all active:scale-[0.98] flex items-center gap-4 cursor-pointer hover:border-blue-400">
-          <div class="w-10 h-10 rounded-xl bg-[#1D4ED8] text-white flex items-center justify-center shrink-0">
+        <button type="button" @click="irAdmin" class="card-subtle w-full p-4 text-left transition-all active:scale-[0.98] flex items-center gap-4 cursor-pointer hover:border-blue-400">
+          <div class="w-10 h-10 rounded-xl bg-blue-700 text-white flex items-center justify-center shrink-0">
             <svg class="w-5 h-5 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" /></svg>
           </div>
           <div class="flex-1">
@@ -116,24 +139,23 @@
           </div>
         </button>
 
-        <button @click="irOperarMesa" class="card-subtle w-full p-4 text-left transition-all active:scale-[0.98] flex items-center gap-4 cursor-pointer hover:border-slate-400">
+        <button type="button" @click="irOperarMesa" class="card-subtle w-full p-4 text-left transition-all active:scale-[0.98] flex items-center gap-4 cursor-pointer hover:border-slate-400">
           <div class="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
             <svg class="w-5 h-5 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect width="18" height="12" x="3" y="4" rx="2" /><path d="M7 16v4m10-4v4" /></svg>
           </div>
           <div class="flex-1">
-            <span class="block font-bold text-slate-900 text-sm">Operar una Ventanilla</span>
+            <span class="block font-bold text-slate-900 text-sm">Operar en un Sitio / Lugar</span>
             <span class="block text-xs text-slate-500">Seleccionar una mesa libre y atender turnos estudiantiles</span>
           </div>
         </button>
       </div>
 
       <div class="mt-6 pt-4 border-t border-slate-100 text-center">
-        <button @click="volverLogin" class="text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer">← Cerrar sesión y volver</button>
+        <button type="button" @click="volverLogin" class="text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-600/25 rounded px-2 py-1">← Cerrar sesión y volver</button>
       </div>
     </div>
 
     <!-- Caso B: Aviso — Operador ya tiene mesa asignada -->
-    <!-- Solo informativo: 2 acciones posibles (Continuar / Cancelar). Sin opcion de cambio. -->
     <div x-show="step === 'mesa_asignada'" x-cloak class="card w-full max-w-md p-8">
 
       <!-- Icono + titulo -->
@@ -145,17 +167,17 @@
           </svg>
         </div>
         <h2 class="text-xl font-bold text-slate-900 tracking-tight">Mesa asignada</h2>
-        <p class="text-sm text-slate-500 mt-1">Tiene una ventanilla asignada en este sistema</p>
+        <p class="text-sm text-slate-500 mt-1">Tiene un sitio o lugar asignado en este sistema</p>
       </div>
 
       <!-- Tarjeta informativa de la mesa -->
-      <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 mb-5 flex items-center gap-4">
+      <div class="alert-success mb-5 flex items-center gap-4">
         <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
           <span class="font-mono-num font-bold text-lg leading-none" x-text="mesaPreAsignada?.numero ?? '—'"></span>
         </div>
         <div class="flex-1 min-w-0">
           <p class="font-bold text-emerald-900 text-sm" x-text="'Mesa ' + (mesaPreAsignada?.numero ?? '—')"></p>
-          <p class="text-xs text-emerald-700 truncate" x-text="mesaPreAsignada?.nombre || 'Ventanilla de atencion'"></p>
+          <p class="text-xs text-emerald-700 truncate" x-text="mesaPreAsignada?.nombre || 'Sitio de atención'"></p>
         </div>
         <svg class="w-5 h-5 text-emerald-600 stroke-[2] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -163,23 +185,23 @@
       </div>
 
       <!-- Aviso de verificacion de ubicacion fisica -->
-      <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 mb-6 flex items-start gap-3">
+      <div class="alert-warning mb-6 flex items-start gap-3">
         <svg class="w-4 h-4 text-amber-600 stroke-[2] shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
         </svg>
         <p class="text-xs text-amber-800 font-medium leading-relaxed">
-          Verifique que se encuentra fisicamente en la ventanilla indicada antes de continuar.
+          Verifique que se encuentra físicamente en el sitio o lugar indicado antes de continuar.
         </p>
       </div>
 
-      <!-- Acciones: Continuar y Cancelar (sin opcion de cambiar mesa) -->
+      <!-- Acciones: Continuar y Cancelar -->
       <div class="space-y-3">
         <button id="btn-continuar-mesa"
                 type="button"
                 @click="continuarMesaAsignada()"
                 :disabled="loading"
-                title="Confirmar ubicacion y continuar en mi mesa"
-                aria-label="Continuar en mi mesa"
+                title="Confirmar ubicación y continuar en mi mesa"
+                aria-label="Confirmar ubicación y continuar en mi mesa"
                 class="btn-primary w-full h-12 text-sm flex items-center justify-center gap-2">
           <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/>
@@ -187,22 +209,36 @@
           <span>Continuar en mi mesa</span>
         </button>
 
+        <!-- Solo visible para administradores con mesa asignada -->
+        <button x-show="currentUser?.rol === 'admin'"
+                type="button"
+                @click="irAdmin()"
+                :disabled="loading"
+                title="Ir al panel de administración"
+                aria-label="Ir al panel de administración"
+                class="btn-ghost w-full h-11 text-sm flex items-center justify-center gap-2 text-blue-700 border border-blue-200 hover:bg-blue-50">
+          <svg class="w-4 h-4 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+          </svg>
+          <span>Ir al Panel de Administración</span>
+        </button>
+
         <button type="button"
                 @click="volverLogin()"
                 :disabled="loading"
-                title="Cancelar y cerrar sesion"
-                aria-label="Cancelar y cerrar sesion"
+                title="Cancelar y cerrar sesión"
+                aria-label="Cancelar y cerrar sesión"
                 class="btn-ghost w-full h-11 text-sm flex items-center justify-center gap-2 text-slate-600">
           <svg class="w-4 h-4 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
           </svg>
-          <span x-text="loading ? 'Cerrando sesion...' : 'Cancelar'">Cancelar</span>
+          <span x-text="loading ? 'Cerrando sesión...' : 'Cancelar'">Cancelar</span>
         </button>
       </div>
 
     </div>
 
-    <!-- Caso C: Grilla de Seleccion de Mesas Disponibles (INC-2) -->
+    <!-- Caso C: Grilla de Selección de Mesas Disponibles -->
     <div x-show="step === 'mesas_grid'" x-cloak class="card w-full max-w-4xl p-8">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-5 border-b border-slate-200 gap-4 mb-6">
         <div>
@@ -210,11 +246,15 @@
           <p class="text-xs text-slate-500 mt-1">Solo se muestran mesas activas y disponibles</p>
         </div>
         <div class="flex items-center space-x-3">
+          <button x-show="currentUser?.rol === 'admin'" type="button" @click="volverAdminChoice" title="Volver a opciones de administrador" aria-label="Volver a opciones de administrador" class="btn-ghost btn-sm text-blue-700 flex items-center gap-1.5 font-semibold">
+            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
+            <span>Opciones Admin</span>
+          </button>
           <button type="button" @click="cargarMesas" :disabled="loadingMesas" title="Actualizar lista de mesas" aria-label="Actualizar lista de mesas" class="btn-ghost btn-sm flex items-center gap-1.5">
             <svg :class="loadingMesas ? 'animate-spin' : ''" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
             <span>Actualizar</span>
           </button>
-          <button type="button" @click="volverLogin" :disabled="loading" title="Cerrar sesión" aria-label="Cerrar sesión" class="text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer">Cerrar sesion</button>
+          <button type="button" @click="volverLogin" :disabled="loading" title="Cerrar sesión" aria-label="Cerrar sesión" class="text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-600/25 rounded px-2 py-1">Cerrar sesión</button>
         </div>
       </div>
 
@@ -232,8 +272,8 @@
         <span class="text-sm font-medium">Cargando mesas disponibles...</span>
       </div>
 
-      <!-- Estado vacio: no hay mesas disponibles (INC-2 decision) -->
-      <div x-show="!loadingMesas && mesas.length === 0 && !errorMessage" x-cloak
+      <!-- Estado vacio: no hay mesas disponibles -->
+      <div x-show="noHayMesasDisponibles" x-cloak
            class="flex flex-col items-center justify-center py-16 text-center gap-3">
         <div class="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400">
           <svg class="w-6 h-6 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -242,11 +282,11 @@
         <p class="text-xs text-slate-500 max-w-xs">Todas las mesas activas ya tienen un operador asignado. Contacte al administrador.</p>
         <button type="button" @click="cargarMesas" title="Actualizar mesas disponibles" aria-label="Actualizar mesas disponibles" class="btn-ghost btn-sm mt-2 flex items-center gap-1.5">
           <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
-          Actualizar
+          <span>Actualizar</span>
         </button>
       </div>
 
-      <!-- Grilla de mesas disponibles (solo activas y sin operador, filtrado en backend) -->
+      <!-- Grilla de mesas disponibles (solo activas y sin operador) -->
       <div x-show="!loadingMesas && mesas.length > 0" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         <template x-for="mesa in mesas" :key="mesa.id">
           <button type="button"
@@ -254,46 +294,42 @@
                   :disabled="seleccionando"
                   :title="'Tomar mesa ' + mesa.numero"
                   :aria-label="'Tomar mesa ' + mesa.numero"
-                  class="p-4 rounded-xl border border-slate-300 bg-white hover:border-[#1D4ED8] hover:shadow-md cursor-pointer active:scale-[0.98] transition-all flex flex-col justify-between h-36 text-left focus:outline-none focus:ring-2 focus:ring-blue-600/25 select-none"
-                  :class="{ 'opacity-50 cursor-not-allowed': seleccionando }">
+                  class="card-mesa-select">
             <div class="flex items-center justify-between">
               <span class="font-mono-num font-bold text-lg text-slate-900" x-text="'MESA ' + mesa.numero"></span>
               <span class="pill pill-success text-[10px] uppercase">Disponible</span>
             </div>
             <div class="my-2">
-              <!-- Solo el area como subtitulo, sin repetir el numero (INC-2 visual) -->
               <span class="block text-xs font-medium text-slate-700 truncate"
-                    x-text="mesa.nombre ? mesa.nombre.replace(/Mesa \d+ — /, '') : 'Ventanilla '"></span>
+                    x-text="formatearNombreMesa(mesa)"></span>
             </div>
             <div class="pt-2 border-t border-slate-100">
-              <span class="text-[#1D4ED8] font-semibold text-[11px]" x-text="seleccionando ? 'Asignando...' : 'Tomar esta mesa'"></span>
+              <span class="text-blue-700 font-semibold text-[11px]" x-text="seleccionando ? 'Asignando...' : 'Tomar esta mesa'"></span>
             </div>
           </button>
         </template>
       </div>
     </div>
 
-    <!-- Transicion Suave -->
+    <!-- Transición Suave -->
     <div x-show="step === 'redirecting'" x-cloak class="card w-full max-w-md p-8 text-center">
-      <div class="w-12 h-12 mx-auto mb-4 rounded-2xl bg-blue-50 border border-blue-200 text-[#1D4ED8] flex items-center justify-center">
+      <div class="w-12 h-12 mx-auto mb-4 rounded-2xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center">
         <svg class="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
       </div>
       <h3 class="text-lg font-bold text-slate-900" x-text="redirectText"></h3>
-      <p class="text-xs text-slate-500 mt-1">Cargando consola de atencion...</p>
+      <p class="text-xs text-slate-500 mt-1">Cargando consola de atención...</p>
     </div>
 
   </main>
 
   <!-- ── 3. PIE DE PÁGINA ── -->
-  <footer class="app-footer py-2.5 px-6 flex items-center justify-between">
+  <footer class="app-footer py-2.5 px-6 flex items-center justify-between text-xs text-slate-400">
     <span>Turnero de Matrículas 2026 • v2.1</span>
-    <span class="font-mono-num">LAN Activa • Modo Resiliente</span>
+    <span>Portal de Acceso</span>
   </footer>
 
   <!-- Scripts al final del body -->
   <script type="module" src="/js/pages/login.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+  <script defer src="/vendor/alpine-3.13.3.min.js"></script>
 </body>
 </html>
-
-

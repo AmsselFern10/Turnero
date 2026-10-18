@@ -1,0 +1,200 @@
+/**
+ * ==============================================================================
+ * TV-TOKENS.CSS — Tokens de Tipografía Fluida y Escala para Pantalla Pública
+ * Sistema Turnero de Matrículas 2026 (v2.1)
+ *
+ * Normativa: ui-design.md § 6.3 (RF-TV-01 / RNF-DIS-03)
+ * Responsive: Adaptación sin scroll ni desbordes en TV 4K, 1440p, 1080p, 720p
+ *             y ventanas divididas / medio ancho.
+ * ==============================================================================
+ */
+
+:root {
+  /* Escalas dinámicas independientes controladas desde el admin (defecto: 1.0 = 100%) */
+  --tv-escala-principal: 1;
+  --tv-escala-secundaria: 1;
+  /* Retrocompatibilidad con escala única previa */
+  --tv-num-scale: 1;
+  /* Factor de ajuste automático para evitar desbordes en resoluciones compactas */
+  --tv-ticket-fit: 1;
+}
+
+/* ── 1. NÚMERO DE TURNO PRINCIPAL (Héroe colosal) ─────────────────────────── */
+/* Controlado exclusivamente por el deslizador de Turno Principal */
+.tv-ticket {
+  font-size: calc(clamp(6.5rem, min(28vh, 23vw), 24rem) * var(--tv-escala-principal, var(--tv-num-scale, 1)) * var(--tv-ticket-fit, 1));
+  line-height: 0.92;
+  letter-spacing: -0.05em;
+  max-width: 100%;
+  max-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── 2. NÚMERO DEL PRÓXIMO TURNO EN ESPERA ────────────────────────────────── */
+/* Mantiene tamaño fijo optimizado para su recuadro (no afectado por deslizadores) */
+.tv-prox-num {
+  font-size: clamp(1.5rem, min(4.2vh, 3.6vw), 3rem);
+  line-height: 1;
+}
+
+/* ── 3. NÚMEROS DEL HISTORIAL DE TURNOS ANTERIORES ────────────────────────── */
+/* Controlado por el deslizador de Turnos Anteriores y Banner */
+.tv-hist-num {
+  font-size: calc(clamp(2.4rem, min(6.8vh, 5.2vw), 5.2rem) * var(--tv-escala-secundaria, var(--tv-num-scale, 1)));
+  line-height: 1;
+}
+
+/* ── 4. IDENTIFICADORES DE MESA Y BANNER (Proporcionados y legibles) ──────── */
+/* Mesa principal en barra inferior (escala con la card principal) */
+.tv-mesa {
+  font-size: calc(clamp(1.85rem, min(5.5vh, 4.2vw), 4rem) * var(--tv-escala-principal, var(--tv-num-scale, 1)));
+  line-height: 1;
+  color: var(--primary-cobalt);
+  font-weight: 900;
+}
+
+/* Texto del banner DIRÍJASE A (escala con la card principal) */
+.tv-banner-text {
+  font-size: calc(clamp(1.125rem, min(2.8vh, 2vw), 1.875rem) * var(--tv-escala-principal, var(--tv-num-scale, 1)));
+}
+
+/* Banner del próximo turno en espera: compacto según mockup */
+.tv-hero-callout {
+  background-color: rgba(239, 246, 255, 0.55);
+  border: 1px solid var(--primary-border);
+}
+
+/* Barra de destino asignado: compacta y agrupada con el turno según mockup */
+.tv-hero-bottom {
+  background-color: rgba(239, 246, 255, 0.65);
+  border: 1px solid var(--primary-border);
+}
+
+/* Mesa en tarjeta de historial: proporcionada y armónica con el número */
+.tv-hist-mesa {
+  font-size: calc(clamp(1.15rem, min(3vh, 2.2vw), 2.2rem) * var(--tv-escala-secundaria, var(--tv-num-scale, 1)));
+  line-height: 1.1;
+  padding: clamp(0.25rem, 0.7vh, 0.55rem) clamp(0.6rem, 1.2vw, 1.2rem);
+  border-radius: 0.75rem;
+  background-color: var(--primary-light);
+  border: 1px solid var(--primary-border);
+  color: var(--primary-cobalt);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+/* ── 5. GRID Y LAYOUT RESPONSIVO PARA PANTALLA PÚBLICA ────────────────────── */
+.tv-main-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1.5rem;
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+}
+
+/* Modo pantalla completa para turno principal (Historial oculto) */
+.tv-main-grid.solo-hero .tv-col-hero {
+  grid-column: span 12 / span 12;
+  width: 100%;
+}
+
+.tv-main-grid.solo-hero .tv-ticket {
+  font-size: calc(clamp(8rem, min(34vh, 28vw), 30rem) * var(--tv-escala-principal, var(--tv-num-scale, 1)) * var(--tv-ticket-fit, 1));
+}
+
+/* En modo solo-hero, tamaño proporcional */
+.tv-main-grid.solo-hero .tv-prox-num {
+  font-size: clamp(1.75rem, min(4.8vh, 4vw), 3.4rem);
+}
+
+.tv-main-grid.solo-hero .tv-mesa {
+  font-size: calc(clamp(2.2rem, min(6.5vh, 4.8vw), 4.8rem) * var(--tv-escala-principal, var(--tv-num-scale, 1)));
+}
+
+.tv-col-hero {
+  grid-column: span 8 / span 8;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tv-col-historial {
+  grid-column: span 4 / span 4;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.tv-hist-grid {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.75rem;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 0%;
+}
+
+/* ── 6. REACOMODO RESPONSIVO EN PANTALLAS ANGOSTAS O VENTANAS DIVIDIDAS ──── */
+/* Aplica cuando la ventana es partida (medio ancho) o pantalla compacta */
+@media (max-width: 1023px), (max-aspect-ratio: 1.15) {
+  .tv-main-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .tv-col-hero {
+    flex: 1.35 1 0%;
+    min-height: 0;
+    padding: 1rem !important;
+  }
+
+  .tv-main-grid.solo-hero .tv-col-hero {
+    flex: 1 1 100% !important;
+    height: 100% !important;
+  }
+
+  .tv-col-historial {
+    flex: 1 1 0%;
+    min-height: 0;
+    gap: 0.5rem;
+  }
+
+  .tv-col-historial .tv-hist-header {
+    padding: 0.4rem 0.875rem;
+  }
+
+  /* El historial se distribuye en cuadrícula 2x2 para máxima legibilidad horizontal */
+  .tv-hist-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .tv-hist-grid .card {
+    padding: 0.5rem 0.75rem !important;
+  }
+
+  .tv-hero-callout {
+    padding: 0.5rem 0.875rem !important;
+  }
+
+  .tv-hero-bottom {
+    padding: 0.625rem 1rem !important;
+  }
+}

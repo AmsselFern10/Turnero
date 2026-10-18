@@ -15,7 +15,7 @@ async function login (fastify, { username, password, ip }) {
   const { rows } = await fastify.db.query(
     `SELECT id, username, nombre_completo, password_hash, rol, activo
      FROM usuarios
-     WHERE username = $1`,
+     WHERE LOWER(username) = LOWER($1) AND eliminado_en IS NULL`,
     [username]
   )
 
@@ -62,14 +62,12 @@ async function login (fastify, { username, password, ip }) {
 
   // 6. Consultar si tiene mesa pre-asignada por el admin (RF-ADM-04 / RF-AUTH-03)
   let mesaAsignada = null
-  if (usuario.rol === 'operador') {
-    const { rows: mesasRows } = await fastify.db.query(
-      `SELECT id, numero, nombre, estado FROM mesas WHERE operador_id = $1 AND estado != 'inactiva' LIMIT 1`,
-      [usuario.id]
-    )
-    if (mesasRows.length > 0) {
-      mesaAsignada = mesasRows[0]
-    }
+  const { rows: mesasRows } = await fastify.db.query(
+    `SELECT id, numero, nombre, estado FROM mesas WHERE operador_id = $1 AND estado != 'inactiva' LIMIT 1`,
+    [usuario.id]
+  )
+  if (mesasRows.length > 0) {
+    mesaAsignada = mesasRows[0]
   }
 
   // 7. Audit log
@@ -102,6 +100,39 @@ async function logout (fastify, { userId, jti, exp, ip }) {
 
   if (ttl > 0) {
     await fastify.redis.setex(`bl:${jti}`, ttl, '1')
+  }
+
+  // Si el usuario tenía una mesa asignada, cancelar turnos en atención y liberar la mesa
+  const { rows: mesasUsuario } = await fastify.db.query(
+    `SELECT id, numero, nombre, estado FROM mesas WHERE operador_id = $1`, [userId]
+  )
+  for (const m of mesasUsuario) {
+    const { rows: turnosCanc } = await fastify.db.query(
+      `UPDATE turnos SET estado = 'cancelado', finalizado_en = NOW()
+       WHERE mesa_id = $1 AND estado = 'en_atencion'
+       RETURNING id, numero`,
+      [m.id]
+    )
+    for (const tc of turnosCanc) {
+      await fastify.db.query(
+        `INSERT INTO audit_log (mesa_id, operador_id, turno_id, accion, ip_origen, metadata_json)
+         VALUES ($1, $2, $3, 'TURNO_CANCELADO', $4, $5)`,
+        [m.id, userId, tc.id, ip, JSON.stringify({ motivo: 'operador_logout', turno_numero: tc.numero })]
+      )
+      await fastify.broadcast('admin:all', 'turno_cancelado', { turno_id: tc.id, turno_numero: tc.numero, mesa_id: m.id })
+      await fastify.broadcast('lote:activo', 'rezagados_actualizados', { accion: 'cancelado', turno_id: tc.id, turno_numero: tc.numero, mesa_id: m.id })
+    }
+  }
+
+  const { rows: mesasLiberadas } = await fastify.db.query(
+    `UPDATE mesas SET operador_id = NULL
+     WHERE operador_id = $1
+     RETURNING id, numero, nombre, estado`,
+    [userId]
+  )
+  for (const mesa of mesasLiberadas) {
+    await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
+    await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', { mesa, accion: 'liberada' })
   }
 
   await fastify.db.query(

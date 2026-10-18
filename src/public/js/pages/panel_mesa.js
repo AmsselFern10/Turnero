@@ -14,11 +14,6 @@ import { api } from '../api.js';
 import { TurneroWSClient } from '../ws-client.js';
 import { formatTimer, showToast } from '../utils.js';
 
-// Garantizar 100% fluidez y cero bloqueos nativos: desactivar cualquier diálogo confirm del navegador
-if (typeof window !== 'undefined') {
-  window.confirm = () => true;
-}
-
 export function panelMesaView() {
   return {
     // Datos de la mesa y del operador
@@ -44,11 +39,98 @@ export function panelMesaView() {
     atendidosHoy: 0,
     vouchersRestantes: 0,
     loteActivo: null,
+    modo: 'voucher_fisico',
 
     // Estados de pantalla y control
     mesaPausada: false,
+    mesaInactivada: false,
     motivoPausa: 'Descanso programado / Almuerzo',
     loadingAction: false,
+
+    // Rezagados (turnos cancelados/no presentados)
+    totalRezagados: 0,
+    listaRezagados: [],
+    rezagadoSeleccionado: null,
+    modalConfirmarRezagadoConTurno: false,
+    modalRezagados: false,
+    filtroRezagados: '',
+    loadingRezagado: false,
+    errorRezagado: '',
+    // Fecha local al cargar — detecta cambio de día para limpiar lista automáticamente
+    _fechaHoy: new Date().toDateString(),
+    // Lock optimista: Set de turno_ids con solicitud HTTP en vuelo (anti race-condition UI)
+    _rezagadosEnVuelo: new Set(),
+
+    // Getters semánticos para lógica de presentación pura
+    get estadoVentanillaTexto() {
+      if (this.feedbackEstado === 'llamando') return 'LLAMANDO ALUMNO...';
+      if (this.feedbackEstado === 'rellamando') return 'RE-LLAMANDO (2º AVISO)';
+      return this.turnoActual ? 'TURNO ACTUAL • EN ATENCIÓN' : 'VENTANILLA LIBRE (DISPONIBLE)';
+    },
+
+    get proximoNumeroDisplay() {
+      if (this.proximoNumero) {
+        return String(this.proximoNumero).padStart(3, '0');
+      }
+      if (this.modo === 'kiosko_web') {
+        return 'Sin espera';
+      }
+      if (this.vouchersRestantes === 0 || !this.loteActivo) {
+        return 'Lote agotado';
+      }
+      return '---';
+    },
+
+    get proximoNumeroClass() {
+      if (this.proximoNumero) {
+        return 'text-6xl sm:text-7xl lg:text-8xl text-slate-900';
+      }
+      const colorClase = this.modo === 'kiosko_web' ? 'text-slate-400' : 'text-rose-600';
+      return `text-2xl sm:text-3xl font-bold ${colorClase}`;
+    },
+
+    get proximoNumeroMensaje() {
+      if (this.proximoNumero) {
+        return this.modo === 'kiosko_web'
+          ? 'Siguiente estudiante en cola de espera.'
+          : 'Se llamará automáticamente a tu mesa al presionar "Llamar Siguiente".';
+      }
+      return this.modo === 'kiosko_web'
+        ? 'No hay estudiantes esperando en este momento.'
+        : 'No hay vouchers disponibles en el lote actual. Notifique al admin.';
+    },
+
+    get origenLoteDisplay() {
+      if (this.modo === 'kiosko_web') return 'Modo Kiosko Web';
+      return this.loteActivo ? `Lote ${this.loteActivo.numero_lote}` : 'Sin lote activo';
+    },
+
+    get cantidadRestanteDisplay() {
+      if (this.modo === 'kiosko_web') {
+        return `${this.vouchersRestantes} en espera`;
+      }
+      return `${this.vouchersRestantes} vouchers restantes`;
+    },
+
+    get rezagadosBadgeText() {
+      if (this.totalRezagados > 0) {
+        return `${this.totalRezagados} ${this.totalRezagados === 1 ? 'disponible' : 'disponibles'}`;
+      }
+      return 'Sin rezagados';
+    },
+
+    // Getter reactivo para filtrar rezagados en el modal
+    get rezagadosFiltrados() {
+      if (!this.filtroRezagados || !this.filtroRezagados.trim()) {
+        return this.listaRezagados;
+      }
+      const q = this.filtroRezagados.trim().toLowerCase();
+      return this.listaRezagados.filter(r => {
+        const numStr = String(r.numero);
+        const mesaStr = r.mesa_numero ? String(r.mesa_numero) : '';
+        return numStr.includes(q) || mesaStr.includes(q);
+      });
+    },
 
     // Estado de micro-animaciones y feedback temporal (5 segundos — Stitch)
     feedbackEstado: 'idle', // 'idle' | 'llamando' | 'rellamando' | 'ausente'
@@ -64,6 +146,14 @@ export function panelMesaView() {
     relojHora: '--:--:--',
     relojFecha: '',
     relojTimer: null,
+
+    // Modal de resolución de turno activo al cerrar sesión
+    modalSalida: false,
+    _salidaPending: false,
+
+    // Referencias a listeners de atajos de teclado para limpieza en destroy()
+    _boundKeyDown: null,
+    _boundKeyUp: null,
 
     /**
      * Inicialización del panel de ventanilla
@@ -120,9 +210,6 @@ export function panelMesaView() {
 
     /**
      * Restaura el estado de la mesa y el turno en curso (GET /turnos/estado?mesa_id=X)
-     */
-    /**
-     * Restaura el estado de la mesa y el turno en curso (GET /turnos/estado?mesa_id=X)
      * Una sola consulta consolidada al cargar o reconectar (presupuesto <= 2 queries).
      */
     async cargarEstado() {
@@ -134,9 +221,10 @@ export function panelMesaView() {
         this.atendidosHoy = data.atendidos_hoy || 0;
         this.proximoNumero = data.proximo_numero ?? null;
         this.loteActivo = data.lote || null;
-        this.vouchersRestantes = data.lote
+        this.modo = data.modo || (data.lote ? 'voucher_fisico' : 'kiosko_web');
+        this.vouchersRestantes = data.vouchers_restantes ?? (data.lote
           ? Math.max(0, data.lote.numero_hasta - data.lote.ultimo_numero_llamado)
-          : 0;
+          : 0);
 
         if (data.mesa) {
           this.mesaPausada = data.mesa.estado === 'pausada';
@@ -160,6 +248,9 @@ export function panelMesaView() {
             detalle: 'Listo para convocar al siguiente estudiante.'
           };
         }
+
+        // Cargar lista y contador de turnos rezagados del día
+        await this.cargarRezagados(true);
       } catch (err) {
         console.error('[MESA] Error al cargar estado inicial:', err);
       }
@@ -234,7 +325,19 @@ export function panelMesaView() {
     async llamarSiguiente() {
       if (this.loadingAction || this.mesaPausada || this._cooldown) return;
 
+      // Bloquear si no hay conexión con el servidor (RF-WS-OFFLINE)
+      // No guardar para enviar después: podría duplicar números al volver la red.
+      if (!this.wsConnected) {
+        showToast({
+          message: 'Sin conexión con el servidor — no se puede llamar ahora. El sistema reconectará solo.',
+          type: 'warning',
+          duration: 4000
+        });
+        return;
+      }
+
       this.loadingAction = true;
+
       // Idempotency-Key por intento: si la red falla y el usuario reintenta,
       // el mismo UUID devuelve el turno ya creado sin quemar un nuevo número.
       if (!this._llamarKey) this._llamarKey = crypto.randomUUID();
@@ -284,12 +387,20 @@ export function panelMesaView() {
           return; // No ejecutar el finally normal
         }
 
-        if (err.status === 409 || msg.toLowerCase().includes('agotado')) {
-          showToast({
-            message: 'ALERTA: El lote de vouchers se ha agotado. Notifique al supervisor.',
-            type: 'warning',
-            duration: 7000
-          });
+        if (err.status === 409 || msg.toLowerCase().includes('agotado') || msg.toLowerCase().includes('espera')) {
+          if (err.codigo === 'sin_turnos_en_espera' || msg.includes('espera')) {
+            showToast({
+              message: 'No hay estudiantes esperando turno en este momento.',
+              type: 'info',
+              duration: 5000
+            });
+          } else {
+            showToast({
+              message: 'ALERTA: El lote de vouchers se ha agotado. Notifique al supervisor.',
+              type: 'warning',
+              duration: 7000
+            });
+          }
         } else {
           showToast({
             message: msg || 'No se pudo llamar al siguiente turno',
@@ -323,6 +434,12 @@ export function panelMesaView() {
         const ahora = Date.now();
         const segundos = Math.max(0, Math.floor((ahora - inicioTimestamp) / 1000));
         this.cronometro = formatTimer(segundos);
+
+        // Regl 30-min: turno de más de 30 min se oculta automáticamente
+        if (segundos >= 30 * 60 && this.turnoActual) {
+          this.turnoActual = null;
+          this.detenerCronometro();
+        }
       };
 
       tick();
@@ -344,17 +461,38 @@ export function panelMesaView() {
       if (!this.turnoActual || this.loadingAction || this._cooldown) return;
 
       this.loadingAction = true;
+      const turnoId = this.turnoActual.id;
+      const turnoNum = this.turnoActual.numero;
       try {
-        await api.post(`/turnos/${this.turnoActual.id}/cancelar`, {
+        await api.post(`/turnos/${turnoId}/cancelar`, {
           mesa_id: this.mesa.id
         });
 
+        // Actualizar estado local inmediatamente tras éxito confirmado
         this.turnoActual = null;
         this.detenerCronometro();
         this.triggerAbsent();
-        await this.cargarEstado();
+        // El servidor emite 'rezagados_actualizados' por WS → cargarRezagados() se dispara
+        // automáticamente en el handler ws.on('rezagados_actualizados', ...). No hacemos
+        // cargarEstado() para evitar 2 queries extra por cada cancelación.
       } catch (err) {
         console.error('[MESA] Error al cancelar turno:', err);
+        const msg = err.mensaje || err.message || '';
+        if (err.status === 404 || msg.toLowerCase().includes('no encontrado') || msg.toLowerCase().includes('no está en atención')) {
+          // El turno ya no estaba en atención (doble clic u otra acción concurrente)
+          this.turnoActual = null;
+          this.detenerCronometro();
+          showToast({
+            message: `El turno #${turnoNum} ya no estaba en atención — puede que ya lo hayas cancelado antes.`,
+            type: 'info',
+            duration: 5000
+          });
+        } else {
+          showToast({
+            message: msg || 'No se pudo registrar la ausencia del turno. Intente de nuevo.',
+            type: 'danger'
+          });
+        }
       } finally {
         this.loadingAction = false;
         this._cooldown = true;
@@ -391,6 +529,193 @@ export function panelMesaView() {
     },
 
     /**
+     * Consulta y refresca la lista de turnos rezagados (cancelados) de hoy
+     */
+    async cargarRezagados(silencioso = false) {
+      try {
+        const res = await api.get('/turnos/rezagados');
+        if (res && res.turnos) {
+          this.listaRezagados = res.turnos;
+          this.totalRezagados = res.total ?? res.turnos.length;
+
+          // Si había un rezagado seleccionado y ya no está en la lista (lo tomó otra mesa), deseleccionar
+          if (this.rezagadoSeleccionado) {
+            const sigueDisponible = this.listaRezagados.some(r => Number(r.id) === Number(this.rezagadoSeleccionado.id));
+            if (!sigueDisponible) {
+              const numDescartado = this.rezagadoSeleccionado.numero;
+              this.rezagadoSeleccionado = null;
+              if (this.modalRezagados && !silencioso) {
+                this.errorRezagado = `El turno #${numDescartado} ya fue atendido o no está disponible.`;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        if (!silencioso) {
+          console.error('[MESA] Error al cargar rezagados:', err);
+        }
+      }
+    },
+
+    /**
+     * Apertura del flujo para atender rezagado con validaciones de tolerancia a fallos
+     */
+    async abrirFlujoRezagados() {
+      if (this.loadingAction || this.mesaPausada) return;
+
+      if (!this.wsConnected) {
+        showToast({
+          message: 'Sin conexión con el servidor — no se puede consultar ni atender rezagados. Esperando reconexión.',
+          type: 'warning',
+          duration: 4000
+        });
+        return;
+      }
+
+      // Cargar lista actualizada antes de decidir
+      await this.cargarRezagados();
+
+      // Si no hay ninguno, el botón lo indica y no abre un modal vacío
+      if (this.totalRezagados === 0) {
+        showToast({
+          message: 'No hay turnos rezagados o cancelados pendientes en la jornada de hoy.',
+          type: 'info',
+          duration: 4000
+        });
+        return;
+      }
+
+      // Si la mesa ya tiene un turno en atención, confirmar primero
+      if (this.turnoActual !== null) {
+        this.modalConfirmarRezagadoConTurno = true;
+      } else {
+        this.abrirModalSeleccionRezagados();
+      }
+    },
+
+    /**
+     * Operador confirma que ya atendió el turno actual y pasa a elegir rezagado
+     */
+    confirmarContinuarARezagados() {
+      this.modalConfirmarRezagadoConTurno = false;
+      this.abrirModalSeleccionRezagados();
+    },
+
+    /**
+     * Despliega el modal de selección de turnos rezagados
+     */
+    abrirModalSeleccionRezagados() {
+      this.errorRezagado = '';
+      this.rezagadoSeleccionado = null;
+      this.filtroRezagados = '';
+      this.modalRezagados = true;
+    },
+
+    /**
+     * Cierra el modal de selección
+     */
+    cerrarModalRezagados() {
+      this.modalRezagados = false;
+      this.rezagadoSeleccionado = null;
+      this.errorRezagado = '';
+      this.filtroRezagados = '';
+    },
+
+    /**
+     * Selección de un turno específico en el modal
+     */
+    seleccionarRezagado(r) {
+      this.rezagadoSeleccionado = r;
+      this.errorRezagado = '';
+    },
+
+    /**
+     * Helper para mostrar hace cuánto se canceló el turno
+     */
+    formatearTiempoCancelado(fechaStr) {
+      if (!fechaStr) return 'Hace un momento';
+      const d = new Date(fechaStr);
+      if (isNaN(d.getTime())) return 'Hace un momento';
+      const segs = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+      if (segs < 60) return 'Hace menos de 1 min';
+      const mins = Math.floor(segs / 60);
+      if (mins < 60) return `Hace ${mins} min`;
+      const hrs = Math.floor(mins / 60);
+      return `Hace ${hrs} h ${mins % 60} min`;
+    },
+
+    /**
+     * Confirmar la atención del rezagado (atómico, idempotente)
+     */
+    async confirmarAtenderRezagado() {
+      if (!this.rezagadoSeleccionado || this.loadingRezagado || this.mesaPausada) return;
+
+      if (!this.wsConnected) {
+        this.errorRezagado = 'Sin conexión con el servidor — no se puede confirmar la atención hasta restablecer la red.';
+        return;
+      }
+
+      // Lock optimista por turno_id: bloquea doble-clic simultáneo desde otro operador
+      // que aún no recibió el WS de actualización. La BD ya garantiza atomicidad con FOR UPDATE;
+      // este lock evita enviar la segunda solicitud HTTP si ya hay una en vuelo para el mismo turno.
+      const turnoId = this.rezagadoSeleccionado.id;
+      if (this._rezagadosEnVuelo.has(turnoId)) {
+        this.errorRezagado = 'Este turno ya está siendo procesado. Espera un momento.';
+        return;
+      }
+      this._rezagadosEnVuelo.add(turnoId);
+
+      this.loadingRezagado = true;
+      this.errorRezagado = '';
+      const iKey = crypto.randomUUID();
+
+      try {
+        const res = await api.post('/turnos/atender-rezagado', {
+          turno_id: turnoId,
+          mesa_id: this.mesa.id
+        }, { headers: { 'Idempotency-Key': iKey } });
+
+        const { turno, proximo_numero, vouchers_restantes } = res;
+        this.turnoActual = turno;
+        if (proximo_numero !== undefined && proximo_numero !== null) {
+          this.proximoNumero = proximo_numero;
+        }
+        if (vouchers_restantes !== undefined) {
+          this.vouchersRestantes = vouchers_restantes;
+        }
+        this.atendidosHoy++;
+
+        // Iniciar cronómetro desde este momento (duración cuenta desde aquí)
+        this.iniciarCronometro(turno.llamado_en);
+
+        // Feedback visual en pantalla
+        this.triggerCallNext(turno);
+
+        this.cerrarModalRezagados();
+        await this.cargarRezagados(true);
+
+        showToast({
+          message: `Atendiendo turno rezagado #${turno.numero} en Mesa ${this.mesa.numero}`,
+          type: 'success'
+        });
+
+      } catch (err) {
+        console.error('[MESA] Error al atender rezagado:', err);
+        const msg = err.mensaje || err.message || '';
+        if (err.status === 409 || err.codigo === 'turno_no_disponible' || msg.includes('ya fue atendido')) {
+          this.errorRezagado = msg || 'El turno ya fue atendido por otra ventanilla o ya no está disponible.';
+          await this.cargarRezagados(true);
+          this.rezagadoSeleccionado = null;
+        } else {
+          this.errorRezagado = msg || 'No se pudo atender el turno rezagado.';
+        }
+      } finally {
+        this._rezagadosEnVuelo.delete(turnoId);
+        this.loadingRezagado = false;
+      }
+    },
+
+    /**
      * Acción 5: Pausar Mesa (PATCH /mesas/:id/estado)
      */
     async pausarMesa() {
@@ -421,22 +746,75 @@ export function panelMesaView() {
     },
 
     /**
-     * Liberar mesa y volver a selección
+     * Limpiar estado y volver a inicio cuando el admin inactiva la mesa
      */
-    cambiarMesa() {
+    salirMesaInactivada() {
       sessionStorage.removeItem('turnero_mesa');
       sessionStorage.removeItem('mesa_seleccionada');
+      sessionStorage.removeItem('mesa_id');
+      sessionStorage.removeItem('mesa_numero');
+      sessionStorage.removeItem('mesa_nombre');
       window.location.href = '/index.html';
     },
 
     /**
-     * Cierre de sesión seguro del operador
+     * Cierre de sesión seguro del operador.
+     * Si hay un turno en atención, muestra modal de confirmación antes de cerrar.
      */
     async logout() {
+      if (this.turnoActual) {
+        this.modalSalida = true;
+        return;
+      }
+      await this._ejecutarLogout();
+    },
+
+    /**
+     * Resolver turno activo al salir: 'atendido' o 'cancelado' (no se presentó)
+     */
+    async resolverSalida(resolucion) {
+      if (this._salidaPending) return;
+      this._salidaPending = true;
+      try {
+        if (this.turnoActual && this.turnoActual.id) {
+          if (resolucion === 'atendido') {
+            await api.post(`/turnos/${this.turnoActual.id}/finalizar`, {
+              mesa_id: this.mesa.id
+            });
+          } else if (resolucion === 'cancelado') {
+            await api.post(`/turnos/${this.turnoActual.id}/cancelar`, {
+              mesa_id: this.mesa.id
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[MESA] Error al resolver turno antes de salir:', err);
+      } finally {
+        this.modalSalida = false;
+        this.turnoActual = null;
+        this._salidaPending = false;
+        await this._ejecutarLogout();
+      }
+    },
+
+    /**
+     * Cancelar la salida — permanecer en la consola atendiendo.
+     */
+    cancelarSalida() {
+      this.modalSalida = false;
+    },
+
+    /**
+     * Ejecución interna de logout: desconecta WS, libera mesa y limpia sesión.
+     */
+    async _ejecutarLogout() {
       try {
         if (this.ws) this.ws.disconnect();
+        await api.post('/auth/liberar-mesa');
+      } catch (_) {}
+      try {
         await api.post('/auth/logout');
-      } catch {}
+      } catch (_) {}
       api.clearSession(true);
     },
 
@@ -449,7 +827,7 @@ export function panelMesaView() {
      */
     _initKeyboardShortcuts() {
       // Manejar keydown para disparo inmediato
-      window.addEventListener('keydown', (e) => {
+      this._boundKeyDown = (e) => {
         // Ignorar si el usuario está escribiendo en un input, textarea o select
         const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
         if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
@@ -515,17 +893,52 @@ export function panelMesaView() {
           }
           return;
         }
-      });
+      };
 
       // Prevenir acción por defecto en keyup para Space/Enter (evita clicks residuales en botones del navegador)
-      window.addEventListener('keyup', (e) => {
+      this._boundKeyUp = (e) => {
         const isSpace = (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.keyCode === 32);
         const isEnter = (e.code === 'Enter' || e.code === 'NumpadEnter' || e.key === 'Enter' || e.keyCode === 13);
         if (isSpace || isEnter) {
           e.preventDefault();
           e.stopPropagation();
         }
-      });
+      };
+
+      window.addEventListener('keydown', this._boundKeyDown);
+      window.addEventListener('keyup', this._boundKeyUp);
+    },
+
+    /**
+     * Limpieza de recursos y desmontaje de listeners/timers
+     */
+    destroy() {
+      if (this.relojTimer) {
+        clearInterval(this.relojTimer);
+        this.relojTimer = null;
+      }
+      if (this.cronometroTimer) {
+        clearInterval(this.cronometroTimer);
+        this.cronometroTimer = null;
+      }
+      if (this.feedbackTimer) {
+        clearTimeout(this.feedbackTimer);
+        this.feedbackTimer = null;
+      }
+      if (this._boundKeyDown) {
+        window.removeEventListener('keydown', this._boundKeyDown);
+        this._boundKeyDown = null;
+      }
+      if (this._boundKeyUp) {
+        window.removeEventListener('keyup', this._boundKeyUp);
+        this._boundKeyUp = null;
+      }
+      if (this.ws) {
+        try {
+          this.ws.disconnect();
+        } catch (_) {}
+        this.ws = null;
+      }
     },
 
     /**
@@ -544,6 +957,21 @@ export function panelMesaView() {
         const mes = meses[now.getMonth()];
         const anio = now.getFullYear();
         this.relojFecha = `${dia} ${mes} ${anio}`;
+
+        // Detectar cambio de día: limpiar lista de rezagados al cruzar medianoche
+        // La BD ya filtra por fn_fecha_hoy(), pero los datos en memoria quedan del día anterior.
+        const fechaActual = now.toDateString();
+        if (fechaActual !== this._fechaHoy) {
+          this._fechaHoy = fechaActual;
+          this.listaRezagados = [];
+          this.totalRezagados = 0;
+          this.rezagadoSeleccionado = null;
+          if (this.modalRezagados) {
+            this.cerrarModalRezagados();
+          }
+          // Recargar desde el servidor con la fecha nueva
+          this.cargarRezagados(true);
+        }
       };
 
       update();
@@ -593,6 +1021,21 @@ export function panelMesaView() {
         this.mesaPausada = false;
       });
 
+      this.ws.on('mesa_activa', () => {
+        this.mesaPausada = false;
+      });
+
+      // El admin inactivó esta mesa: avisar al operador y redirigir a selección de mesa
+      this.ws.on('mesa_inactivada', () => {
+        this.mesaInactivada = true;
+        // Limpiar la sesión de mesa para que el login muestre la grilla
+        sessionStorage.removeItem('mesa_id');
+        sessionStorage.removeItem('mesa_numero');
+        sessionStorage.removeItem('mesa_nombre');
+        // Redirigir tras 4 segundos para que el operador vea el aviso
+        setTimeout(() => { window.location.href = '/'; }, 4000);
+      });
+
       // Actualización en caliente del próximo turno cuando CUALQUIER mesa llama o el lote avanza (RF-TURN-09)
       // Recibido a través del canal lote:activo al que todos los operarios están suscritos.
       this.ws.on('proximo_actualizado', (payload) => {
@@ -603,6 +1046,43 @@ export function panelMesaView() {
         }
         if (payload.lote && this.loteActivo) {
           this.loteActivo.numero_lote = payload.lote;
+        }
+        if (payload.modo) {
+          this.modo = payload.modo;
+        }
+      });
+
+      // Sincronización en tiempo real de turnos rezagados entre ventanillas
+      this.ws.on('rezagados_actualizados', async (payload) => {
+        await this.cargarRezagados(true);
+
+        if (!this.modalRezagados || !this.rezagadoSeleccionado) return;
+
+        // Caso A: el evento anuncia exactamente el turno seleccionado como atendido
+        if (payload && payload.accion === 'atendido' &&
+            Number(this.rezagadoSeleccionado.id) === Number(payload.turno_id)) {
+          const numAtendido = payload.turno_numero || this.rezagadoSeleccionado.numero;
+          this.rezagadoSeleccionado = null;
+          this.errorRezagado = `El turno #${numAtendido} acaba de ser atendido por Mesa ${payload.mesa_numero || '-'}.`;
+          return;
+        }
+
+        // Caso B: el turno seleccionado ya no aparece en la lista actualizada
+        // (otra mesa lo tomó pero por un evento diferente, o se canceló por cambio de día)
+        const sigueEnLista = this.listaRezagados.some(
+          r => Number(r.id) === Number(this.rezagadoSeleccionado.id)
+        );
+        if (!sigueEnLista) {
+          const numDescartado = this.rezagadoSeleccionado.numero;
+          this.rezagadoSeleccionado = null;
+          this.errorRezagado = `El turno #${numDescartado} ya no está disponible — puede que otra ventanilla lo haya atendido.`;
+        }
+      });
+
+      // Actualización en caliente si cambia la configuración de modo
+      this.ws.on('config_actualizada', async (p) => {
+        if (p && (p.clave === 'modo_generacion_turnos' || p.clave === 'kiosko_web_activo')) {
+          await this.cargarEstado();
         }
       });
 
@@ -621,7 +1101,13 @@ export function panelMesaView() {
           if (payload.lote) {
             this.loteActivo = payload.lote;
             this.vouchersRestantes = Math.max(0, payload.lote.numero_hasta - payload.lote.ultimo_numero_llamado);
+          } else if (payload.vouchers_restantes !== undefined) {
+            this.vouchersRestantes = payload.vouchers_restantes;
           }
+          if (payload.modo) {
+            this.modo = payload.modo;
+          }
+          this.cargarRezagados(true);
         }
       });
 
@@ -630,17 +1116,18 @@ export function panelMesaView() {
   };
 }
 
-// Registro seguro para Alpine.js
+// Registro limpio en Alpine.js (sin contaminar el objeto window)
 function registerPanelMesaWithAlpine() {
-  if (window.Alpine) {
+  if (typeof window !== 'undefined' && window.Alpine) {
     window.Alpine.data('panelMesa', panelMesaView);
     window.Alpine.data('panelMesaView', panelMesaView);
   }
 }
 
-if (window.Alpine) {
-  registerPanelMesaWithAlpine();
-} else {
+if (typeof document !== 'undefined') {
   document.addEventListener('alpine:init', registerPanelMesaWithAlpine);
+  if (typeof window !== 'undefined' && window.Alpine) {
+    registerPanelMesaWithAlpine();
+  }
 }
 

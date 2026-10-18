@@ -9,7 +9,82 @@
  */
 
 /* ── 1. Importación de Tipografías Institucionales ────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800;900&display=swap');
+/* ── 1. Tipografías Institucionales — Auto-alojadas (sin Internet requerido) ── */
+/* woff2 servidos desde /assets/fonts/ por el propio servidor Fastify (@fastify/static) */
+/* Fuente: @fontsource/inter y @fontsource/jetbrains-mono (versiones fijadas en package.json) */
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/assets/fonts/inter-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/assets/fonts/inter-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/assets/fonts/inter-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/assets/fonts/inter-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('/assets/fonts/inter-800.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/assets/fonts/jetbrains-mono-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/assets/fonts/jetbrains-mono-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/assets/fonts/jetbrains-mono-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/assets/fonts/jetbrains-mono-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('/assets/fonts/jetbrains-mono-800.woff2') format('woff2');
+}
+
 
 /* ── 2. Tokens Visuales Oficiales del Sistema ──────────────────────────────── */
 :root {
@@ -104,6 +179,10 @@ body {
   background-color: var(--bg-app);
 }
 
+.shadow-xs {
+  box-shadow: var(--shadow-xs);
+}
+
 .card-base {
   background-color: var(--card-bg);
   border: 1px solid var(--border-subtle);
@@ -129,4 +208,81 @@ body {
 
 .btn-primary-cobalt:active {
   transform: scale(0.98);
+}
+
+/* ── 8. Utilidades de Accesibilidad y Controles ──────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Switch toggle institucional puro y accesible */
+.switch-track {
+  width: 2.75rem; /* 44px */
+  height: 1.5rem;  /* 24px */
+  background-color: #CBD5E1;
+  border-radius: 9999px;
+  position: relative;
+  transition: background-color 200ms ease;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.switch-track.active {
+  background-color: #1D4ED8;
+}
+.switch-thumb {
+  width: 1.125rem; /* 18px */
+  height: 1.125rem;
+  background-color: #FFFFFF;
+  border-radius: 9999px;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.switch-track.active .switch-thumb {
+  transform: translateX(1.25rem); /* 20px */
+}
+
+/* ── 9. Barra de Desplazamiento Sutil y Accesible ──────────────────────────── */
+@supports (scrollbar-gutter: stable) {
+  html {
+    scrollbar-gutter: stable;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+.scroll-subtle {
+  overflow-y: auto;
+}
+
+@supports (scrollbar-width: thin) {
+  .scroll-subtle {
+    scrollbar-width: thin;
+    scrollbar-color: #CBD5E1 transparent;
+  }
 }

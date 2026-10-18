@@ -1,0 +1,34 @@
+# =============================================================================
+# Turnero de Matrículas 2026 — .dockerignore
+# =============================================================================
+
+# Dependencias locales del host (evita sobreescribir binarios nativos en Linux)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Git
+.git
+.gitignore
+
+# Variables de entorno y secretos del host
+.env
+.env.local
+.env.production
+.env.development
+
+# Directorios de pruebas, scratch y agentes
+scratch/
+tests/
+.agents/
+.vscode/
+
+# Datos persistentes locales
+data/
+logs/
+*.log
+
+# Archivos de sistema operativo
+.DS_Store
+Thumbs.db

@@ -12,15 +12,20 @@ FROM node:20-alpine AS deps
 
 WORKDIR /app
 
+# Herramientas necesarias para compilar módulos nativos (bcrypt) en Alpine
+RUN apk add --no-cache python3 make g++
+
 # Copiar manifiestos primero para aprovechar caché de Docker
 COPY package.json package-lock.json* ./
 
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # ── Stage: Desarrollo (con hot-reload) ───────────────────────────────────────
 FROM node:20-alpine AS development
 
 WORKDIR /app
+
+RUN apk add --no-cache python3 make g++
 
 COPY package.json package-lock.json* ./
 RUN npm ci && npm cache clean --force
@@ -42,9 +47,9 @@ RUN addgroup --system --gid 1001 nodejs && \
 
 WORKDIR /app
 
-# Copiar solo dependencias de producción desde 'deps'
-COPY --from=deps /app/node_modules ./node_modules
+# Copiar código fuente primero y luego las dependencias de producción limpias
 COPY --chown=fastify:nodejs . .
+COPY --from=deps --chown=fastify:nodejs /app/node_modules ./node_modules
 
 USER fastify
 

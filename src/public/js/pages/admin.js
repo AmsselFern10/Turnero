@@ -18,7 +18,34 @@
 
 import { api } from '../api.js';
 import { TurneroWSClient } from '../ws-client.js';
-import { formatTimer, showToast } from '../utils.js';
+import { formatTimer } from '../utils.js';
+
+let activeAdminInstance = null;
+
+/**
+ * Función puente unificada para mostrar notificaciones en el admin.
+ * Redirige siempre al componente central superior (top-center) de adminView.
+ */
+export function showToast(opts, tipoFallback) {
+  if (activeAdminInstance && typeof activeAdminInstance.notificar === 'function') {
+    if (typeof opts === 'string') {
+      activeAdminInstance.notificar({
+        tipo: tipoFallback || 'info',
+        titulo: '',
+        mensaje: opts
+      });
+    } else if (opts && typeof opts === 'object') {
+      const tipo = opts.type === 'danger' ? 'error' : (opts.type || 'info');
+      activeAdminInstance.notificar({
+        tipo,
+        titulo: opts.title || opts.titulo || '',
+        mensaje: opts.message || opts.mensaje || ''
+      });
+    }
+  } else {
+    console.info('[ADMIN-TOAST]', opts);
+  }
+}
 
 export function adminView() {
   return {
@@ -31,7 +58,8 @@ export function adminView() {
       atendidos_hoy:       0,
       espera_promedio_min: '--',
       mesas_activas:       0,
-      vouchers_restantes:  0
+      vouchers_restantes:  0,
+      turnos_en_espera:    0
     },
 
     mesas:                [],
@@ -40,8 +68,40 @@ export function adminView() {
     usuarios:             [],
     operadoresDisponibles:[],
 
-    extensionVouchers: 50,
-    extensionCantidad: 50,
+    toasts:               [],
+    loteAExtender:        null,
+    extensionVouchers:    null,
+    extensionCantidad:    null,
+
+    erroresValidacion: {
+      extensionCantidad:    '',
+      nuevoLoteHasta:       '',
+      nuevaMesaNumero:      '',
+      nuevaMesaNombre:      '',
+      editMesaNumero:       '',
+      editMesaNombre:       '',
+      nuevoUsrNombre:       '',
+      nuevoUsrUsername:     '',
+      nuevoUsrPassword:     '',
+      editUsrNombre:        '',
+      editUsrUsername:      '',
+      editUsrPassword:      '',
+      ajusteContadorNumero: '',
+      ajusteContadorMotivo: '',
+      cfgAlertaVouchers:    '',
+      cfgZonaHoraria:       '',
+      cfgKioskoTope:        '',
+      cfgImpresoraPuerto:   ''
+    },
+
+    subTabConfig: 'todos',
+    _guardandoSeccion: {
+      kiosko: false,
+      impresora: false,
+      sistema: false
+    },
+    _savingKeys: {},
+
     filtroMesasDashboard: 'todas',
     filtroLotes:          'todos',
     filtroMesas:          'todas',
@@ -54,8 +114,22 @@ export function adminView() {
     modalUsuario:          false,
     modalEditarUsuario:    false,
     modalCambioLote:       false,
+    modalConfirmarKiosko:  false,
+    modalConfigKiosko:     false,
+    modalLoteAgotado:      false,   // Modal cuando un lote se agota
+    loteAgotadoInfo:       null,    // Info del lote agotado para mostrar en modal
+    kioskoConfigEditMode:  false,
     lotePendienteActivar:  null,
+    lotePausado:           null,
     nuevoLoteHasta:        500,
+
+    modalAjustarContador:  false,
+    ajusteContador: {
+      nuevoUltimo:          null,
+      motivo:               '',
+      confirmarRetroceso:   false,
+      cargando:             false
+    },
 
     nuevaMesa: {
       numero: 1,
@@ -85,9 +159,34 @@ export function adminView() {
     },
 
     config: {
-      alerta_vouchers_restantes: 20,
-      kiosko_web_activo:         false,
-      voz_anuncio_activa:        true
+      alerta_vouchers_restantes:    20,
+      kiosko_web_activo:            false,
+      modo_generacion_turnos:       'voucher_fisico',
+      voz_anuncio_activa:           true,
+      mostrar_estimado_espera:      true,
+      kiosko_tope_diario:           0,
+      kiosko_modo_uso:              'empleado',
+      kiosko_url_base:              '',
+      kiosko_impresion_automatica:  false,
+      impresora_ip:                 '',
+      impresora_puerto:             9100,
+      impresora_activa:             false,
+      tv_escala_principal:          100,
+      tv_escala_secundaria:         100,
+      tv_escala_turnos:             100,
+      zona_horaria:                 'America/Tegucigalpa'
+    },
+    avisoGuardadoPrincipal:  false,
+    avisoGuardadoSecundaria: false,
+    _debounceEscalaPrincipal: null,
+    _debounceEscalaSecundaria: null,
+    _debounceEscalaTv: null,
+    kioskoForm: {
+      tope_diario:      0,
+      modo_uso:         'empleado',
+      impresora_activa: false,
+      impresora_ip:     '',
+      impresora_puerto: 9100
     },
     _configSnapshot: null,
 
@@ -110,17 +209,488 @@ export function adminView() {
       turnos:        []
     },
     cargandoReporte: false,
+    cargandoDashboard: false,
 
     ws:          null,
     wsConnected: false,
     loteAgotadoAlerta: false,
     _loading: false,
 
+    // Modal de confirmación propio (reemplaza confirm() nativo del navegador)
+    _confirmModal: {
+      visible: false,
+      titulo:  '',
+      mensaje: '',
+      accion:  null,
+      botonTexto: 'Confirmar',
+      botonClase: 'btn-danger btn-sm',
+      tipo: 'peligro'
+    },
+
+    _pedirConfirmacion({ titulo, mensaje, accion, botonTexto = 'Confirmar', botonClase = 'btn-danger btn-sm', tipo = 'peligro' }) {
+      this._confirmModal = { visible: true, titulo, mensaje, accion, botonTexto, botonClase, tipo };
+    },
+
+    formatearFechaLote(fechaStr) {
+      if (!fechaStr) return '-';
+      try {
+        const partes = String(fechaStr).split('T')[0].split('-');
+        if (partes.length === 3) {
+          return `${partes[2]}/${partes[1]}/${partes[0]}`;
+        }
+        return String(fechaStr).slice(0, 10);
+      } catch (_) {
+        return String(fechaStr || '-');
+      }
+    },
+
+    // =========================================================================
+    // GETTERS DE VALIDACIÓN REACTIVA
+    // =========================================================================
+
+    get extensionValida() {
+      const raw = this.extensionCantidad;
+      if (raw === null || raw === '' || raw === undefined) return false;
+      const str = String(raw).trim();
+      if (str === '' || isNaN(Number(str)) || str.includes('.') || str.includes(',')) return false;
+      const val = Number(str);
+      return Number.isInteger(val) && val >= 1 && val <= 5000;
+    },
+
+    get nuevoLoteValido() {
+      const raw = this.nuevoLoteHasta;
+      if (raw === null || raw === '' || raw === undefined) return false;
+      const str = String(raw).trim();
+      if (str === '' || isNaN(Number(str)) || str.includes('.') || str.includes(',')) return false;
+      const val = Number(str);
+      return Number.isInteger(val) && val >= 1 && val <= 100000;
+    },
+
+    get nuevaMesaValida() {
+      const num = this.nuevaMesa?.numero;
+      const nom = (this.nuevaMesa?.nombre || '').trim();
+      if (num === null || num === '' || num === undefined || isNaN(Number(num))) return false;
+      const n = Number(num);
+      if (!Number.isInteger(n) || n < 1 || n > 99) return false;
+      if (!nom) return false;
+      return true;
+    },
+
+    get editarMesaValida() {
+      const num = this.mesaEditando?.numero;
+      const nom = (this.mesaEditando?.nombre || '').trim();
+      if (num === null || num === '' || num === undefined || isNaN(Number(num))) return false;
+      const n = Number(num);
+      if (!Number.isInteger(n) || n < 1 || n > 99) return false;
+      if (!nom) return false;
+      return true;
+    },
+
+    get nuevoUsuarioValido() {
+      const nom = (this.nuevoUsuario?.nombre_completo || '').trim();
+      const usr = (this.nuevoUsuario?.username || '').trim();
+      const pwd = this.nuevoUsuario?.password || '';
+      if (!nom || !usr || usr.length < 3 || usr.includes(' ')) return false;
+      if (!pwd || pwd.length < 4) return false;
+      return true;
+    },
+
+    get editarUsuarioValido() {
+      const nom = (this.usuarioEditando?.nombre_completo || '').trim();
+      const usr = (this.usuarioEditando?.username || '').trim();
+      const pwd = this.usuarioEditando?.password || '';
+      if (!nom || !usr || usr.length < 3) return false;
+      if (pwd && pwd.length < 4) return false;
+      return true;
+    },
+
+    get ajusteContadorValido() {
+      const loteRef = this.loteActivo || this.lotePausado;
+      if (!loteRef) return false;
+      const num = this.ajusteContador?.nuevoUltimo;
+      const mot = (this.ajusteContador?.motivo || '').trim();
+      if (num === null || num === undefined || isNaN(Number(num))) return false;
+      const minVal = (loteRef.numero_desde ?? 0);
+      const maxVal = (loteRef.numero_hasta ?? 99999);
+      if (num < minVal || num > maxVal) return false;
+      if (mot.length < 5) return false;
+      const esRetroceso = num < (loteRef.ultimo_numero_llamado ?? 0);
+      if (esRetroceso && !this.ajusteContador.confirmarRetroceso) return false;
+      return true;
+    },
+
+    get cfgAlertaValida() {
+      const val = this.config?.alerta_vouchers_restantes;
+      if (val === null || val === undefined || isNaN(Number(val))) return false;
+      const n = Number(val);
+      return Number.isInteger(n) && n >= 1 && n <= 500;
+    },
+
+    get cfgKioskoValida() {
+      const tope = Number(this.config?.kiosko_tope_diario);
+      if (isNaN(tope) || !Number.isInteger(tope) || tope < 0 || tope > 99999) return false;
+      const modo = this.config?.kiosko_modo_uso;
+      if (modo !== 'estudiante' && modo !== 'empleado') return false;
+      return true;
+    },
+
+    get cfgImpresoraValida() {
+      const p = Number(this.config?.impresora_puerto);
+      return Number.isInteger(p) && p >= 1 && p <= 65535;
+    },
+
+    get cfgSistemaValida() {
+      return this.cfgAlertaValida && !!(this.config?.zona_horaria || '').trim();
+    },
+
+    // =========================================================================
+    // MÉTODOS DE VALIDACIÓN INDIVIDUAL (MENSAJES EN ESPAÑOL DEBAJO DEL CAMPO)
+    // =========================================================================
+
+    validarExtensionCantidad() {
+      const raw = this.extensionCantidad;
+      if (raw === null || raw === '' || raw === undefined) {
+        this.erroresValidacion.extensionCantidad = '';
+        return false;
+      }
+      const str = String(raw).trim();
+      if (str === '' || isNaN(Number(str))) {
+        this.erroresValidacion.extensionCantidad = 'Escribe un número válido.';
+        return false;
+      }
+      if (str.includes('.') || str.includes(',')) {
+        this.erroresValidacion.extensionCantidad = 'Escribe un número entero, sin decimales.';
+        return false;
+      }
+      const val = Number(str);
+      if (!Number.isInteger(val) || val <= 0) {
+        this.erroresValidacion.extensionCantidad = 'Escribe un número entero mayor que 0.';
+        return false;
+      }
+      if (val > 5000) {
+        this.erroresValidacion.extensionCantidad = 'La cantidad máxima a adicionar es 5,000 turnos.';
+        return false;
+      }
+      this.erroresValidacion.extensionCantidad = '';
+      return true;
+    },
+
+    validarNuevoLoteHasta() {
+      const raw = this.nuevoLoteHasta;
+      if (raw === null || raw === '' || raw === undefined) {
+        this.erroresValidacion.nuevoLoteHasta = 'Escribe el número límite del lote.';
+        return false;
+      }
+      const str = String(raw).trim();
+      if (str === '' || isNaN(Number(str)) || str.includes('.') || str.includes(',')) {
+        this.erroresValidacion.nuevoLoteHasta = 'Escribe un número entero, sin decimales.';
+        return false;
+      }
+      const val = Number(str);
+      if (!Number.isInteger(val) || val < 1) {
+        this.erroresValidacion.nuevoLoteHasta = 'Escribe un número entero mayor que 0.';
+        return false;
+      }
+      if (val > 100000) {
+        this.erroresValidacion.nuevoLoteHasta = 'El límite máximo permitido es 100,000 turnos.';
+        return false;
+      }
+      this.erroresValidacion.nuevoLoteHasta = '';
+      return true;
+    },
+
+    validarNuevaMesaNumero() {
+      const val = this.nuevaMesa?.numero;
+      if (val === null || val === '' || val === undefined || isNaN(Number(val))) {
+        this.erroresValidacion.nuevaMesaNumero = 'Escribe un número de ventanilla.';
+        return false;
+      }
+      const n = Number(val);
+      if (!Number.isInteger(n) || n < 1 || n > 99) {
+        this.erroresValidacion.nuevaMesaNumero = 'El número de ventanilla debe ser un entero entre 1 y 99.';
+        return false;
+      }
+      this.erroresValidacion.nuevaMesaNumero = '';
+      return true;
+    },
+
+    validarNuevaMesaNombre() {
+      const nom = (this.nuevaMesa?.nombre || '').trim();
+      if (!nom) {
+        this.erroresValidacion.nuevaMesaNombre = 'El nombre o identificador de ventanilla es requerido.';
+        return false;
+      }
+      this.erroresValidacion.nuevaMesaNombre = '';
+      return true;
+    },
+
+    validarEditMesaNumero() {
+      const val = this.mesaEditando?.numero;
+      if (val === null || val === '' || val === undefined || isNaN(Number(val))) {
+        this.erroresValidacion.editMesaNumero = 'Escribe un número de ventanilla.';
+        return false;
+      }
+      const n = Number(val);
+      if (!Number.isInteger(n) || n < 1 || n > 99) {
+        this.erroresValidacion.editMesaNumero = 'El número de ventanilla debe ser un entero entre 1 y 99.';
+        return false;
+      }
+      this.erroresValidacion.editMesaNumero = '';
+      return true;
+    },
+
+    validarEditMesaNombre() {
+      const nom = (this.mesaEditando?.nombre || '').trim();
+      if (!nom) {
+        this.erroresValidacion.editMesaNombre = 'El nombre o identificador de ventanilla es requerido.';
+        return false;
+      }
+      this.erroresValidacion.editMesaNombre = '';
+      return true;
+    },
+
+    validarNuevoUsrNombre() {
+      const nom = (this.nuevoUsuario?.nombre_completo || '').trim();
+      if (!nom) {
+        this.erroresValidacion.nuevoUsrNombre = 'El nombre completo es requerido.';
+        return false;
+      }
+      this.erroresValidacion.nuevoUsrNombre = '';
+      return true;
+    },
+
+    validarNuevoUsrUsername() {
+      const usr = (this.nuevoUsuario?.username || '').trim();
+      if (!usr) {
+        this.erroresValidacion.nuevoUsrUsername = 'El usuario es requerido.';
+        return false;
+      }
+      if (usr.length < 3) {
+        this.erroresValidacion.nuevoUsrUsername = 'El usuario debe tener al menos 3 caracteres.';
+        return false;
+      }
+      if (usr.includes(' ')) {
+        this.erroresValidacion.nuevoUsrUsername = 'El usuario no puede contener espacios.';
+        return false;
+      }
+      this.erroresValidacion.nuevoUsrUsername = '';
+      return true;
+    },
+
+    validarNuevoUsrPassword() {
+      const pwd = this.nuevoUsuario?.password || '';
+      if (!pwd) {
+        this.erroresValidacion.nuevoUsrPassword = 'La contraseña es requerida.';
+        return false;
+      }
+      if (pwd.length < 4) {
+        this.erroresValidacion.nuevoUsrPassword = 'La contraseña debe tener al menos 4 caracteres.';
+        return false;
+      }
+      this.erroresValidacion.nuevoUsrPassword = '';
+      return true;
+    },
+
+    validarEditUsrNombre() {
+      const nom = (this.usuarioEditando?.nombre_completo || '').trim();
+      if (!nom) {
+        this.erroresValidacion.editUsrNombre = 'El nombre completo es requerido.';
+        return false;
+      }
+      this.erroresValidacion.editUsrNombre = '';
+      return true;
+    },
+
+    validarEditUsrUsername() {
+      const usr = (this.usuarioEditando?.username || '').trim();
+      if (!usr) {
+        this.erroresValidacion.editUsrUsername = 'El usuario es requerido.';
+        return false;
+      }
+      if (usr.length < 3) {
+        this.erroresValidacion.editUsrUsername = 'El usuario debe tener al menos 3 caracteres.';
+        return false;
+      }
+      this.erroresValidacion.editUsrUsername = '';
+      return true;
+    },
+
+    validarEditUsrPassword() {
+      const pwd = this.usuarioEditando?.password || '';
+      if (pwd && pwd.length < 4) {
+        this.erroresValidacion.editUsrPassword = 'La nueva contraseña debe tener al menos 4 caracteres.';
+        return false;
+      }
+      this.erroresValidacion.editUsrPassword = '';
+      return true;
+    },
+
+    validarAjusteNumero() {
+      const loteRef = this.loteActivo || this.lotePausado;
+      const num = this.ajusteContador?.nuevoUltimo;
+      if (num === null || num === undefined || isNaN(Number(num))) {
+        this.erroresValidacion.ajusteContadorNumero = 'Ingrese un número válido.';
+        return false;
+      }
+      const minVal = (loteRef?.numero_desde ?? 0);
+      const maxVal = (loteRef?.numero_hasta ?? 99999);
+      if (num < minVal || num > maxVal) {
+        this.erroresValidacion.ajusteContadorNumero = `El número debe estar entre ${minVal} y ${maxVal}.`;
+        return false;
+      }
+      this.erroresValidacion.ajusteContadorNumero = '';
+      return true;
+    },
+
+    validarAjusteMotivo() {
+      const mot = (this.ajusteContador?.motivo || '').trim();
+      if (mot.length < 5) {
+        this.erroresValidacion.ajusteContadorMotivo = 'El motivo debe tener al menos 5 caracteres descriptivos.';
+        return false;
+      }
+      this.erroresValidacion.ajusteContadorMotivo = '';
+      return true;
+    },
+
+    validarCfgAlerta() {
+      const val = this.config?.alerta_vouchers_restantes;
+      if (val === null || val === undefined || isNaN(Number(val))) {
+        this.erroresValidacion.cfgAlertaVouchers = 'Ingrese un número entero válido.';
+        return false;
+      }
+      const n = Number(val);
+      if (!Number.isInteger(n) || n < 1 || n > 500) {
+        this.erroresValidacion.cfgAlertaVouchers = 'El umbral de alerta debe ser un entero entre 1 y 500.';
+        return false;
+      }
+      this.erroresValidacion.cfgAlertaVouchers = '';
+      return true;
+    },
+
+    validarKioskoTope() {
+      const val = this.config?.kiosko_tope_diario;
+      if (val === null || val === undefined || isNaN(Number(val))) {
+        this.erroresValidacion.cfgKioskoTope = 'Ingrese un número válido (0 = sin límite).';
+        return false;
+      }
+      const n = Number(val);
+      if (!Number.isInteger(n) || n < 0 || n > 99999) {
+        this.erroresValidacion.cfgKioskoTope = 'El límite diario debe ser un entero >= 0.';
+        return false;
+      }
+      this.erroresValidacion.cfgKioskoTope = '';
+      return true;
+    },
+
+    validarImpresoraPuerto() {
+      const val = this.config?.impresora_puerto;
+      if (val === null || val === undefined || isNaN(Number(val))) {
+        this.erroresValidacion.cfgImpresoraPuerto = 'Ingrese un puerto válido (1 a 65535).';
+        return false;
+      }
+      const n = Number(val);
+      if (!Number.isInteger(n) || n < 1 || n > 65535) {
+        this.erroresValidacion.cfgImpresoraPuerto = 'El puerto debe estar entre 1 y 65535.';
+        return false;
+      }
+      this.erroresValidacion.cfgImpresoraPuerto = '';
+      return true;
+    },
+
+    validarZonaHoraria() {
+      const val = (this.config?.zona_horaria || '').trim();
+      if (!val) {
+        this.erroresValidacion.cfgZonaHoraria = 'Seleccione una zona horaria válida.';
+        return false;
+      }
+      this.erroresValidacion.cfgZonaHoraria = '';
+      return true;
+    },
+
+    // =========================================================================
+    // COMPONENTE CENTRAL DE NOTIFICACIONES (TOP-CENTER)
+    // =========================================================================
+
+    _defaultTituloToast(tipo) {
+      switch (tipo) {
+        case 'success': return 'Operación Exitosa';
+        case 'error':   return 'Error';
+        case 'warning': return 'Advertencia';
+        case 'info':    return 'Información';
+        default:        return 'Notificación';
+      }
+    },
+
+    notificar({ tipo = 'info', titulo = '', mensaje = '' }) {
+      const tipoNorm = tipo === 'danger' ? 'error' : (['success', 'error', 'warning', 'info'].includes(tipo) ? tipo : 'info');
+      // Tiempos especificados: éxito e info 4s, advertencia 6s, error 8s
+      const duracion = tipoNorm === 'error' ? 8000 : (tipoNorm === 'warning' ? 6000 : 4000);
+
+      // Máximo 3 notificaciones apiladas sin pisarse: descartar la más antigua
+      while (this.toasts.length >= 3) {
+        const oldest = this.toasts.shift();
+        if (oldest && oldest._timer) clearTimeout(oldest._timer);
+      }
+
+      const id = Date.now() + Math.random();
+      const nuevoToast = {
+        id,
+        tipo: tipoNorm,
+        titulo: titulo || this._defaultTituloToast(tipoNorm),
+        mensaje: mensaje || '',
+        duracion,
+        tiempoRestante: duracion,
+        iniciadoEn: Date.now(),
+        pausado: false,
+        _timer: null
+      };
+
+      nuevoToast._timer = setTimeout(() => {
+        this.cerrarToast(id);
+      }, duracion);
+
+      this.toasts.push(nuevoToast);
+    },
+
+    pausarToast(id) {
+      const t = this.toasts.find(item => item.id === id);
+      if (!t || t.pausado) return;
+      if (t._timer) {
+        clearTimeout(t._timer);
+        t._timer = null;
+      }
+      const transcurrido = Date.now() - t.iniciadoEn;
+      t.tiempoRestante = Math.max(1000, t.tiempoRestante - transcurrido);
+      t.pausado = true;
+    },
+
+    reanudarToast(id) {
+      const t = this.toasts.find(item => item.id === id);
+      if (!t || !t.pausado) return;
+      t.pausado = false;
+      t.iniciadoEn = Date.now();
+      t._timer = setTimeout(() => {
+        this.cerrarToast(id);
+      }, t.tiempoRestante);
+    },
+
+    cerrarToast(id) {
+      const idx = this.toasts.findIndex(item => item.id === id);
+      if (idx !== -1) {
+        const t = this.toasts[idx];
+        if (t._timer) clearTimeout(t._timer);
+        this.toasts.splice(idx, 1);
+      }
+    },
+
     // =========================================================================
     // CICLO DE VIDA
     // =========================================================================
 
     async init() {
+      activeAdminInstance = this;
+      this.toasts = [];
+
       try {
         const { usuario } = await api.get('/auth/me');
         if (!usuario || (usuario.rol !== 'admin' && usuario.rol !== 'admin')) {
@@ -149,6 +719,7 @@ export function adminView() {
       if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
       if (this._pollTimer)  { clearInterval(this._pollTimer);  this._pollTimer = null; }
       if (this.ws) { this.ws.disconnect(); this.ws = null; }
+      if (activeAdminInstance === this) activeAdminInstance = null;
     },
 
     _tickClock() {
@@ -172,7 +743,15 @@ export function adminView() {
     },
 
     async cargarDashboard() {
-      await Promise.allSettled([this.cargarKPIs(), this.cargarMesas()]);
+      this.cargandoDashboard = true;
+      try {
+        await Promise.allSettled([this.cargarKPIs(), this.cargarMesas(), this.cargarLotes()]);
+        // Sin toast invasivo en actualizaciones periódicas o manuales de dashboard
+      } catch (err) {
+        console.error('[ADMIN] Error actualizando dashboard:', err);
+      } finally {
+        this.cargandoDashboard = false;
+      }
     },
 
     async cargarKPIs() {
@@ -184,7 +763,8 @@ export function adminView() {
         atendidos_hoy:       parseInt(data.atendidos_hoy, 10) || 0,
         espera_promedio_min: data.promedio_seg != null ? (data.promedio_seg / 60).toFixed(1) : '--',
         mesas_activas:       parseInt(data.mesas_activas, 10) || 0,
-        vouchers_restantes:  lote ? Math.max(0, hasta - llamados) : 0
+        vouchers_restantes:  lote ? Math.max(0, hasta - llamados) : 0,
+        turnos_en_espera:    parseInt(data.turnos_en_espera, 10) || 0
       };
       if (lote) {
         if (!lote.numero_desde) lote.numero_desde = 1;
@@ -194,12 +774,19 @@ export function adminView() {
 
     async cargarMesas() {
       const res = await api.get('/mesas');
-      this.mesas = res.mesas || [];
+      this.mesas = (res.mesas || []).map(m => ({
+        ...m,
+        tiempo_promedio_min: m.tiempo_promedio_seg ? +(m.tiempo_promedio_seg / 60).toFixed(1) : 0
+      }));
     },
 
     async cargarLotes() {
       const [rL, rA] = await Promise.allSettled([api.get('/lotes'), api.get('/lotes/activo')]);
-      if (rL.status === 'fulfilled') this.lotes = rL.value.lotes || [];
+      if (rL.status === 'fulfilled') {
+        this.lotes = rL.value.lotes || [];
+        // Mantener referencia al primer lote pausado (para Plan B — Ajustar Contador)
+        this.lotePausado = this.lotes.find(l => l.estado === 'pausado') || null;
+      }
       if (rA.status === 'fulfilled' && rA.value.lote) {
         const la = rA.value.lote;
         if (!la.numero_desde) la.numero_desde = 1;
@@ -209,10 +796,11 @@ export function adminView() {
       }
     },
 
+
     async cargarUsuarios() {
       const res = await api.get('/admin/usuarios');
       this.usuarios = res.usuarios || [];
-      this.operadoresDisponibles = this.usuarios.filter(u => u.rol === 'operador' && u.activo);
+      this.operadoresDisponibles = this.usuarios.filter(u => (u.rol === 'operador' || u.rol === 'admin') && u.activo);
     },
 
     async cargarConfiguracion() {
@@ -221,7 +809,20 @@ export function adminView() {
         const c = res.configuracion;
         this.config.alerta_vouchers_restantes = parseInt(c.alerta_vouchers_restantes || '20', 10) || 20;
         this.config.kiosko_web_activo         = c.kiosko_web_activo === 'true' || c.kiosko_web_activo === true;
+        this.config.modo_generacion_turnos    = c.modo_generacion_turnos || (this.config.kiosko_web_activo ? 'kiosko_web' : 'voucher_fisico');
         this.config.voz_anuncio_activa        = c.voz_anuncio_activa !== 'false';
+        this.config.mostrar_estimado_espera   = c.mostrar_estimado_espera !== 'false';
+        this.config.kiosko_tope_diario        = parseInt(c.kiosko_tope_diario || '0', 10) || 0;
+        this.config.kiosko_modo_uso           = c.kiosko_modo_uso || 'empleado';
+        this.config.kiosko_url_base           = c.kiosko_url_base || '';
+        this.config.impresora_ip              = c.impresora_ip     || '';
+        this.config.impresora_puerto          = parseInt(c.impresora_puerto || '9100', 10) || 9100;
+        this.config.impresora_activa          = c.impresora_activa === 'true' || c.impresora_activa === true;
+        const escalaBase = parseInt(c.tv_escala_turnos || '100', 10) || 100;
+        this.config.tv_escala_principal       = parseInt(c.tv_escala_principal || String(escalaBase), 10) || 100;
+        this.config.tv_escala_secundaria      = parseInt(c.tv_escala_secundaria || String(escalaBase), 10) || 100;
+        this.config.tv_escala_turnos          = this.config.tv_escala_principal;
+        this.config.zona_horaria              = c.zona_horaria || 'America/Tegucigalpa';
       }
       this._configSnapshot = { ...this.config };
     },
@@ -231,18 +832,33 @@ export function adminView() {
     // =========================================================================
 
     async crearLoteSubmit() {
-      const hasta = parseInt(this.nuevoLoteHasta, 10);
-      if (!hasta || hasta < 1) { showToast({ message: 'Ingrese un numero valido (min. 1)', type: 'warning' }); return; }
+      if (!this.validarNuevoLoteHasta() || !this.nuevoLoteValido) {
+        if (!this.nuevoLoteHasta) {
+          this.erroresValidacion.nuevoLoteHasta = 'Escribe el número límite del lote.';
+        }
+        return;
+      }
       if (this._loading) return;
       this._loading = true;
+      const hasta = parseInt(this.nuevoLoteHasta, 10);
       try {
         const res = await api.post('/lotes', { numero_desde: 1, numero_hasta: hasta });
-        showToast({ message: `Lote ${res.lote.numero_lote} creado (1 al ${hasta})`, type: 'success' });
+        // El backend indica si el lote fue activado automáticamente o quedó preparado
+        this.notificar({
+          tipo: res.activado ? 'success' : 'info',
+          titulo: res.activado ? 'Lote creado y activado' : 'Lote creado',
+          mensaje: res.mensaje || `Lote ${res.lote.numero_lote} creado (1 al #${hasta})`
+        });
         this.modalLote = false;
         this.nuevoLoteHasta = 500;
+        this.erroresValidacion.nuevoLoteHasta = '';
         await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
       } catch (err) {
-        showToast({ message: err.mensaje || 'No se pudo crear el lote', type: 'danger' });
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Error al crear lote',
+          mensaje: err.mensaje || err.message || 'No se pudo crear el lote'
+        });
       } finally { this._loading = false; }
     },
 
@@ -318,6 +934,34 @@ export function adminView() {
       }
     },
 
+    // ── Activar el lote siguiente preparado desde el modal de lote agotado ──
+    async activarSiguienteLotePreparado() {
+      if (!this.loteAgotadoInfo || !this.loteAgotadoInfo.loteSiguiente) return;
+      const idSiguiente = this.loteAgotadoInfo.loteSiguiente.id;
+      const numSiguiente = this.loteAgotadoInfo.loteSiguiente.numero_lote;
+      if (this._loading) return;
+      this._loading = true;
+      try {
+        await api.patch(`/lotes/${idSiguiente}/activar`);
+        showToast({ message: `Lote ${numSiguiente} activado en sala`, type: 'success' });
+        this.modalLoteAgotado = false;
+        this.loteAgotadoAlerta = false;
+        this.loteAgotadoInfo = null;
+        await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
+      } catch (err) {
+        showToast({ message: err.mensaje || 'Error al activar lote siguiente', type: 'danger' });
+        await this.cargarLotes();
+      } finally { this._loading = false; }
+    },
+
+    // ── Abrir modal de crear lote desde el modal de lote agotado ──
+    crearLoteDesdeModal() {
+      this.modalLoteAgotado = false;
+      this.modalLote = true;
+    },
+
+
+
     calcularProgresoLote() {
       if (!this.loteActivo) return 0;
       const hasta = parseInt(this.loteActivo.numero_hasta, 10);
@@ -356,36 +1000,59 @@ export function adminView() {
       return this.calcularTurnosRestantesLote();
     },
 
-    abrirModalExtender() {
-      if (!this.loteActivo) {
-        showToast({ message: 'No hay un lote activo para extender', type: 'warning' });
+    abrirModalExtender(lote = null) {
+      const l = lote || this.loteActivo;
+      if (!l) {
+        this.notificar({ tipo: 'warning', titulo: 'Sin Lote', mensaje: 'No hay un lote activo o agotado para extender.' });
         return;
       }
-      this.extensionCantidad = 50;
+      if (l.estado === 'cerrado') {
+        this.notificar({ tipo: 'warning', titulo: 'Lote Cerrado', mensaje: 'El lote está cerrado definitivamente y no puede extenderse.' });
+        return;
+      }
+      this.loteAExtender = l;
+      this.extensionCantidad = null;
+      this.erroresValidacion.extensionCantidad = '';
       this.modalExtender = true;
     },
 
     async extenderLoteSubmit() {
-      if (!this.loteActivo) return;
-      const cantidad = parseInt(this.extensionCantidad, 10);
-      if (!cantidad || cantidad <= 0) {
-        showToast({ message: 'Cantidad a adicionar inválida', type: 'warning' });
+      if (!this.validarExtensionCantidad() || !this.extensionValida) {
+        if (this.extensionCantidad === null || this.extensionCantidad === '') {
+          this.erroresValidacion.extensionCantidad = 'Escribe un número entero mayor que 0.';
+        }
         return;
       }
+      const loteTarget = this.loteAExtender || this.loteActivo;
+      if (!loteTarget) return;
+
       if (this._loading) return;
       this._loading = true;
-      const nuevoHasta = this.loteActivo.numero_hasta + cantidad;
+
+      const cantidad = parseInt(this.extensionCantidad, 10);
+      const nuevoHasta = (parseInt(loteTarget.numero_hasta, 10) || 0) + cantidad;
       try {
-        const res = await api.patch(`/lotes/${this.loteActivo.id}/extender`, { nuevo_numero_hasta: nuevoHasta });
+        const res = await api.patch(`/lotes/${loteTarget.id}/extender`, { nuevo_numero_hasta: nuevoHasta });
         this.loteActivo = res.lote;
         this.loteAgotadoAlerta = false;
         this.modalExtender = false;
-        showToast({ message: `Lote extendido +${cantidad} turnos (Nuevo límite: #${nuevoHasta})`, type: 'success' });
+        this.modalLoteAgotado = false;
+        this.notificar({
+          tipo: 'success',
+          titulo: 'Lote extendido',
+          mensaje: `Lote ${res.lote.numero_lote} extendido: ahora llega hasta #${nuevoHasta}`
+        });
         await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
       } catch (err) {
-        showToast({ message: err.status === 409 ? 'El lote cambió. Vista actualizada.' : (err.mensaje || 'Error al extender lote'), type: err.status === 409 ? 'warning' : 'danger' });
+        this.notificar({
+          tipo: err.status === 409 ? 'warning' : 'error',
+          titulo: err.status === 409 ? 'Lote modificado' : 'Error al extender lote',
+          mensaje: err.status === 409 ? 'El lote cambió en otra sesión. Vista actualizada.' : (err.mensaje || err.message || 'Error al extender lote')
+        });
         await this.cargarLotes();
-      } finally { this._loading = false; }
+      } finally {
+        this._loading = false;
+      }
     },
 
     async pausarLote(loteId) {
@@ -406,20 +1073,56 @@ export function adminView() {
       this.abrirModalExtender();
     },
 
-    async cerrarLote(loteId) {
-      if (!this.loteActivo) return;
-      if (this._loading) return;
-      this._loading = true;
-      try {
-        await api.patch(`/lotes/${loteId}/cerrar`);
-        showToast({ message: 'Lote cerrado definitivamente.', type: 'info' });
-        this.loteActivo = null;
-        this.loteAgotadoAlerta = false;
-        await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
-      } catch (err) {
-        showToast({ message: err.status === 409 ? 'El lote cambió. Vista actualizada.' : (err.mensaje || 'Error'), type: err.status === 409 ? 'warning' : 'danger' });
-        await this.cargarLotes();
-      } finally { this._loading = false; }
+    async cerrarLote(loteId, numeroLote = null) {
+      const num = numeroLote || (this.lotes.find(l => l.id === loteId)?.numero_lote) || (this.loteActivo?.numero_lote) || loteId;
+      this._pedirConfirmacion({
+        titulo: `Cerrar Lote ${num}`,
+        mensaje: `¿Está seguro de cerrar definitivamente el Lote ${num}? Una vez cerrado no podrá ser reactivado.`,
+        botonTexto: 'Cerrar Lote',
+        botonClase: 'btn-warning btn-sm',
+        tipo: 'aviso',
+        accion: async () => {
+          if (this._loading) return;
+          this._loading = true;
+          try {
+            await api.patch(`/lotes/${loteId}/cerrar`);
+            this.notificar({ tipo: 'info', titulo: 'Lote cerrado', mensaje: `Lote ${num} cerrado definitivamente.` });
+            if (this.loteActivo && String(this.loteActivo.id) === String(loteId)) {
+              this.loteActivo = null;
+              this.loteAgotadoAlerta = false;
+            }
+            await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
+          } catch (err) {
+            this.notificar({ tipo: 'error', titulo: 'Error al cerrar lote', mensaje: err.status === 409 ? 'El lote cambió. Vista actualizada.' : (err.mensaje || err.message || 'Error') });
+            await this.cargarLotes();
+          } finally {
+            this._loading = false;
+          }
+        }
+      });
+    },
+
+    async eliminarLote(loteId, numeroLote) {
+      this._pedirConfirmacion({
+        titulo:  `Eliminar Lote ${numeroLote}`,
+        mensaje: '¿Está seguro de eliminar este lote? Esta acción no se puede deshacer.',
+        botonTexto: 'Eliminar',
+        botonClase: 'btn-danger btn-sm',
+        tipo: 'peligro',
+        accion: async () => {
+          if (this._loading) return;
+          this._loading = true;
+          try {
+            await api.delete(`/lotes/${loteId}`);
+            this.notificar({ tipo: 'info', titulo: 'Lote eliminado', mensaje: `Lote ${numeroLote} eliminado correctamente.` });
+            await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
+          } catch (err) {
+            this.notificar({ tipo: 'error', titulo: 'Error al eliminar', mensaje: err.mensaje || err.message || 'No se pudo eliminar el lote.' });
+          } finally {
+            this._loading = false;
+          }
+        }
+      });
     },
 
     // =========================================================================
@@ -443,10 +1146,10 @@ export function adminView() {
       this._loading = true;
       try {
         await api.patch(`/mesas/${mesaId}/estado`, { estado: 'activa' });
-        showToast({ message: 'Mesa activada', type: 'success' });
+        this.notificar({ tipo: 'success', titulo: 'Mesa activada', mensaje: 'La mesa quedó activa y disponible para operar.' });
         await Promise.allSettled([this.cargarMesas(), this.cargarKPIs()]);
       } catch (err) {
-        showToast({ message: err.mensaje || 'Error al activar mesa', type: 'danger' });
+        this.notificar({ tipo: 'error', titulo: 'Error al activar mesa', mensaje: err.mensaje || err.message || 'No se pudo activar la mesa.' });
         await this.cargarMesas();
       } finally { this._loading = false; }
     },
@@ -456,16 +1159,45 @@ export function adminView() {
       this._loading = true;
       try {
         await api.patch(`/mesas/${mesaId}/estado`, { estado: 'pausada' });
-        showToast({ message: 'Mesa pausada', type: 'info' });
+        this.notificar({ tipo: 'info', titulo: 'Mesa pausada', mensaje: 'La mesa quedó en pausa. El operador sigue asignado.' });
         await Promise.allSettled([this.cargarMesas(), this.cargarKPIs()]);
       } catch (err) {
-        if (err.codigo === 'mesa_con_turno_activo') {
-          showToast({ message: 'Mesa con turno activo. Finalicelo antes de pausar.', type: 'warning' });
-        } else {
-          showToast({ message: err.mensaje || 'Error al pausar mesa', type: 'danger' });
-        }
+        this.notificar({
+          tipo: err.status === 409 ? 'warning' : 'error',
+          titulo: 'No se puede pausar',
+          mensaje: err.mensaje || err.message || 'Error al pausar la mesa.'
+        });
         await this.cargarMesas();
       } finally { this._loading = false; }
+    },
+
+    async inactivarMesaAdmin(mesaId) {
+      const mesa = this.mesas.find(m => m.id === mesaId);
+      const label = mesa ? `Mesa ${mesa.numero}` : 'la mesa';
+      this._pedirConfirmacion({
+        titulo: `Inactivar ${label}`,
+        mensaje: 'La mesa quedará inactiva y su operador será liberado. Esta acción no afecta el historial de turnos.',
+        accion: async () => {
+          if (this._loading) return;
+          this._loading = true;
+          try {
+            await api.patch(`/mesas/${mesaId}/estado`, { estado: 'inactiva' });
+            this.notificar({
+              tipo: 'warning',
+              titulo: 'Mesa inactivada',
+              mensaje: `${label} inactivada. El operador fue liberado.`
+            });
+            await Promise.allSettled([this.cargarMesas(), this.cargarKPIs()]);
+          } catch (err) {
+            this.notificar({
+              tipo: err.status === 409 ? 'warning' : 'error',
+              titulo: 'No se puede inactivar',
+              mensaje: err.mensaje || err.message || 'Error al inactivar la mesa.'
+            });
+            await this.cargarMesas();
+          } finally { this._loading = false; }
+        }
+      });
     },
 
     abrirModalMesa() {
@@ -478,19 +1210,30 @@ export function adminView() {
     },
 
     async crearMesaSubmit() {
+      const numOk = this.validarNuevaMesaNumero();
+      const nomOk = this.validarNuevaMesaNombre();
+      if (!numOk || !nomOk || !this.nuevaMesaValida) return;
+      if (this._loading) return;
+      this._loading = true;
       const num = parseInt(this.nuevaMesa.numero, 10);
-      if (!num || num < 1) {
-        showToast({ message: 'Número de mesa inválido (debe ser mayor a 0)', type: 'warning' });
-        return;
-      }
       const nombre = (this.nuevaMesa.nombre || '').trim() || `Mesa ${num}`;
       try {
         await api.post('/mesas', { numero: num, nombre });
-        showToast({ message: `Mesa ${num} creada exitosamente`, type: 'success' });
+        this.notificar({
+          tipo: 'success',
+          titulo: 'Ventanilla creada',
+          mensaje: `Mesa ${num} creada exitosamente`
+        });
         this.modalMesa = false;
         await this.cargarMesas();
       } catch (err) {
-        showToast({ message: err.mensaje || 'Error al crear mesa', type: 'danger' });
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Error al crear mesa',
+          mensaje: err.mensaje || err.message || 'Error al crear mesa'
+        });
+      } finally {
+        this._loading = false;
       }
     },
 
@@ -504,47 +1247,64 @@ export function adminView() {
         numero: mesa.numero,
         nombre: mesa.nombre || ''
       };
+      this.erroresValidacion.editMesaNumero = '';
+      this.erroresValidacion.editMesaNombre = '';
       this.modalEditarMesa = true;
     },
 
     async editarMesaSubmit() {
       if (!this.mesaEditando.id) return;
-      const num = parseInt(this.mesaEditando.numero, 10);
-      if (!num || num < 1) {
-        showToast({ message: 'Número de mesa debe ser mayor a 0', type: 'warning' });
-        return;
-      }
+      const numOk = this.validarEditMesaNumero();
+      const nomOk = this.validarEditMesaNombre();
+      if (!numOk || !nomOk || !this.editarMesaValida) return;
       if (this._loading) return;
       this._loading = true;
+      const num = parseInt(this.mesaEditando.numero, 10);
       try {
         await api.patch(`/mesas/${this.mesaEditando.id}`, {
           numero: num,
           nombre: (this.mesaEditando.nombre || '').trim() || `Mesa ${num}`
         });
-        showToast({ message: `Mesa ${num} actualizada`, type: 'success' });
+        this.notificar({
+          tipo: 'success',
+          titulo: 'Ventanilla actualizada',
+          mensaje: `Mesa ${num} actualizada correctamente`
+        });
         this.modalEditarMesa = false;
         await Promise.allSettled([this.cargarMesas(), this.cargarKPIs()]);
       } catch (err) {
-        showToast({ message: err.mensaje || 'Error al actualizar mesa', type: 'danger' });
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Error al actualizar mesa',
+          mensaje: err.mensaje || err.message || 'Error al actualizar mesa'
+        });
       } finally {
         this._loading = false;
       }
     },
 
     async eliminarMesa(mesaId, mesaNumero) {
-      if (!confirm(`¿Desea eliminar la Mesa ${mesaNumero}? Esta acción no se puede deshacer.`)) return;
-      if (this._loading) return;
-      this._loading = true;
-      try {
-        await api.delete(`/mesas/${mesaId}`);
-        showToast({ message: `Mesa ${mesaNumero} eliminada`, type: 'info' });
-        await Promise.allSettled([this.cargarMesas(), this.cargarKPIs()]);
-      } catch (err) {
-        showToast({ message: err.mensaje || 'Error al eliminar mesa', type: 'danger' });
-        await this.cargarMesas();
-      } finally {
-        this._loading = false;
-      }
+      this._pedirConfirmacion({
+        titulo:  `Eliminar Mesa ${mesaNumero}`,
+        mensaje: '¿Está seguro de eliminar esta ventanilla? Esta acción la ocultará del sistema y liberará su número.',
+        botonTexto: 'Eliminar',
+        botonClase: 'btn-danger btn-sm',
+        tipo: 'peligro',
+        accion: async () => {
+          if (this._loading) return;
+          this._loading = true;
+          try {
+            await api.delete(`/mesas/${mesaId}`);
+            this.notificar({ tipo: 'info', titulo: 'Mesa eliminada', mensaje: `Mesa ${mesaNumero} eliminada correctamente.` });
+            await Promise.allSettled([this.cargarMesas(), this.cargarKPIs()]);
+          } catch (err) {
+            this.notificar({ tipo: 'error', titulo: 'No se puede eliminar', mensaje: err.mensaje || err.message || 'No se pudo eliminar la mesa.' });
+            await this.cargarMesas();
+          } finally {
+            this._loading = false;
+          }
+        }
+      });
     },
 
     // =========================================================================
@@ -580,25 +1340,34 @@ export function adminView() {
     // =========================================================================
 
     async crearUsuarioSubmit() {
-      const { nombre_completo, username, password, rol } = this.nuevoUsuario;
-      if (!nombre_completo.trim() || !username.trim() || !password) {
-        showToast({ message: 'Complete todos los campos', type: 'warning' }); return;
-      }
-      if (password.length < 8) {
-        showToast({ message: 'Contraseña de al menos 8 caracteres', type: 'warning' }); return;
-      }
+      const nomOk = this.validarNuevoUsrNombre();
+      const usrOk = this.validarNuevoUsrUsername();
+      const pwdOk = this.validarNuevoUsrPassword();
+      if (!nomOk || !usrOk || !pwdOk || !this.nuevoUsuarioValido) return;
       if (this._loading) return;
       this._loading = true;
+      const { nombre_completo, username, password, rol } = this.nuevoUsuario;
       try {
         await api.post('/admin/usuarios', {
           nombre_completo: nombre_completo.trim(), username: username.trim(), password, rol
         });
-        showToast({ message: `Usuario "${username}" creado`, type: 'success' });
+        this.notificar({
+          tipo: 'success',
+          titulo: 'Usuario creado',
+          mensaje: `Usuario "${username}" creado exitosamente`
+        });
         this.nuevoUsuario = { nombre_completo: '', username: '', password: '', rol: 'operador' };
+        this.erroresValidacion.nuevoUsrNombre = '';
+        this.erroresValidacion.nuevoUsrUsername = '';
+        this.erroresValidacion.nuevoUsrPassword = '';
         this.modalUsuario = false;
         await this.cargarUsuarios();
       } catch (err) {
-        showToast({ message: err.mensaje || 'Error al crear usuario', type: 'danger' });
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Error al crear usuario',
+          mensaje: err.mensaje || err.message || 'Error al crear usuario'
+        });
       } finally { this._loading = false; }
     },
 
@@ -611,15 +1380,18 @@ export function adminView() {
         password: '',
         activo: Boolean(usr.activo)
       };
+      this.erroresValidacion.editUsrNombre = '';
+      this.erroresValidacion.editUsrUsername = '';
+      this.erroresValidacion.editUsrPassword = '';
       this.modalEditarUsuario = true;
     },
 
     async editarUsuarioSubmit() {
       if (!this.usuarioEditando.id) return;
-      if (!this.usuarioEditando.nombre_completo.trim() || !this.usuarioEditando.username.trim()) {
-        showToast({ message: 'Nombre y usuario son requeridos', type: 'warning' });
-        return;
-      }
+      const nomOk = this.validarEditUsrNombre();
+      const usrOk = this.validarEditUsrUsername();
+      const pwdOk = this.validarEditUsrPassword();
+      if (!nomOk || !usrOk || !pwdOk || !this.editarUsuarioValido) return;
       if (this._loading) return;
       this._loading = true;
       try {
@@ -629,15 +1401,23 @@ export function adminView() {
           rol:             this.usuarioEditando.rol,
           activo:          this.usuarioEditando.activo
         };
-        if (this.usuarioEditando.password && this.usuarioEditando.password.length >= 8) {
+        if (this.usuarioEditando.password && this.usuarioEditando.password.length >= 4) {
           payload.password = this.usuarioEditando.password;
         }
         await api.patch(`/admin/usuarios/${this.usuarioEditando.id}`, payload);
-        showToast({ message: 'Usuario actualizado', type: 'success' });
+        this.notificar({
+          tipo: 'success',
+          titulo: 'Usuario actualizado',
+          mensaje: `Usuario "${this.usuarioEditando.username}" actualizado correctamente`
+        });
         this.modalEditarUsuario = false;
         await Promise.allSettled([this.cargarUsuarios(), this.cargarMesas()]);
       } catch (err) {
-        showToast({ message: err.mensaje || 'Error al actualizar usuario', type: 'danger' });
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Error al actualizar usuario',
+          mensaje: err.mensaje || err.message || 'Error al actualizar usuario'
+        });
       } finally {
         this._loading = false;
       }
@@ -649,54 +1429,436 @@ export function adminView() {
       const nuevoEstado = !usr.activo;
       try {
         await api.patch(`/admin/usuarios/${usr.id}`, { activo: nuevoEstado });
-        showToast({ message: `Usuario ${usr.username} ${nuevoEstado ? 'activado' : 'desactivado'}`, type: 'info' });
+        this.notificar({
+          tipo: nuevoEstado ? 'success' : 'warning',
+          titulo: nuevoEstado ? 'Usuario activado' : 'Usuario desactivado',
+          mensaje: `${usr.username} fue ${nuevoEstado ? 'activado' : 'desactivado'} correctamente.`
+        });
         await Promise.allSettled([this.cargarUsuarios(), this.cargarMesas()]);
       } catch (err) {
-        showToast({ message: err.mensaje || 'Error al cambiar estado de usuario', type: 'danger' });
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Error al cambiar estado',
+          mensaje: err.mensaje || err.message || 'No se pudo cambiar el estado del usuario.'
+        });
+      } finally {
+        this._loading = false;
+      }
+    },
+
+    /**
+     * asignarMesaAUsuario — Asigna o libera una mesa desde la pestaña Usuarios.
+     * Reutiliza el endpoint PATCH /mesas/:id/asignar que ya existe y que emite
+     * broadcast WS a admin:all y tv:global. No duplica lógica de negocio.
+     *
+     * @param {number|null} mesaId - ID de la mesa a asignar. null = liberar mesa actual.
+     * @param {number}      usrId  - ID del usuario al que se asigna.
+     * @param {string}      username - Nombre de usuario para los mensajes.
+     */
+    async asignarMesaAUsuario(mesaId, usrId, username) {
+      if (this._loading) return;
+      this._loading = true;
+      try {
+        if (mesaId) {
+          // Asignar: llamar al endpoint existente de mesas
+          await api.patch(`/mesas/${mesaId}/asignar`, { operador_id: usrId });
+          const mesa = this.mesas.find(m => m.id === mesaId);
+          this.notificar({
+            tipo: 'success',
+            titulo: 'Mesa asignada',
+            mensaje: `Mesa ${mesa ? mesa.numero : mesaId} asignada a ${username}.`
+          });
+        } else {
+          // Liberar: encontrar la mesa actual del usuario y llamar con operador_id null
+          const mesaActual = this.mesas.find(m => m.operador_id === usrId || m.operador_id === String(usrId));
+          if (!mesaActual) {
+            // Nada que liberar
+            return;
+          }
+          await api.patch(`/mesas/${mesaActual.id}/asignar`, { operador_id: null });
+          this.notificar({
+            tipo: 'info',
+            titulo: 'Mesa liberada',
+            mensaje: `Mesa ${mesaActual.numero} liberada de ${username}.`
+          });
+        }
+        // Recargar mesas y usuarios para reflejar el cambio
+        await Promise.allSettled([this.cargarMesas(), this.cargarUsuarios()]);
+      } catch (err) {
+        const msg = err.mensaje || err.message || 'No se pudo asignar la mesa.';
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Error al asignar mesa',
+          mensaje: msg
+        });
+        // Recargar de todos modos para mostrar el estado real
+        await Promise.allSettled([this.cargarMesas(), this.cargarUsuarios()]);
       } finally {
         this._loading = false;
       }
     },
 
     async eliminarUsuario(usrId, username) {
-      if (!confirm(`¿Está seguro de eliminar al usuario ${username}?`)) return;
-      if (this._loading) return;
-      this._loading = true;
-      try {
-        await api.delete(`/admin/usuarios/${usrId}`);
-        showToast({ message: `Usuario ${username} eliminado`, type: 'info' });
-        await Promise.allSettled([this.cargarUsuarios(), this.cargarMesas()]);
-      } catch (err) {
-        showToast({ message: err.mensaje || 'Error al eliminar usuario', type: 'danger' });
-      } finally {
-        this._loading = false;
-      }
+      this._pedirConfirmacion({
+        titulo:  `Eliminar usuario ${username}`,
+        mensaje: '¿Está seguro de eliminar este usuario? Esta acción no se puede deshacer.',
+        accion: async () => {
+          if (this._loading) return;
+          this._loading = true;
+          try {
+            await api.delete(`/admin/usuarios/${usrId}`);
+            this.notificar({ tipo: 'info', titulo: 'Usuario eliminado', mensaje: `Usuario ${username} eliminado correctamente.` });
+            await Promise.allSettled([this.cargarUsuarios(), this.cargarMesas()]);
+          } catch (err) {
+            this.notificar({ tipo: 'error', titulo: 'Error al eliminar', mensaje: err.mensaje || err.message || 'No se pudo eliminar el usuario.' });
+          } finally {
+            this._loading = false;
+          }
+        }
+      });
     },
 
     // =========================================================================
-    // CONFIGURACION (INC-4)
+    // CONFIGURACION Y GESTIÓN DE KIOSKO (INC-4)
     // =========================================================================
 
-    async guardarConfiguracion() {
-      const alerta = this.config.alerta_vouchers_restantes;
-
-      if (!Number.isInteger(alerta) || alerta < 1) {
-        showToast({ message: 'Alerta de turnos debe ser entero >= 1', type: 'warning' }); return;
+    /**
+     * Alternar un interruptor booleano con guardado inmediato en el servidor
+     */
+    async alternarSwitchConfig(clave, nombreLegible) {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Sin conexión',
+          mensaje: 'Sin conexión con el servidor. No se pueden guardar cambios hasta restablecer la red.'
+        });
+        return;
       }
-      if (this._loading) return;
-      this._loading = true;
+      if (this._savingKeys[clave]) return;
+      this._savingKeys[clave] = true;
+
+      const valorPrevio = this.config[clave];
+      const nuevoValor = !valorPrevio;
+      this.config[clave] = nuevoValor;
+
+      try {
+        await api.patch(`/admin/configuracion/${clave}`, { valor: String(nuevoValor) });
+        this.notificar({
+          tipo: 'success',
+          titulo: 'Ajuste actualizado',
+          mensaje: `${nombreLegible}: ${nuevoValor ? 'Activado' : 'Desactivado'}`
+        });
+      } catch (err) {
+        this.config[clave] = valorPrevio;
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Error al actualizar',
+          mensaje: err.mensaje || err.message || 'No se pudo actualizar el ajuste'
+        });
+      } finally {
+        delete this._savingKeys[clave];
+      }
+    },
+
+    /**
+     * Alternar el modo Kiosko Digital (interruptor único y sin duplicados)
+     */
+    async alternarModoKiosko() {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Sin conexión',
+          mensaje: 'Sin conexión con el servidor. No se pueden guardar cambios hasta restablecer la red.'
+        });
+        return;
+      }
+      if (this._savingKeys.kiosko_web_activo) return;
+      this._savingKeys.kiosko_web_activo = true;
+
+      const valorPrevio = this.config.kiosko_web_activo;
+      const nuevoValor = !valorPrevio;
+      this.config.kiosko_web_activo = nuevoValor;
+
+      try {
+        await api.patch('/admin/configuracion/kiosko_web_activo', { valor: String(nuevoValor) });
+        this.config.modo_generacion_turnos = nuevoValor ? 'kiosko_web' : 'voucher_fisico';
+        this._configSnapshot = { ...this.config };
+        this.notificar({
+          tipo: 'success',
+          titulo: nuevoValor ? 'Kiosko Digital Activado' : 'Modo Vouchers Físicos Activado',
+          mensaje: nuevoValor
+            ? 'El sistema ahora opera en modo digital para recepción o autoservicio estudiantil.'
+            : 'El sistema ha vuelto al modo tradicional de vouchers impresos.'
+        });
+      } catch (err) {
+        this.config.kiosko_web_activo = valorPrevio;
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Error al cambiar modo de kiosko',
+          mensaje: err.mensaje || err.message || 'No se pudo cambiar el modo de kiosko'
+        });
+      } finally {
+        delete this._savingKeys.kiosko_web_activo;
+      }
+    },
+
+    /**
+     * Guardar parámetros de emisión del Kiosko Digital
+     */
+    async guardarKioskoParams() {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Sin conexión',
+          mensaje: 'Sin conexión con el servidor. No se pueden guardar cambios hasta restablecer la red.'
+        });
+        return;
+      }
+      if (!this.validarKioskoTope() || !this.cfgKioskoValida) return;
+
+      if (this._guardandoSeccion.kiosko) return;
+      this._guardandoSeccion.kiosko = true;
+
+      const tope = parseInt(this.config.kiosko_tope_diario, 10);
+      const modo = this.config.kiosko_modo_uso;
+      const urlBase = (this.config.kiosko_url_base || '').trim();
+      const impresionAuto = this.config.kiosko_impresion_automatica ? 'true' : 'false';
+
+      try {
+        await Promise.all([
+          api.patch('/admin/configuracion/kiosko_tope_diario',           { valor: String(tope) }),
+          api.patch('/admin/configuracion/kiosko_modo_uso',              { valor: modo }),
+          api.patch('/admin/configuracion/kiosko_url_base',              { valor: urlBase }),
+          api.patch('/admin/configuracion/kiosko_impresion_automatica',  { valor: impresionAuto })
+        ]);
+        this._configSnapshot = { ...this.config };
+        this.notificar({
+          tipo: 'success',
+          titulo: 'Ajustes de Kiosko Guardados',
+          mensaje: 'Modalidad de uso, límite diario, URL de acceso e impresión automática actualizados correctamente.'
+        });
+      } catch (err) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Error al guardar kiosko',
+          mensaje: err.mensaje || err.message || 'No se pudieron guardar los parámetros de kiosko'
+        });
+      } finally {
+        this._guardandoSeccion.kiosko = false;
+      }
+    },
+
+    /**
+     * Guardar configuración de la impresora de tickets LAN
+     */
+    async guardarImpresoraParams() {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Sin conexión',
+          mensaje: 'Sin conexión con el servidor. No se pueden guardar cambios hasta restablecer la red.'
+        });
+        return;
+      }
+      if (!this.validarImpresoraPuerto() || !this.cfgImpresoraValida) return;
+
+      if (this._guardandoSeccion.impresora) return;
+      this._guardandoSeccion.impresora = true;
+
+      const puerto = parseInt(this.config.impresora_puerto, 10);
+      const ip = (this.config.impresora_ip || '').trim();
+
+      try {
+        await Promise.all([
+          api.patch('/admin/configuracion/impresora_ip',     { valor: ip }),
+          api.patch('/admin/configuracion/impresora_puerto', { valor: String(puerto) })
+        ]);
+        this._configSnapshot = { ...this.config };
+        this.notificar({
+          tipo: 'success',
+          titulo: 'Impresora Guardada',
+          mensaje: 'Dirección IP y puerto de la impresora térmica actualizados correctamente.'
+        });
+      } catch (err) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Error al guardar impresora',
+          mensaje: err.mensaje || err.message || 'No se pudo guardar la configuración de impresora'
+        });
+      } finally {
+        this._guardandoSeccion.impresora = false;
+      }
+    },
+
+    /**
+     * Guardar parámetros operativos del sistema (Alerta de lote y Zona horaria)
+     */
+    async guardarSistemaParams() {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Sin conexión',
+          mensaje: 'Sin conexión con el servidor. No se pueden guardar cambios hasta restablecer la red.'
+        });
+        return;
+      }
+      if (!this.validarCfgAlerta() || !this.cfgAlertaValida) return;
+      if (!this.validarZonaHoraria() || !this.cfgSistemaValida) return;
+
+      if (this._guardandoSeccion.sistema) return;
+      this._guardandoSeccion.sistema = true;
+
+      const alerta = parseInt(this.config.alerta_vouchers_restantes, 10);
+      const zona = (this.config.zona_horaria || '').trim();
+
       try {
         await Promise.all([
           api.patch('/admin/configuracion/alerta_vouchers_restantes', { valor: String(alerta) }),
-          api.patch('/admin/configuracion/kiosko_web_activo',         { valor: String(this.config.kiosko_web_activo) }),
-          api.patch('/admin/configuracion/voz_anuncio_activa',        { valor: String(this.config.voz_anuncio_activa) })
+          api.patch('/admin/configuracion/zona_horaria',              { valor: zona })
         ]);
         this._configSnapshot = { ...this.config };
-        showToast({ message: 'Ajustes guardados correctamente', type: 'success' });
+        this._actualizarAlertaLote();
+        this.notificar({
+          tipo: 'success',
+          titulo: 'Parámetros del Sistema Guardados',
+          mensaje: 'Umbral de alerta y zona horaria guardados correctamente.'
+        });
       } catch (err) {
-        if (this._configSnapshot) this.config = { ...this._configSnapshot };
-        showToast({ message: err.mensaje || 'Error al guardar. Valores revertidos.', type: 'danger' });
-      } finally { this._loading = false; }
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Error al guardar parámetros',
+          mensaje: err.mensaje || err.message || 'No se pudieron guardar los parámetros'
+        });
+      } finally {
+        this._guardandoSeccion.sistema = false;
+      }
+    },
+
+    /**
+     * Guardado general de respaldo para compatibilidad
+     */
+    async guardarConfiguracion() {
+      await this.guardarSistemaParams();
+    },
+
+    async cambiarEscalaPrincipal(delta) {
+      const actual = parseInt(this.config.tv_escala_principal, 10) || 100;
+      const nuevo = Math.min(140, Math.max(75, actual + delta));
+      if (nuevo !== this.config.tv_escala_principal) {
+        this.config.tv_escala_principal = nuevo;
+        this.onInputEscalaPrincipal();
+        await this._guardarEscalaPrincipalInmediata(nuevo);
+      }
+    },
+
+    async restablecerEscalaPrincipal() {
+      if (this.config.tv_escala_principal !== 100) {
+        this.config.tv_escala_principal = 100;
+        this.onInputEscalaPrincipal();
+        await this._guardarEscalaPrincipalInmediata(100);
+      }
+    },
+
+    onInputEscalaPrincipal() {
+      const val = parseInt(this.config.tv_escala_principal, 10) || 100;
+      this.config.tv_escala_principal = Math.min(140, Math.max(75, val));
+      try {
+        localStorage.setItem('turnero_tv_escala_principal', String(this.config.tv_escala_principal));
+      } catch (_) {}
+      this._emitirEscalaEnVivo('tv_escala_principal', this.config.tv_escala_principal);
+    },
+
+    async _guardarEscalaPrincipalInmediata(val) {
+      if (!this.wsConnected) {
+        showToast({ message: 'Sin conexión con el servidor. No se puede guardar la escala.', type: 'danger' });
+        return;
+      }
+      try {
+        localStorage.setItem('turnero_tv_escala_principal', String(val));
+      } catch (_) {}
+      try {
+        await api.patch('/admin/configuracion/tv_escala_principal', { valor: String(val) });
+        showToast({ message: `Tamaño de turno principal guardado (${val}%)`, type: 'info' });
+        this.avisoGuardadoPrincipal = true;
+        setTimeout(() => { this.avisoGuardadoPrincipal = false; }, 2500);
+      } catch (err) {
+        showToast({ message: err.mensaje || 'Error al guardar escala del turno principal', type: 'danger' });
+      }
+    },
+
+    async cambiarEscalaSecundaria(delta) {
+      const actual = parseInt(this.config.tv_escala_secundaria, 10) || 100;
+      const nuevo = Math.min(140, Math.max(75, actual + delta));
+      if (nuevo !== this.config.tv_escala_secundaria) {
+        this.config.tv_escala_secundaria = nuevo;
+        this.onInputEscalaSecundaria();
+        await this._guardarEscalaSecundariaInmediata(nuevo);
+      }
+    },
+
+    async restablecerEscalaSecundaria() {
+      if (this.config.tv_escala_secundaria !== 100) {
+        this.config.tv_escala_secundaria = 100;
+        this.onInputEscalaSecundaria();
+        await this._guardarEscalaSecundariaInmediata(100);
+      }
+    },
+
+    onInputEscalaSecundaria() {
+      const val = parseInt(this.config.tv_escala_secundaria, 10) || 100;
+      this.config.tv_escala_secundaria = Math.min(140, Math.max(75, val));
+      try {
+        localStorage.setItem('turnero_tv_escala_secundaria', String(this.config.tv_escala_secundaria));
+      } catch (_) {}
+      this._emitirEscalaEnVivo('tv_escala_secundaria', this.config.tv_escala_secundaria);
+    },
+
+    async _guardarEscalaSecundariaInmediata(val) {
+      if (!this.wsConnected) {
+        showToast({ message: 'Sin conexión con el servidor. No se puede guardar la escala.', type: 'danger' });
+        return;
+      }
+      try {
+        localStorage.setItem('turnero_tv_escala_secundaria', String(val));
+      } catch (_) {}
+      try {
+        await api.patch('/admin/configuracion/tv_escala_secundaria', { valor: String(val) });
+        showToast({ message: `Tamaño de turnos anteriores guardado (${val}%)`, type: 'info' });
+        this.avisoGuardadoSecundaria = true;
+        setTimeout(() => { this.avisoGuardadoSecundaria = false; }, 2500);
+      } catch (err) {
+        showToast({ message: err.mensaje || 'Error al guardar escala de turnos anteriores', type: 'danger' });
+      }
+    },
+
+    _emitirEscalaEnVivo(clave, valor) {
+      if (this._ws && typeof this._ws.send === 'function') {
+        try {
+          this._ws.send('preview_escala_tv', {
+            clave,
+            tipo: clave === 'tv_escala_principal' ? 'principal' : 'secundaria',
+            valor
+          });
+        } catch (_) {}
+      }
+    },
+
+    // Métodos de retrocompatibilidad
+    async cambiarEscalaTv(delta) {
+      await this.cambiarEscalaPrincipal(delta);
+    },
+
+    async restablecerEscalaTv() {
+      await this.restablecerEscalaPrincipal();
+      await this.restablecerEscalaSecundaria();
+    },
+
+    onInputEscalaTv() {
+      this.onInputEscalaPrincipal();
+    },
+
+    async _guardarEscalaTvInmediata(val) {
+      await this._guardarEscalaPrincipalInmediata(val);
     },
 
     // =========================================================================
@@ -708,6 +1870,9 @@ export function adminView() {
       if (nuevoTab === 'reportes') {
         this.cargarReporte();
       }
+      if (nuevoTab === 'usuarios') {
+        this.cargarUsuarios();
+      }
     },
 
     async cargarReporte() {
@@ -717,7 +1882,8 @@ export function adminView() {
         if (this.filtroReporte.fecha)       query.set('fecha', this.filtroReporte.fecha);
         if (this.filtroReporte.mesa_id)     query.set('mesa_id', this.filtroReporte.mesa_id);
         if (this.filtroReporte.operador_id) query.set('operador_id', this.filtroReporte.operador_id);
-        if (this.filtroReporte.estado)      query.set('estado', this.filtroReporte.estado);
+        if (this.filtroReporte.estado && this.filtroReporte.estado !== 'todos')
+          query.set('estado', this.filtroReporte.estado);
 
         const res = await api.get(`/admin/reportes/datos?${query.toString()}`);
         if (res) {
@@ -727,8 +1893,11 @@ export function adminView() {
             turnos:        res.turnos        || []
           };
         }
+        // Retorna la promesa resuelta para que el HTML pueda encadenar .then()/.catch()
       } catch (err) {
-        showToast({ message: err.mensaje || 'Error al cargar reporte', type: 'danger' });
+        const msg = err.mensaje || err.message || 'Error al cargar el reporte. Verifique la conexión.';
+        this.notificar({ tipo: 'error', titulo: 'Error en Reportes', mensaje: msg });
+        throw err;  // Re-lanza para que el .catch() del HTML active _errorReporte
       } finally {
         this.cargandoReporte = false;
       }
@@ -775,9 +1944,12 @@ export function adminView() {
     },
 
     formatSegMin(seg) {
-      if (!seg && seg !== 0) return '--';
-      const m = Math.floor(seg / 60);
-      const s = seg % 60;
+      // null/undefined o <= 0 → '--' (sin datos de atención reales)
+      if (seg === null || seg === undefined) return '--';
+      const n = Number(seg);
+      if (!isFinite(n) || n <= 0) return '--';
+      const m = Math.floor(n / 60);
+      const s = Math.round(n % 60);
       return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     },
 
@@ -788,7 +1960,10 @@ export function adminView() {
     },
 
     _actualizarAlertaLote() {
-      if (!this.loteActivo) { this.loteAgotadoAlerta = false; return; }
+      if (this.config.modo_generacion_turnos === 'kiosko_web' || !this.loteActivo) {
+        this.loteAgotadoAlerta = false;
+        return;
+      }
       const r = this.loteActivo.numero_hasta - (this.loteActivo.ultimo_numero_llamado || 0);
       this.loteAgotadoAlerta = r <= 0 || this.loteActivo.estado === 'agotado';
     },
@@ -807,28 +1982,58 @@ export function adminView() {
       this.ws.on('snapshot', async () => { await this.cargarTodo(); this._actualizarAlertaLote(); });
 
       let _syncPending = false;
+      let _syncAgain = false;
       const recargarEnVivo = async () => {
-        if (_syncPending) return;
+        if (_syncPending) {
+          _syncAgain = true;
+          return;
+        }
         _syncPending = true;
+        _syncAgain = false;
         try {
           await Promise.allSettled([this.cargarKPIs(), this.cargarMesas(), this.cargarLotes()]);
           this._actualizarAlertaLote();
         } finally {
           _syncPending = false;
+          if (_syncAgain) {
+            _syncAgain = false;
+            recargarEnVivo();
+          }
         }
       };
 
-      this.ws.on('kpi_update',       recargarEnVivo);
-      this.ws.on('turno_llamado',    recargarEnVivo);
-      this.ws.on('mesa_actualizada', recargarEnVivo);
-
-      this.ws.on('lote_agotado', async () => {
-        this.loteAgotadoAlerta = true;
-        showToast({ message: 'Lote agotado. Extiéndalo o cree uno nuevo.', type: 'danger', duration: 0 });
+      this.ws.on('kpi_update',              recargarEnVivo);
+      this.ws.on('turno_llamado',           recargarEnVivo);
+      this.ws.on('turno_cancelado',         recargarEnVivo);
+      this.ws.on('kiosko_turno_generado',   recargarEnVivo);
+      this.ws.on('proximo_actualizado',     recargarEnVivo);
+      // mesa_actualizada también recarga usuarios para mantener la columna Mesa sincronizada
+      this.ws.on('mesa_actualizada', async () => {
         await recargarEnVivo();
+        await this.cargarUsuarios();
+      });
+      this.ws.on('usuario_eliminado', async () => {
+        await this.cargarUsuarios();
+        await this.cargarMesas();
+      });
+      this.ws.on('lote_actualizado', recargarEnVivo);
+
+      this.ws.on('lote_agotado', async (p) => {
+        if (this.config.modo_generacion_turnos === 'kiosko_web') return;
+        this.loteAgotadoAlerta = true;
+        // Recargar lotes para tener la lista actualizada
+        await recargarEnVivo();
+        // Buscar el siguiente lote preparado
+        const siguiente = this.lotes.find(l => l.estado === 'preparado');
+        this.loteAgotadoInfo = {
+          loteAgotado:    p || {},
+          loteSiguiente:  siguiente || null
+        };
+        this.modalLoteAgotado = true;
       });
 
       this.ws.on('alerta_vouchers_restantes', (p) => {
+        if (this.config.modo_generacion_turnos === 'kiosko_web') return;
         showToast({ message: `ALERTA: Quedan solo ${p?.vouchers_restantes ?? '?'} turnos`, type: 'warning', duration: 7000 });
       });
 
@@ -836,9 +2041,79 @@ export function adminView() {
       this.ws.on('lote_pausado',   recargarEnVivo);
       this.ws.on('lote_activado',  recargarEnVivo);
       this.ws.on('lote_cerrado',   async () => { this.loteAgotadoAlerta = false; await recargarEnVivo(); });
-      this.ws.on('config_actualizada', () => this.cargarConfiguracion());
+      this.ws.on('config_actualizada', async () => {
+        await this.cargarConfiguracion();
+        await recargarEnVivo();
+      });
 
       this.ws.connect();
+    },
+
+    // =========================================================================
+    // AJUSTAR CONTADOR DEL LOTE (Plan B — caida del sistema)
+    // =========================================================================
+
+    abrirModalAjustarContador() {
+      const loteRef = this.loteActivo || this.lotePausado;
+      if (!loteRef) return;
+      this.ajusteContador = {
+        nuevoUltimo:        loteRef.ultimo_numero_llamado ?? 0,
+        motivo:             '',
+        confirmarRetroceso: false,
+        cargando:           false
+      };
+      this.modalAjustarContador = true;
+    },
+
+    cerrarModalAjustarContador() {
+      this.modalAjustarContador = false;
+    },
+
+    async submitAjustarContador() {
+      const loteRef = this.loteActivo || this.lotePausado;
+      if (!loteRef || this.ajusteContador.cargando) return;
+      const numOk = this.validarAjusteNumero();
+      const motOk = this.validarAjusteMotivo();
+      if (!numOk || !motOk || !this.ajusteContadorValido) return;
+
+      const esRetroceso = this.ajusteContador.nuevoUltimo < (loteRef.ultimo_numero_llamado ?? 0);
+      if (esRetroceso && !this.ajusteContador.confirmarRetroceso) return;
+
+      this.ajusteContador.cargando = true;
+      try {
+        const res = await api.patch(`/lotes/${loteRef.id}/ajustar-contador`, {
+          nuevo_ultimo_llamado:   this.ajusteContador.nuevoUltimo,
+          motivo:                 this.ajusteContador.motivo.trim(),
+          confirmacion_retroceso: this.ajusteContador.confirmarRetroceso
+        });
+
+        // Actualizar el lote en el estado local
+        const loteActualizado = res.lote;
+        if (this.loteActivo && this.loteActivo.id === loteActualizado.id) {
+          this.loteActivo = { ...this.loteActivo, ...loteActualizado };
+        }
+        if (this.lotePausado && this.lotePausado.id === loteActualizado.id) {
+          this.lotePausado = { ...this.lotePausado, ...loteActualizado };
+        }
+        // Actualizar tambien en el array de lotes
+        const idx = this.lotes.findIndex(l => l.id === loteActualizado.id);
+        if (idx !== -1) this.lotes[idx] = { ...this.lotes[idx], ...loteActualizado };
+
+        this.notificar({
+          tipo: 'success',
+          titulo: 'Contador ajustado',
+          mensaje: res.message || 'Contador del lote ajustado correctamente'
+        });
+        this.cerrarModalAjustarContador();
+      } catch (err) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Error al ajustar contador',
+          mensaje: err.mensaje || err.message || 'No se pudo ajustar el contador'
+        });
+      } finally {
+        this.ajusteContador.cargando = false;
+      }
     },
 
     // =========================================================================
@@ -852,14 +2127,17 @@ export function adminView() {
   };
 }
 
-// Registro seguro para Alpine.js
+// Registro limpio en Alpine.js (sin contaminar el objeto window)
 function registerAdminWithAlpine() {
-  if (window.Alpine) window.Alpine.data('adminView', adminView);
+  if (typeof window !== 'undefined' && window.Alpine) {
+    window.Alpine.data('adminView', adminView);
+  }
 }
 
-if (window.Alpine) {
-  registerAdminWithAlpine();
-} else {
+if (typeof document !== 'undefined') {
   document.addEventListener('alpine:init', registerAdminWithAlpine);
+  if (typeof window !== 'undefined' && window.Alpine) {
+    registerAdminWithAlpine();
+  }
 }
 

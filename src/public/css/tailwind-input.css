@@ -1,0 +1,5 @@
+/* Tailwind CSS v3 — Precompilado para Turnero 2026 */
+/* Generado con: npx tailwindcss -i ./src/public/css/tailwind-input.css -o ./src/public/css/tailwind.css --minify */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

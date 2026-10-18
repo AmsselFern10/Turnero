@@ -26,9 +26,8 @@ services:
       - "${DB_PORT_EXPOSED:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # schema.sql se ejecuta automáticamente la PRIMERA vez que el volumen se crea
-      # (docker-entrypoint-initdb.d solo corre si la BD no existe todavía)
-      - ./schema.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro
+      # Todas las migraciones 001..007 se ejecutan automáticamente en orden al crear la BD
+      - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
@@ -118,8 +117,15 @@ services:
       # Configuración
       BCRYPT_COST:      ${BCRYPT_COST:-12}
       LOG_LEVEL:        ${LOG_LEVEL:-info}
+      APP_PORT_EXPOSED: ${APP_PORT_EXPOSED:-3000}
     ports:
       - "${APP_PORT_EXPOSED:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     volumes:
       # En desarrollo: montar el código fuente para hot-reload
       - ./src:/app/src:ro

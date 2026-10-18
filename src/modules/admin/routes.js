@@ -25,6 +25,7 @@ module.exports = async function adminRoutes (fastify) {
           COUNT(*) FILTER (WHERE estado = 'atendido')                        AS atendidos_hoy,
           COUNT(*) FILTER (WHERE estado = 'cancelado')                       AS cancelados_hoy,
           COUNT(*) FILTER (WHERE estado = 'en_atencion')                     AS en_atencion_ahora,
+          COUNT(*) FILTER (WHERE estado = 'esperando')                       AS esperando_hoy,
           ROUND(AVG(duracion_atencion_seg) FILTER (WHERE estado = 'atendido' AND duracion_atencion_seg IS NOT NULL)) AS promedio_seg
         FROM turnos
         WHERE creado_en >= date_trunc('day', NOW())
@@ -49,6 +50,7 @@ module.exports = async function adminRoutes (fastify) {
       atendidos_hoy:     parseInt(t.atendidos_hoy),
       cancelados_hoy:    parseInt(t.cancelados_hoy),
       en_atencion_ahora: parseInt(t.en_atencion_ahora),
+      turnos_en_espera:  parseInt(t.esperando_hoy || 0),
       promedio_seg:      t.promedio_seg ? parseInt(t.promedio_seg) : null,
       mesas_activas:     parseInt(m.activas),
       mesas_pausadas:    parseInt(m.pausadas),
@@ -65,8 +67,14 @@ module.exports = async function adminRoutes (fastify) {
     preHandler: [fastify.authorizeRol('admin')]
   }, async (request, reply) => {
     const { rows } = await fastify.db.query(
-      `SELECT id, username, nombre_completo, rol, activo, creado_en
-       FROM usuarios ORDER BY rol, nombre_completo`
+      `SELECT u.id, u.username, u.nombre_completo, u.rol, u.activo, u.creado_en,
+              m.id     AS mesa_id,
+              m.numero AS mesa_numero,
+              m.nombre AS mesa_nombre
+       FROM usuarios u
+       LEFT JOIN mesas m ON m.operador_id = u.id AND m.estado NOT IN ('inactiva', 'eliminada')
+       WHERE u.eliminado_en IS NULL
+       ORDER BY u.rol, u.nombre_completo`
     )
     return reply.send({ usuarios: rows })
   })
@@ -81,13 +89,22 @@ module.exports = async function adminRoutes (fastify) {
         properties: {
           username:       { type: 'string', minLength: 3, maxLength: 30 },
           nombre_completo:{ type: 'string', minLength: 2, maxLength: 100 },
-          password:       { type: 'string', minLength: 8, maxLength: 128 },
+          password:       { type: 'string', minLength: 4, maxLength: 128 },
           rol:            { type: 'string', enum: ['operador', 'admin'] }
         }
       }
     }
   }, async (request, reply) => {
     const { username, nombre_completo, password, rol } = request.body
+
+    const { rows: conflicto } = await fastify.db.query(
+      'SELECT id FROM usuarios WHERE LOWER(username) = LOWER($1) AND eliminado_en IS NULL',
+      [username]
+    )
+    if (conflicto.length > 0) {
+      return reply.status(409).send({ error: `El usuario '${username}' ya existe.` })
+    }
+
     const bcrypt = require('bcrypt')
     const hash   = await bcrypt.hash(password, parseInt(process.env.BCRYPT_COST || '12'))
 
@@ -118,7 +135,7 @@ module.exports = async function adminRoutes (fastify) {
           username:        { type: 'string', minLength: 3, maxLength: 50 },
           rol:             { type: 'string', enum: ['operador', 'admin'] },
           activo:          { type: 'boolean' },
-          password:        { type: 'string', minLength: 8, maxLength: 128 }
+          password:        { type: 'string', minLength: 4, maxLength: 128 }
         }
       }
     }
@@ -134,7 +151,8 @@ module.exports = async function adminRoutes (fastify) {
     }
     if (request.body.username !== undefined) {
       const { rows: conflicto } = await fastify.db.query(
-        'SELECT id FROM usuarios WHERE username = $1 AND id != $2', [request.body.username, userId]
+        'SELECT id FROM usuarios WHERE LOWER(username) = LOWER($1) AND id != $2 AND eliminado_en IS NULL',
+        [request.body.username, userId]
       )
       if (conflicto.length > 0) {
         return reply.status(409).send({ error: `El usuario '${request.body.username}' ya existe.` })
@@ -148,16 +166,61 @@ module.exports = async function adminRoutes (fastify) {
     }
     if (userId === request.user.id) {
       if (request.body.activo === false) {
-        return reply.status(400).send({ error: 'No puede desactivar su propio usuario mientras tiene la sesión activa.' })
+        return reply.status(400).send({ error: 'No puede desactivar su propia cuenta mientras tiene la sesión activa.' })
       }
       if (request.body.rol && request.body.rol !== 'admin') {
         return reply.status(400).send({ error: 'No puede degradar su propio rol de administrador.' })
       }
     }
 
+    // Protección: no dejar al sistema sin ningún admin activo
+    if (request.body.activo === false) {
+      const { rows: [admCount] } = await fastify.db.query(
+        `SELECT COUNT(*) AS total FROM usuarios WHERE rol = 'admin' AND activo = true AND id != $1`,
+        [userId]
+      )
+      if (parseInt(admCount.total, 10) === 0) {
+        return reply.status(400).send({ error: 'No se puede desactivar al único administrador activo del sistema. Active otro administrador primero.' })
+      }
+    }
+
     if (request.body.activo !== undefined) {
       campos.push(`activo = $${i++}`)
       vals.push(request.body.activo)
+
+      // Si se desactiva el usuario, cancelar turnos en atención de sus mesas y liberarlas
+      if (request.body.activo === false) {
+        const { rows: mesasUsuario } = await fastify.db.query(
+          `SELECT id FROM mesas WHERE operador_id = $1`, [userId]
+        )
+        for (const m of mesasUsuario) {
+          const { rows: turnosCanc } = await fastify.db.query(
+            `UPDATE turnos SET estado = 'cancelado', finalizado_en = NOW()
+             WHERE mesa_id = $1 AND estado = 'en_atencion'
+             RETURNING id, numero`,
+            [m.id]
+          )
+          for (const tc of turnosCanc) {
+            await fastify.db.query(
+              `INSERT INTO audit_log (mesa_id, operador_id, turno_id, accion, ip_origen, metadata_json)
+               VALUES ($1, $2, $3, 'TURNO_CANCELADO', $4, $5)`,
+              [m.id, request.user.id, tc.id, request.ip, JSON.stringify({ motivo: 'usuario_desactivado_por_admin', turno_numero: tc.numero })]
+            )
+            await fastify.broadcast('admin:all', 'turno_cancelado', { turno_id: tc.id, turno_numero: tc.numero, mesa_id: m.id })
+            await fastify.broadcast('lote:activo', 'rezagados_actualizados', { accion: 'cancelado', turno_id: tc.id, turno_numero: tc.numero, mesa_id: m.id })
+          }
+        }
+        const { rows: mesasLiberadas } = await fastify.db.query(
+          `UPDATE mesas SET operador_id = NULL, estado = 'inactiva'
+           WHERE operador_id = $1
+           RETURNING id, numero, nombre, estado, operador_id`,
+          [userId]
+        )
+        for (const mesa of mesasLiberadas) {
+          await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
+          await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', { mesa, accion: 'liberada' })
+        }
+      }
     }
     if (request.body.password) {
       const bcrypt = require('bcrypt')
@@ -187,40 +250,88 @@ module.exports = async function adminRoutes (fastify) {
     return reply.send({ usuario })
   })
 
-  // ── DELETE /admin/usuarios/:id — Eliminar usuario (RF-ADM-06) ─────────────
+  // -- DELETE /admin/usuarios/:id -- Eliminar usuario (RF-ADM-06) ----------
   fastify.delete('/usuarios/:id', {
     preHandler: [fastify.authorizeRol('admin')]
   }, async (request, reply) => {
     const userId = parseInt(request.params.id)
 
     if (userId === request.user.id) {
-      return reply.status(400).send({ error: 'No puede eliminar su propio usuario mientras tiene la sesión activa.' })
+      return reply.status(400).send({ error: 'No puede eliminar su propia cuenta mientras tiene la sesion activa.' })
     }
 
-    // Desasignar de cualquier mesa primero
-    await fastify.db.query('UPDATE mesas SET operador_id = NULL, estado = \'inactiva\' WHERE operador_id = $1', [userId])
+    // Proteccion: no eliminar al unico admin activo
+    const { rows: [uTarget] } = await fastify.db.query(
+      'SELECT rol FROM usuarios WHERE id = $1 AND eliminado_en IS NULL', [userId]
+    )
+    if (!uTarget) return reply.status(404).send({ error: 'Usuario no encontrado o ya eliminado' })
 
-    try {
-      const { rows: [usuario] } = await fastify.db.query(
-        'DELETE FROM usuarios WHERE id = $1 RETURNING id, username',
+    if (uTarget.rol === 'admin') {
+      const { rows: [admCount] } = await fastify.db.query(
+        `SELECT COUNT(*) AS total FROM usuarios WHERE rol = 'admin' AND activo = true AND eliminado_en IS NULL AND id != $1`,
         [userId]
       )
-      if (!usuario) return reply.status(404).send({ error: 'Usuario no encontrado' })
-
-      await fastify.db.query(
-        `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
-         VALUES ($1, 'ADMIN_ACTION', $2, $3)`,
-        [request.user.id, request.ip, JSON.stringify({ tipo: 'USUARIO_ELIMINADO', usuario_eliminado_id: userId, username: usuario.username })]
-      )
-      return reply.send({ success: true, message: `Usuario ${usuario.username} eliminado.` })
-    } catch (err) {
-      if (err.code === '23503') {
-        await fastify.db.query('UPDATE usuarios SET activo = false WHERE id = $1', [userId])
-        return reply.send({ success: true, message: 'Usuario desactivado debido a registros históricos vinculados.' })
+      if (parseInt(admCount.total, 10) === 0) {
+        return reply.status(400).send({ error: 'No se puede eliminar al único administrador activo del sistema.' })
       }
-      throw err
     }
+
+    // Si el usuario tenía mesas asignadas, cancelar turnos en atención y liberarlas
+    const { rows: mesasUsuario } = await fastify.db.query(
+      `SELECT id FROM mesas WHERE operador_id = $1`, [userId]
+    )
+    for (const m of mesasUsuario) {
+      const { rows: turnosCanc } = await fastify.db.query(
+        `UPDATE turnos SET estado = 'cancelado', finalizado_en = NOW()
+         WHERE mesa_id = $1 AND estado = 'en_atencion'
+         RETURNING id, numero`,
+        [m.id]
+      )
+      for (const tc of turnosCanc) {
+        await fastify.db.query(
+          `INSERT INTO audit_log (mesa_id, operador_id, turno_id, accion, ip_origen, metadata_json)
+           VALUES ($1, $2, $3, 'TURNO_CANCELADO', $4, $5)`,
+          [m.id, request.user.id, tc.id, request.ip, JSON.stringify({ motivo: 'usuario_eliminado_por_admin', turno_numero: tc.numero })]
+        )
+        await fastify.broadcast('admin:all', 'turno_cancelado', { turno_id: tc.id, turno_numero: tc.numero, mesa_id: m.id })
+        await fastify.broadcast('lote:activo', 'rezagados_actualizados', { accion: 'cancelado', turno_id: tc.id, turno_numero: tc.numero, mesa_id: m.id })
+      }
+    }
+
+    // Desasignar de cualquier mesa y guardar cuáles eran para broadcast WS
+    const { rows: mesasLiberadas } = await fastify.db.query(
+      `UPDATE mesas SET operador_id = NULL, estado = 'inactiva'
+       WHERE operador_id = $1
+       RETURNING id, numero, nombre, estado, operador_id`,
+      [userId]
+    )
+
+    // Borrado lógico permanente: libera el username para que pueda ser reusado si se crea de nuevo
+    const { rows: [usuario] } = await fastify.db.query(
+      `UPDATE usuarios
+       SET eliminado_en = NOW(), activo = false
+       WHERE id = $1 AND eliminado_en IS NULL
+       RETURNING id, username`,
+      [userId]
+    )
+    if (!usuario) return reply.status(404).send({ error: 'Usuario no encontrado' })
+
+    await fastify.db.query(
+      `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
+       VALUES ($1, 'ADMIN_ACTION', $2, $3)`,
+      [request.user.id, request.ip, JSON.stringify({ tipo: 'USUARIO_ELIMINADO', usuario_eliminado_id: userId, username: usuario.username })]
+    )
+
+    for (const mesa of mesasLiberadas) {
+      await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
+      await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', { mesa, accion: 'liberada' })
+    }
+
+    await fastify.broadcast('admin:all', 'usuario_eliminado', { id: userId, username: usuario.username })
+
+    return reply.send({ success: true, message: `Usuario ${usuario.username} eliminado exitosamente.` })
   })
+
 
   // ── GET /admin/auditoria — Historial por fecha (RF-ADM-09) ───────────────
   fastify.get('/auditoria', {
@@ -328,35 +439,49 @@ module.exports = async function adminRoutes (fastify) {
     }
 
     // 1. KPIs Agregados
+    // - promedio_*: NULL cuando no hay atendidos (no 0) para que el cliente muestre "--"
+    // - mesas_activas: mesas que tuvieron actividad ese día (con turnos registrados)
     const { rows: [kpis] } = await fastify.db.query(
       `SELECT
          COUNT(*) FILTER (WHERE t.estado = 'atendido') AS total_atendidos,
          COUNT(*) FILTER (WHERE t.estado = 'cancelado') AS total_cancelados,
          COUNT(*) AS total_turnos,
-         COALESCE(ROUND(AVG(t.duracion_atencion_seg) FILTER (WHERE t.estado = 'atendido')), 0) AS promedio_atencion_seg,
-         COALESCE(ROUND(AVG(t.duracion_espera_seg) FILTER (WHERE t.estado = 'atendido')), 0) AS promedio_espera_seg,
-         COUNT(DISTINCT t.mesa_id) FILTER (WHERE t.mesa_id IS NOT NULL) AS mesas_activas
+         ROUND(AVG(t.duracion_atencion_seg) FILTER (WHERE t.estado = 'atendido')) AS promedio_atencion_seg,
+         ROUND(AVG(t.duracion_espera_seg)   FILTER (WHERE t.estado = 'atendido')) AS promedio_espera_seg,
+         COUNT(DISTINCT t.mesa_id) FILTER (WHERE t.mesa_id IS NOT NULL) AS mesas_con_actividad
        FROM turnos t
        WHERE t.creado_en >= ($1::date)::timestamptz
-         AND t.creado_en < (($1::date + 1)::timestamptz)
+         AND t.creado_en <  (($1::date + 1)::timestamptz)
          ${whereExtra}`,
       params
     )
 
-    // 2. Resumen por Mesa
+    // mesas_activas = mesas con estado='activa' y operador asignado AHORA (visión operativa real)
+    // Se calcula siempre sin filtros de fecha para que refleje la configuración actual
+    const { rows: [mesasOpRows] } = await fastify.db.query(
+      `SELECT COUNT(*) AS mesas_activas
+       FROM mesas
+       WHERE estado = 'activa' AND operador_id IS NOT NULL`
+    )
+
+    // 2. Resumen por Mesa — solo mesas con actividad en la fecha O actualmente activas con operador
+    // HAVING filtra mesas sin ningún turno en la fecha que además estén inactivas o sin operador
     const { rows: mesasResumen } = await fastify.db.query(
       `SELECT
          m.id AS mesa_id,
          m.numero AS mesa_numero,
          m.nombre AS mesa_nombre,
+         m.estado AS mesa_estado,
          COUNT(t.id) FILTER (WHERE t.estado = 'atendido') AS atendidos,
          COUNT(t.id) FILTER (WHERE t.estado = 'cancelado') AS cancelados,
-         COALESCE(ROUND(AVG(t.duracion_atencion_seg) FILTER (WHERE t.estado = 'atendido')), 0) AS promedio_atencion_seg
+         COUNT(t.id) AS total_turnos_dia,
+         ROUND(AVG(t.duracion_atencion_seg) FILTER (WHERE t.estado = 'atendido')) AS promedio_atencion_seg
        FROM mesas m
        LEFT JOIN turnos t ON t.mesa_id = m.id
          AND t.creado_en >= ($1::date)::timestamptz
-         AND t.creado_en < (($1::date + 1)::timestamptz)
-       GROUP BY m.id, m.numero, m.nombre
+         AND t.creado_en <  (($1::date + 1)::timestamptz)
+       GROUP BY m.id, m.numero, m.nombre, m.estado, m.operador_id
+       HAVING COUNT(t.id) > 0 OR (m.estado = 'activa' AND m.operador_id IS NOT NULL)
        ORDER BY m.numero ASC`,
       [fechaRef]
     )
@@ -375,34 +500,40 @@ module.exports = async function adminRoutes (fastify) {
        LEFT JOIN usuarios u ON t.operador_id = u.id
        LEFT JOIN lotes_voucher lv ON t.lote_id = lv.id
        WHERE t.creado_en >= ($1::date)::timestamptz
-         AND t.creado_en < (($1::date + 1)::timestamptz)
+         AND t.creado_en <  (($1::date + 1)::timestamptz)
          ${whereExtra}
-       ORDER BY t.id DESC
+       ORDER BY t.llamado_en DESC NULLS LAST, t.id DESC
        LIMIT 500`,
       params
     )
 
+    // Serializar preservando null para promedios (el frontend mostrará '--')
+    const toInt = v => (v === null || v === undefined) ? null : parseInt(v, 10)
+    const toIntZero = v => parseInt(v || '0', 10)
+
     return reply.send({
       fecha: fechaRef,
       kpis: {
-        total_atendidos: parseInt(kpis?.total_atendidos || '0', 10),
-        total_cancelados: parseInt(kpis?.total_cancelados || '0', 10),
-        total_turnos: parseInt(kpis?.total_turnos || '0', 10),
-        promedio_atencion_seg: parseInt(kpis?.promedio_atencion_seg || '0', 10),
-        promedio_espera_seg: parseInt(kpis?.promedio_espera_seg || '0', 10),
-        mesas_activas: parseInt(kpis?.mesas_activas || '0', 10)
+        total_atendidos:      toIntZero(kpis?.total_atendidos),
+        total_cancelados:     toIntZero(kpis?.total_cancelados),
+        total_turnos:         toIntZero(kpis?.total_turnos),
+        promedio_atencion_seg: toInt(kpis?.promedio_atencion_seg),   // null → '--' en cliente
+        promedio_espera_seg:   toInt(kpis?.promedio_espera_seg),     // null → '--' en cliente
+        mesas_activas:         toIntZero(mesasOpRows?.mesas_activas)  // mesas activas con operador ahora
       },
       mesas_resumen: mesasResumen.map(m => ({
-        mesa_id: m.mesa_id,
-        mesa_numero: m.mesa_numero,
-        mesa_nombre: m.mesa_nombre,
-        atendidos: parseInt(m.atendidos || '0', 10),
-        cancelados: parseInt(m.cancelados || '0', 10),
-        promedio_atencion_seg: parseInt(m.promedio_atencion_seg || '0', 10)
+        mesa_id:               m.mesa_id,
+        mesa_numero:           m.mesa_numero,
+        mesa_nombre:           m.mesa_nombre,
+        mesa_estado:           m.mesa_estado,
+        atendidos:             toIntZero(m.atendidos),
+        cancelados:            toIntZero(m.cancelados),
+        promedio_atencion_seg: toInt(m.promedio_atencion_seg)         // null → '--' en cliente
       })),
       turnos
     })
   })
+
 
   // ── GET /admin/reportes/exportar-xls — Exportar reporte Excel XLS ────────────
   // Semaforo: solo 1 descarga concurrente para evitar saturar BD y RAM.
@@ -619,6 +750,131 @@ module.exports = async function adminRoutes (fastify) {
     const { clave } = request.params
     const { valor } = request.body
 
+    const validadores = {
+      alerta_vouchers_restantes: (v) => {
+        const n = parseInt(v, 10)
+        if (isNaN(n) || n < 1 || n > 500) {
+          return 'El umbral de alerta de vouchers debe ser un número entero entre 1 y 500.'
+        }
+        return null
+      },
+      tv_escala_turnos: (v) => {
+        const n = parseInt(v, 10)
+        if (isNaN(n) || n < 75 || n > 140) {
+          return 'La escala de números de TV debe ser un número entero entre 75 y 140.'
+        }
+        return null
+      },
+      tv_escala_principal: (v) => {
+        const n = parseInt(v, 10)
+        if (isNaN(n) || n < 75 || n > 140) {
+          return 'La escala del turno principal de TV debe ser un número entero entre 75 y 140.'
+        }
+        return null
+      },
+      tv_escala_secundaria: (v) => {
+        const n = parseInt(v, 10)
+        if (isNaN(n) || n < 75 || n > 140) {
+          return 'La escala de turnos anteriores de TV debe ser un número entero entre 75 y 140.'
+        }
+        return null
+      },
+      voz_anuncio_activa: (v) => {
+        if (v !== 'true' && v !== 'false') {
+          return 'El valor de voz de anuncio debe ser "true" o "false".'
+        }
+        return null
+      },
+      mostrar_estimado_espera: (v) => {
+        if (v !== 'true' && v !== 'false') {
+          return 'El valor de mostrar estimado de espera debe ser "true" o "false".'
+        }
+        return null
+      },
+      kiosko_web_activo: (v) => {
+        if (v !== 'true' && v !== 'false') {
+          return 'El estado del Kiosko Web debe ser "true" o "false".'
+        }
+        return null
+      },
+      modo_generacion_turnos: (v) => {
+        if (v !== 'voucher_fisico' && v !== 'kiosko_web') {
+          return 'El modo de generación de turnos debe ser "voucher_fisico" o "kiosko_web".'
+        }
+        return null
+      },
+      kiosko_modo_uso: (v) => {
+        if (v !== 'estudiante' && v !== 'empleado') {
+          return 'La modalidad de uso del kiosko debe ser "estudiante" o "empleado".'
+        }
+        return null
+      },
+      kiosko_tope_diario: (v) => {
+        const n = parseInt(v, 10)
+        if (isNaN(n) || n < 0 || n > 99999) {
+          return 'El tope diario de turnos del kiosko debe ser un número entero mayor o igual a 0 (0 = sin límite).'
+        }
+        return null
+      },
+      kiosko_url_base: (v) => {
+        if (typeof v !== 'string' || v.length > 255) {
+          return 'La URL base del kiosko no debe superar los 255 caracteres.'
+        }
+        return null
+      },
+      impresora_activa: (v) => {
+        if (v !== 'true' && v !== 'false') {
+          return 'El estado de la impresora debe ser "true" o "false".'
+        }
+        return null
+      },
+      kiosko_impresion_automatica: (v) => {
+        if (v !== 'true' && v !== 'false') {
+          return 'El ajuste de impresión automática debe ser "true" o "false".'
+        }
+        return null
+      },
+      impresora_ip: (v) => {
+        if (typeof v !== 'string' || v.length > 45) {
+          return 'La dirección IP de la impresora no debe superar los 45 caracteres.'
+        }
+        return null
+      },
+      impresora_puerto: (v) => {
+        const n = parseInt(v, 10)
+        if (isNaN(n) || n < 1 || n > 65535) {
+          return 'El puerto de la impresora debe ser un número entre 1 y 65535 (estándar: 9100).'
+        }
+        return null
+      },
+      zona_horaria: (v) => {
+        if (typeof v !== 'string' || v.trim().length === 0 || v.length > 80) {
+          return 'La zona horaria debe ser una cadena válida no vacía (máximo 80 caracteres).'
+        }
+        return null
+      }
+    }
+
+    const validador = validadores[clave]
+    if (!validador) {
+      return reply.code(400).send({
+        statusCode: 400,
+        error: 'Bad Request',
+        mensaje: `La clave de configuración "${clave}" no es válida`,
+        message: `La clave de configuración "${clave}" no es válida`
+      })
+    }
+
+    const errorValidacion = validador(valor)
+    if (errorValidacion) {
+      return reply.code(400).send({
+        statusCode: 400,
+        error: 'Bad Request',
+        mensaje: errorValidacion,
+        message: errorValidacion
+      })
+    }
+
     const { rows: [cfg] } = await fastify.db.query(
       `INSERT INTO configuracion (clave, valor, actualizado_en, actualizado_por)
        VALUES ($3, $1, NOW(), $2)
@@ -628,6 +884,39 @@ module.exports = async function adminRoutes (fastify) {
       [valor, request.user.id, clave]
     )
 
+    // Sincronización automática bidireccional entre kiosko_web_activo y modo_generacion_turnos
+    if (clave === 'kiosko_web_activo') {
+      const nuevoModo = valor === 'true' ? 'kiosko_web' : 'voucher_fisico'
+      await fastify.db.query(
+        `INSERT INTO configuracion (clave, valor, actualizado_en, actualizado_por)
+         VALUES ('modo_generacion_turnos', $1, NOW(), $2)
+         ON CONFLICT (clave) DO UPDATE
+         SET valor = EXCLUDED.valor, actualizado_en = NOW(), actualizado_por = EXCLUDED.actualizado_por`,
+        [nuevoModo, request.user.id]
+      )
+      await Promise.all([
+        fastify.broadcast('admin:all', 'config_actualizada', { clave: 'modo_generacion_turnos', valor: nuevoModo }),
+        fastify.broadcast('tv:global', 'config_actualizada', { clave: 'modo_generacion_turnos', valor: nuevoModo }),
+        fastify.broadcast('kiosko:publico', 'config_actualizada', { clave: 'modo_generacion_turnos', valor: nuevoModo }),
+        fastify.broadcast('lote:activo', 'config_actualizada', { clave: 'modo_generacion_turnos', valor: nuevoModo })
+      ])
+    } else if (clave === 'modo_generacion_turnos') {
+      const nuevoActivo = valor === 'kiosko_web' ? 'true' : 'false'
+      await fastify.db.query(
+        `INSERT INTO configuracion (clave, valor, actualizado_en, actualizado_por)
+         VALUES ('kiosko_web_activo', $1, NOW(), $2)
+         ON CONFLICT (clave) DO UPDATE
+         SET valor = EXCLUDED.valor, actualizado_en = NOW(), actualizado_por = EXCLUDED.actualizado_por`,
+        [nuevoActivo, request.user.id]
+      )
+      await Promise.all([
+        fastify.broadcast('admin:all', 'config_actualizada', { clave: 'kiosko_web_activo', valor: nuevoActivo }),
+        fastify.broadcast('tv:global', 'config_actualizada', { clave: 'kiosko_web_activo', valor: nuevoActivo }),
+        fastify.broadcast('kiosko:publico', 'config_actualizada', { clave: 'kiosko_web_activo', valor: nuevoActivo }),
+        fastify.broadcast('lote:activo', 'config_actualizada', { clave: 'kiosko_web_activo', valor: nuevoActivo })
+      ])
+    }
+
     await fastify.db.query(
       `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
        VALUES ($1, 'CONFIG_MODIFICADA', $2, $3)`,
@@ -636,10 +925,12 @@ module.exports = async function adminRoutes (fastify) {
 
     await Promise.all([
       fastify.broadcast('admin:all', 'config_actualizada', { clave, valor }),
-      fastify.broadcast('tv:global', 'config_actualizada', { clave, valor })
+      fastify.broadcast('tv:global', 'config_actualizada', { clave, valor }),
+      fastify.broadcast('kiosko:publico', 'config_actualizada', { clave, valor }),
+      fastify.broadcast('lote:activo', 'config_actualizada', { clave, valor })
     ])
 
-    return reply.send({ configuracion: cfg })
+    return reply.send({ configuracion: cfg, clave: cfg.clave, valor: cfg.valor })
   })
 }
 

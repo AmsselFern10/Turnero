@@ -1,12 +1,21 @@
-'use strict'
+/**
+ * Suite de Verificacion de WebSockets y Tiempo Real
+ *
+ * Valida conexion con JWT, suscripcion a canales segmentados (mesa, tv, admin),
+ * heartbeat (ping/pong) y transmision reactiva de llamados.
+ *
+ * Requiere: Servidor HTTP/WS, Redis y Base de Datos corriendo.
+ * Ejecucion: node tests/ws-suite.test.js
+ */
 
 const WebSocket = require('ws')
 const { Pool } = require('pg')
 const Redis = require('ioredis')
 require('dotenv').config()
 
-const BASE_HTTP = 'http://localhost:3000'
-const BASE_WS = 'ws://localhost:3000'
+const PORT = process.env.APP_PORT_EXPOSED || process.env.APP_PORT || 3000
+const BASE_HTTP = process.env.APP_URL || `http://localhost:${PORT}`
+const BASE_WS = BASE_HTTP.replace('http', 'ws')
 
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -14,7 +23,7 @@ async function sleep(ms) {
 
 async function runSuite() {
   console.log('======================================================================')
-  console.log('🧪 SUITE DE VERIFICACIÓN COMPLETA — WEBSOCKET Y TIEMPO REAL (v2.1)')
+  console.log('SUITE DE VERIFICACION COMPLETA — WEBSOCKET Y TIEMPO REAL')
   console.log('======================================================================\n')
 
   let passed = 0
@@ -22,10 +31,10 @@ async function runSuite() {
 
   function assert(condition, message) {
     if (condition) {
-      console.log(`  ✅ [PASS] ${message}`)
+      console.log(`  [PASS] ${message}`)
       passed++
     } else {
-      console.error(`  ❌ [FAIL] ${message}`)
+      console.error(`  [FAIL] ${message}`)
       failed++
     }
   }
@@ -40,8 +49,12 @@ async function runSuite() {
   if (rateLimitKeys.length > 0) await redis.del(...rateLimitKeys)
 
   // Activar Lote y Mesas para pruebas de atención
-  await pool.query("UPDATE lotes_voucher SET estado = 'activo' WHERE id = (SELECT id FROM lotes_voucher LIMIT 1)")
+  await pool.query("SET app.permitir_retroceso_lote = 'on'")
   await pool.query("UPDATE mesas SET estado = 'activa', operador_id = NULL")
+  await pool.query("UPDATE lotes_voucher SET estado = 'cerrado' WHERE estado = 'activo'")
+  await pool.query("UPDATE lotes_voucher SET estado = 'activo', ultimo_numero_llamado = 0 WHERE id = (SELECT id FROM lotes_voucher ORDER BY id ASC LIMIT 1)")
+  await pool.query("DELETE FROM turnos")
+  await pool.query("UPDATE configuracion SET valor = 'voucher_fisico' WHERE clave = 'modo_generacion_turnos'")
 
   // ── 1. LOGIN ADMIN Y OPERADOR PARA OBTENER TOKENS ────────────────────────
   console.log('\n1. Autenticación preliminar...')

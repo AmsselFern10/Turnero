@@ -71,6 +71,15 @@ module.exports = async function authRoutes (fastify) {
       ip:     request.ip
     })
 
+    // Finalizar cualquier turno en_atencion de este operador para dejar la ventanilla libre
+    try {
+      await fastify.db.query(
+        `UPDATE turnos SET estado = 'atendido'
+         WHERE operador_id = $1 AND estado = 'en_atencion'`,
+        [request.user.id]
+      )
+    } catch (_) {}
+
     reply.clearCookie('refresh_token', { path: '/auth/refresh' })
     if (fastify.desconectarUsuario) {
       fastify.desconectarUsuario(request.user.id)
@@ -177,11 +186,12 @@ module.exports = async function authRoutes (fastify) {
                ORDER BY m.numero`
       params = []
     } else {
-      // Admin: todas las mesas
+      // Admin: todas las mesas no eliminadas
       query = `SELECT m.id, m.numero, m.nombre, m.estado,
                       u.nombre_completo AS operador_nombre
                FROM mesas m
-               LEFT JOIN usuarios u ON m.operador_id = u.id
+               LEFT JOIN usuarios u ON m.operador_id = u.id AND u.eliminado_en IS NULL
+               WHERE m.estado != 'eliminada' AND m.eliminado_en IS NULL
                ORDER BY m.numero`
       params = []
     }
@@ -323,6 +333,23 @@ module.exports = async function authRoutes (fastify) {
     const client = await fastify.db.connect()
     try {
       await client.query('BEGIN')
+
+      // Si el operador sale y queda un turno en atención sin concluir, cerrarlo como cancelado
+      const { rows: turnosCanc } = await client.query(
+        `UPDATE turnos SET estado = 'cancelado', finalizado_en = NOW()
+         WHERE operador_id = $1 AND estado = 'en_atencion'
+         RETURNING id, numero, mesa_id`,
+        [userId]
+      )
+      for (const tc of turnosCanc) {
+        await client.query(
+          `INSERT INTO audit_log (mesa_id, operador_id, turno_id, accion, ip_origen, metadata_json)
+           VALUES ($1, $2, $3, 'TURNO_CANCELADO', $4, $5)`,
+          [tc.mesa_id, userId, tc.id, request.ip, JSON.stringify({ motivo: 'operador_libera_mesa', turno_numero: tc.numero })]
+        )
+        await fastify.broadcast('admin:all', 'turno_cancelado', { turno_id: tc.id, turno_numero: tc.numero, mesa_id: tc.mesa_id })
+        await fastify.broadcast('lote:activo', 'rezagados_actualizados', { accion: 'cancelado', turno_id: tc.id, turno_numero: tc.numero, mesa_id: tc.mesa_id })
+      }
 
       // La mesa vuelve a 'activa' (disponible) al liberarse — no 'inactiva'
       const { rows: [mesa] } = await client.query(

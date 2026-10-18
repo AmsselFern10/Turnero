@@ -79,22 +79,27 @@ async function llamarSiguiente (fastify, { mesaId, operadorId }) {
         mesa_id:     r.mesa_id,
         mesa_numero: r.mesa_numero,
         mesa_nombre: r.mesa_nombre,
-        lote_numero: r.lote_numero
+        lote_numero: r.lote_numero,
+        origen:      r.modo || 'voucher_fisico'
       },
       vouchers_restantes: r.vouchers_restantes,
       proximo_numero:     r.proximo_numero,
-      es_idempotente:     r.es_idempotente
+      es_idempotente:     r.es_idempotente,
+      modo:               r.modo || 'voucher_fisico'
     }
   } catch (err) {
     const msg = err.message || ''
     if (msg.includes('no encontrada')) {
-      throw Object.assign(new Error(msg), { statusCode: 404 })
+      throw Object.assign(new Error(msg), { statusCode: 404, codigo: 'mesa_no_encontrada' })
     }
     if (msg.includes('no te está asignada')) {
-      throw Object.assign(new Error(msg), { statusCode: 403 })
+      throw Object.assign(new Error(msg), { statusCode: 403, codigo: 'mesa_no_asignada' })
+    }
+    if (msg.includes('No hay turnos en espera')) {
+      throw Object.assign(new Error('No hay turnos en espera en este momento.'), { statusCode: 409, codigo: 'sin_turnos_en_espera' })
     }
     if (msg.includes('Solo mesas activas') || msg.includes('lote activo') || msg.includes('agotado')) {
-      throw Object.assign(new Error(msg), { statusCode: 409 })
+      throw Object.assign(new Error(msg), { statusCode: 409, codigo: 'lote_o_mesa_invalida' })
     }
     throw err
   }
@@ -115,7 +120,7 @@ async function cancelarTurno (fastify, { turnoId, operadorId, mesaId }) {
   if (rows.length === 0) {
     throw Object.assign(
       new Error('Turno no encontrado o no está en atención en esta mesa'),
-      { statusCode: 404 }
+      { statusCode: 404, codigo: 'turno_no_encontrado' }
     )
   }
 
@@ -123,99 +128,91 @@ async function cancelarTurno (fastify, { turnoId, operadorId, mesaId }) {
 }
 
 /**
- * Generar turno para kiosko web (RF-GEN-02)
- * Crea un turno en estado 'esperando' cuando el módulo kiosko está activo.
+ * Obtener turnos rezagados (cancelados) de la jornada actual
  */
-async function generarTurnoKiosko (fastify, { ip }) {
-  // Verificar que el módulo kiosko está activo
-  const { rows: [cfg] } = await fastify.db.query(
-    `SELECT valor FROM configuracion WHERE clave = 'kiosko_web_activo'`
+async function obtenerRezagados (fastify) {
+  const { rows } = await fastify.db.query(
+    `SELECT t.id, t.numero, t.estado, t.origen, t.llamado_en, t.finalizado_en,
+            t.mesa_id, m.numero AS mesa_numero, m.nombre AS mesa_nombre,
+            t.operador_id, u.nombre_completo AS operador_nombre
+     FROM turnos t
+     LEFT JOIN mesas m ON t.mesa_id = m.id
+     LEFT JOIN usuarios u ON t.operador_id = u.id
+     WHERE t.estado = 'cancelado'
+       AND t.fecha_turno = fn_fecha_hoy()
+     ORDER BY t.finalizado_en DESC NULLS LAST, t.id DESC`
   )
-
-  if (cfg?.valor !== 'true') {
-    throw Object.assign(new Error('El módulo kiosko no está activo'), { statusCode: 503 })
-  }
-
-  const client = await fastify.db.connect()
-
-  try {
-    await client.query('BEGIN')
-
-    // Obtener lote activo con lock
-    const { rows: [lote] } = await client.query(
-      `SELECT id, numero_lote, numero_hasta, ultimo_numero_llamado
-       FROM lotes_voucher WHERE estado = 'activo' FOR UPDATE`
-    )
-
-    if (!lote) {
-      throw Object.assign(new Error('No hay lote activo'), { statusCode: 409 })
-    }
-
-    if (lote.ultimo_numero_llamado >= lote.numero_hasta) {
-      throw Object.assign(new Error('Lote agotado'), { statusCode: 409 })
-    }
-
-    const nuevoNumero = lote.ultimo_numero_llamado + 1
-
-    await client.query(
-      `UPDATE lotes_voucher SET ultimo_numero_llamado = $1 WHERE id = $2`,
-      [nuevoNumero, lote.id]
-    )
-
-    const token = require('crypto').randomBytes(32).toString('hex')
-
-    const { rows: [turno] } = await client.query(
-      `INSERT INTO turnos (numero, lote_id, estado, origen, token_consulta)
-       VALUES ($1, $2, 'esperando', 'kiosko_web', $3)
-       RETURNING id, numero, token_consulta, creado_en`,
-      [nuevoNumero, lote.id, token]
-    )
-
-    await client.query('COMMIT')
-
-    return {
-      numero:         turno.numero,
-      token:          turno.token_consulta,
-      creado_en:      turno.creado_en,
-      lote_numero:    lote.numero_lote,
-      posicion_en_cola: nuevoNumero - lote.ultimo_numero_llamado // aprox
-    }
-  } catch (err) {
-    try { await client.query('ROLLBACK') } catch (_) {}
-    throw err
-  } finally {
-    client.release()
-  }
+  return rows
 }
 
 /**
- * Consultar posición en cola por token (RF-GEN-03)
+ * Atender turno rezagado (atómico mediante fn_atender_rezagado)
  */
-async function consultarMiTurno (fastify, { token }) {
-  const { rows: [turno] } = await fastify.db.query(
-    `SELECT t.id, t.numero, t.estado, t.llamado_en, t.creado_en,
-            lv.ultimo_numero_llamado,
-            m.nombre AS mesa_nombre
-     FROM turnos t
-     JOIN lotes_voucher lv ON t.lote_id = lv.id
-     LEFT JOIN mesas m ON t.mesa_id = m.id
-     WHERE t.token_consulta = $1`,
-    [token]
-  )
+async function atenderRezagado (fastify, { turnoId, mesaId, operadorId }) {
+  try {
+    const { rows } = await fastify.db.query(
+      `SELECT * FROM fn_atender_rezagado($1, $2, $3)`,
+      [turnoId, mesaId, operadorId]
+    )
 
-  if (!turno) {
-    throw Object.assign(new Error('Turno no encontrado'), { statusCode: 404 })
-  }
+    const r = rows[0]
+    if (!r) {
+      throw Object.assign(new Error('Error inesperado al atender rezagado'), { statusCode: 500 })
+    }
 
-  const posicion = Math.max(0, turno.numero - turno.ultimo_numero_llamado)
-
-  return {
-    numero:     turno.numero,
-    estado:     turno.estado,
-    posicion:   posicion,
-    llamado_en: turno.llamado_en,
-    mesa:       turno.mesa_nombre
+    return {
+      turno: {
+        id:          r.turno_id,
+        numero:      r.turno_numero,
+        llamado_en:  r.llamado_en,
+        mesa_id:     r.mesa_id,
+        mesa_numero: r.mesa_numero,
+        mesa_nombre: r.mesa_nombre,
+        lote_numero: r.lote_numero,
+        origen:      r.origen || 'voucher_fisico',
+        token_consulta: r.token_consulta
+      },
+      vouchers_restantes: r.vouchers_restantes,
+      proximo_numero:     r.proximo_numero,
+      es_rezagado:        true
+    }
+  } catch (err) {
+    const msg = err.message || ''
+    if (msg.includes('no encontrada') || (msg.includes('Turno') && msg.includes('no encontrado'))) {
+      throw Object.assign(new Error(msg), { statusCode: 404, codigo: 'no_encontrado' })
+    }
+    if (msg.includes('no te está asignada')) {
+      throw Object.assign(new Error(msg), { statusCode: 403, codigo: 'mesa_no_asignada' })
+    }
+    if (msg.includes('ya fue atendido') || msg.includes('no está disponible') || msg.includes('Solo mesas activas')) {
+      throw Object.assign(new Error(msg), { statusCode: 409, codigo: 'turno_no_disponible' })
+    }
+    throw err
   }
 }
 
-module.exports = { llamarSiguiente, cancelarTurno, generarTurnoKiosko, consultarMiTurno }
+const kioskoService = require('../kiosko/service')
+
+/**
+ * Generar turno para kiosko web (RF-GEN-02 con numeración propia).
+ */
+async function generarTurnoKiosko (fastify, opts) {
+  return kioskoService.generarTurno(fastify, opts)
+}
+
+/**
+ * Consultar posición en cola por token (RF-GEN-03).
+ */
+async function consultarMiTurno (fastify, opts) {
+  return kioskoService.consultarMiTurno(fastify, opts)
+}
+
+module.exports = {
+  llamarSiguiente,
+  cancelarTurno,
+  obtenerRezagados,
+  atenderRezagado,
+  generarTurnoKiosko,
+  consultarMiTurno
+}
+

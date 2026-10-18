@@ -17,7 +17,8 @@
 .btn-warning,
 .btn-success,
 .btn-ghost,
-.btn-secondary {
+.btn-secondary,
+.btn-accent {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -39,7 +40,8 @@
 .btn-warning:active,
 .btn-success:active,
 .btn-ghost:active,
-.btn-secondary:active {
+.btn-secondary:active,
+.btn-accent:active {
   transform: scale(0.98);
 }
 
@@ -49,7 +51,8 @@
 .btn-warning:disabled,
 .btn-success:disabled,
 .btn-ghost:disabled,
-.btn-secondary:disabled {
+.btn-secondary:disabled,
+.btn-accent:disabled {
   opacity: 0.65;
   cursor: not-allowed;
   transform: none;
@@ -132,6 +135,18 @@
   color: var(--text-main);
 }
 
+/* Botón de Acento Institucional Suave (Kiosko, Pantalla TV) */
+.btn-accent {
+  background-color: var(--primary-light);
+  border-color: var(--primary-border);
+  color: var(--primary-cobalt);
+  box-shadow: var(--shadow-xs);
+}
+.btn-accent:hover:not(:disabled) {
+  background-color: #DBEAFE;
+  color: var(--primary-hover);
+}
+
 /* Modificadores de Tamaño para Botones */
 .btn-sm {
   padding: 0.375rem 0.75rem;
@@ -181,6 +196,39 @@
   border: 1px solid var(--color-warning-border);
   border-radius: 1rem;
   color: #78350F;
+}
+
+/* Tarjeta interactiva de selección de mesa en pantalla de acceso */
+.card-mesa-select {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.75rem; /* 12px rounded-xl */
+  padding: 1rem;
+  height: 9rem; /* 36 */
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+}
+.card-mesa-select:hover:not(:disabled) {
+  border-color: var(--primary-cobalt);
+  box-shadow: var(--shadow-md);
+}
+.card-mesa-select:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.card-mesa-select:focus-visible {
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.25);
+}
+.card-mesa-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 /* ── 3. Pills e Indicadores de Estado (.pill*) ─────────────────────────────── */
@@ -240,6 +288,24 @@
   align-items: center;
   gap: 0.375rem;
   box-shadow: var(--shadow-xs);
+}
+
+/* ── 3b. Atajos de Teclado Operativos (.kbd-shortcut) ───────────────────────── */
+.kbd-shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  background-color: #F1F5F9;
+  border: 1px solid var(--border-subtle);
+  font-family: 'JetBrains Mono', monospace;
+  font-feature-settings: "tnum" 1;
+  font-size: 0.6875rem; /* 11px */
+  font-weight: 600;
+  color: var(--text-main);
+  box-shadow: var(--shadow-xs);
+  line-height: 1.2;
 }
 
 /* ── 4. Layout Institucional (.app-header, .app-footer) ─────────────────────── */
@@ -347,6 +413,16 @@
   padding: 1rem;
 }
 
+/* Variante para modales de confirmación que apilan sobre otros modales */
+.modal-backdrop--top {
+  z-index: 60;
+}
+
+/* Variante para alertas críticas o bloqueos de sesión que deben sobreponerse a todo */
+.modal-backdrop--alert {
+  z-index: 200;
+}
+
 .modal-box {
   background-color: var(--card-bg);
   border: 1px solid var(--border-subtle);
@@ -357,7 +433,50 @@
   box-shadow: var(--shadow-md);
 }
 
-/* ── 8. Banners y Alertas de Sistema ────────────────────────────────────────── */
+/* ── 8. Contenedor de Notificaciones Global (.toast-container) ──────────────── */
+/*
+ * Reemplaza las clases arbitrarias de Tailwind (left-1/2, -translate-x-1/2, z-[100])
+ * que NO están disponibles en el CSS precompilado en redes LAN sin acceso a CDN.
+ * Este es el único lugar donde se define el posicionamiento del sistema de toasts.
+ */
+.toast-container {
+  position: fixed;
+  top: 1.25rem;           /* top-5 */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;           /* por encima de modales (z-index: 60) y header */
+  width: 100%;
+  max-width: 28rem;       /* max-w-md generoso */
+  padding-inline: 1rem;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.625rem;          /* gap-2.5 */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ── 9. Toast — Variantes por Tipo (Bordes semánticos en CSS puro) ──────────── */
+/*
+ * Reemplaza las clases arbitrarias de Tailwind (border-2, border-blue-400, etc.)
+ * que NO están en el CSS precompilado del proyecto LAN.
+ * Cada variante añade un borde de 2px con su color institucional.
+ */
+.toast--success {
+  border: 2px solid #6EE7B7; /* emerald-300 */
+}
+.toast--error {
+  border: 2px solid #FCA5A5; /* rose-300 */
+}
+.toast--warning {
+  border: 2px solid #FCD34D; /* amber-300 */
+}
+.toast--info {
+  border: 2px solid #60A5FA; /* blue-400 — distinguible del success */
+}
+
+/* ── 10. Banners y Alertas de Sistema ───────────────────────────────────────── */
 .banner-reconnect {
   position: fixed;
   top: 0;
@@ -380,3 +499,35 @@
   padding: 0.75rem;
   font-size: 0.75rem;
 }
+
+.alert-warning {
+  background-color: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  color: #78350F;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.75rem;
+}
+
+.alert-success {
+  background-color: var(--color-success-bg);
+  border: 1px solid var(--color-success-border);
+  color: #065F46;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.75rem;
+}
+
+/* ── 11. Fallback de Impresión (la impresión real usa ventana aislada) ──────── */
+@media print {
+  /* Solo como seguridad si el usuario imprime la página directamente */
+  header, footer, nav, button,
+  .no-print, #global-toast-container,
+  .pill, .alert-danger, .card-subtle { display: none !important; }
+
+  body { background: #fff !important; }
+  .card { box-shadow: none !important; border-color: #cbd5e1 !important; }
+}
+
+
+

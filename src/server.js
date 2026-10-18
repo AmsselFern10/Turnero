@@ -1,4 +1,5 @@
 'use strict'
+// Reload for tv_escala_turnos
 
 // Captura errores no controlados ANTES de levantar Fastify (RNF-MAN-05)
 process.on('uncaughtException', (err) => {

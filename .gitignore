@@ -1,7 +1,10 @@
 # Secrets y credenciales
 .env
-.env.local
-.env.production
+.env.*
+!.env.example
+
+# Scratch y temporales
+scratch/
 
 # Dependencias
 node_modules/

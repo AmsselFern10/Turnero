@@ -1,4 +1,12 @@
-'use strict'
+/**
+ * Pruebas de Carga y Estres — 10 Ventanillas y 2 Pantallas TV
+ *
+ * Simula 10 ventanillas concurrentes y multiples pantallas TV recibiendo
+ * difusiones continuas de nuevos llamados a traves de WebSockets.
+ *
+ * Requiere: Servidor HTTP/WS y Base de Datos corriendo.
+ * Ejecucion: node tests/panel-tv-stress.test.js
+ */
 
 const WebSocket = require('ws')
 const { Pool } = require('pg')
@@ -6,8 +14,9 @@ const crypto = require('crypto')
 const bcrypt = require('bcrypt')
 require('dotenv').config()
 
-const BASE_HTTP = 'http://localhost:3000'
-const BASE_WS = 'ws://localhost:3000'
+const PORT = process.env.APP_PORT_EXPOSED || process.env.APP_PORT || 3000
+const BASE_HTTP = process.env.APP_URL || `http://localhost:${PORT}`
+const BASE_WS = BASE_HTTP.replace('http', 'ws')
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -15,26 +24,28 @@ function sleep(ms) {
 
 async function run() {
   console.log('======================================================================')
-  console.log('🔬 REVISIÓN PANEL DE MESA ↔ TV & PRUEBAS DE CARGA/STRESS (10 MESAS + 2 TV)')
+  console.log('PRUEBAS DE CARGA Y ESTRES — 10 MESAS + 2 TV (WEBSOCKET)')
   console.log('======================================================================\n')
 
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+  const connectionString = process.env.DATABASE_URL ||
+    `postgresql://${process.env.DB_USER || 'turnero_app'}:${process.env.DB_PASSWORD || ''}@${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT_EXPOSED || 5432}/${process.env.DB_NAME || 'turnero'}`
+  const pool = new Pool({ connectionString })
   let passed = 0
   let failed = 0
 
   function assert(condition, message) {
     if (condition) {
-      console.log(`  ✅ [PASS] ${message}`)
+      console.log(`  [PASS] ${message}`)
       passed++
     } else {
-      console.error(`  ❌ [FAIL] ${message}`)
+      console.error(`  [FAIL] ${message}`)
       failed++
     }
   }
 
   // Limpiar límites de tasa en Redis
   const Redis = require('ioredis')
-  const redis = new Redis(process.env.REDIS_URL || 'redis://:turnero_redis@localhost:6379', { password: process.env.REDIS_PASSWORD || 'turnero_redis' })
+  const redis = new Redis(process.env.REDIS_URL || `redis://:${process.env.REDIS_PASSWORD || 'turnero_redis'}@${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT_EXPOSED || 6379}`, { password: process.env.REDIS_PASSWORD || 'turnero_redis' })
   const rlKeys = await redis.keys('fastify-rate-limit-*')
   if (rlKeys.length > 0) await redis.del(...rlKeys)
 
@@ -48,7 +59,7 @@ async function run() {
     await pool.query(`
       INSERT INTO usuarios (username, password_hash, rol, nombre_completo, activo)
       VALUES ($1, $2, 'operador', $3, true)
-      ON CONFLICT (username) DO UPDATE SET activo = true, password_hash = $2
+      ON CONFLICT (username) WHERE eliminado_en IS NULL DO UPDATE SET activo = true, password_hash = $2
     `, [`op${i}`, passwordHash, `Operador ${i}`])
   }
 

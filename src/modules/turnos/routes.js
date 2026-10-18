@@ -3,6 +3,8 @@
 const {
   llamarSiguiente,
   cancelarTurno,
+  obtenerRezagados,
+  atenderRezagado,
   generarTurnoKiosko,
   consultarMiTurno
 } = require('./service')
@@ -114,6 +116,18 @@ module.exports = async function turnosRoutes (fastify) {
                 turno_numero:       turno.numero,
                 vouchers_restantes,
                 tipo_evento:        'llamado'
+              }),
+              // Kiosko público: un solo canal de aviso para todos los smartphones en espera
+              fastify.broadcast('kiosko:publico', 'llamados', {
+                ultimo_llamado: {
+                  numero:         turno.numero,
+                  mesa_numero:    turno.mesa_numero,
+                  mesa_nombre:    turno.mesa_nombre,
+                  llamado_en:     turno.llamado_en
+                },
+                mesa_id,
+                proximo_numero,
+                turnos_esperando: vouchers_restantes
               })
             ])
           } catch (broadcastErr) {
@@ -172,14 +186,227 @@ module.exports = async function turnosRoutes (fastify) {
       mesaId: mesa_id
     })
 
-    // Notificar al admin
-    await fastify.broadcast('admin:all', 'turno_cancelado', {
-      turno_id:    turno.id,
-      turno_numero: turno.numero,
-      mesa_id
-    })
+    // Notificar al admin y actualizar listas de rezagados en operadores
+    await Promise.allSettled([
+      fastify.broadcast('admin:all', 'turno_cancelado', {
+        turno_id:    turno.id,
+        turno_numero: turno.numero,
+        mesa_id
+      }),
+      fastify.broadcast('lote:activo', 'rezagados_actualizados', {
+        accion:       'cancelado',
+        turno_id:     turno.id,
+        turno_numero: turno.numero,
+        mesa_id
+      })
+    ])
 
     return reply.status(200).send({ message: 'Turno cancelado', turno })
+  })
+
+  // ── GET /turnos/rezagados — Listar turnos cancelados de la jornada ──────────
+  fastify.get('/rezagados', {
+    preHandler: [fastify.authorizeRol('operador', 'admin')]
+  }, async (request, reply) => {
+    const turnos = await obtenerRezagados(fastify)
+    return reply.status(200).send({ turnos, total: turnos.length })
+  })
+
+  // ── POST /turnos/atender-rezagado — Atender un turno rezagado (atómico) ─────
+  fastify.post('/atender-rezagado', {
+    preHandler: [fastify.authorizeRol('operador', 'admin')],
+    config: {
+      rateLimit: {
+        max: 30,
+        timeWindow: '1 second',
+        keyGenerator: (req) => {
+          if (req.user?.id) return `rezagado:${req.user.id}`
+          const auth = req.headers?.authorization
+          if (auth && auth.startsWith('Bearer ')) {
+            try {
+              const decoded = fastify.jwt.decode(auth.slice(7))
+              if (decoded?.id) return `rezagado:${decoded.id}`
+            } catch (_) {}
+          }
+          return `rezagado:${req.ip}`
+        },
+        errorResponseBuilder: () => ({
+          statusCode: 429,
+          error: 'Rate limit',
+          message: 'Máximo 30 solicitudes por segundo por operador.'
+        })
+      }
+    },
+    schema: {
+      body: {
+        type: 'object',
+        required: ['turno_id', 'mesa_id'],
+        properties: {
+          turno_id: { type: 'integer', minimum: 1 },
+          mesa_id:  { type: 'integer', minimum: 1 }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const { turno_id, mesa_id } = request.body
+    const operadorId = request.user.id
+
+    // Idempotency-Key
+    const iKey = request.headers['idempotency-key']
+    if (iKey) {
+      if (fastify._idempotencyCache?.has(iKey)) {
+        fastify.log.info({ iKey, mesa_id, turno_id }, '[IDEM] Rezagado servido desde cache')
+        return reply.status(200).send(fastify._idempotencyCache.get(iKey))
+      }
+      if (fastify._idempotencyPromises?.has(iKey)) {
+        fastify.log.info({ iKey, mesa_id, turno_id }, '[IDEM] Esperando rezagado concurrente')
+        const enVuelo = await fastify._idempotencyPromises.get(iKey)
+        return reply.status(200).send(enVuelo)
+      }
+    }
+
+    const operacionRezagado = (async () => {
+      const resultado = await atenderRezagado(fastify, {
+        turnoId: turno_id,
+        mesaId: mesa_id,
+        operadorId
+      })
+
+      const { turno, vouchers_restantes, proximo_numero } = resultado
+
+      setImmediate(async () => {
+        try {
+          await Promise.allSettled([
+            // TV: anuncia el nuevo llamado del rezagado
+            fastify.broadcast('tv:global', 'nuevo_llamado', {
+              evento_id:      crypto.randomUUID(),
+              turno:          turno.numero,
+              numero:         turno.numero,
+              mesa_numero:    turno.mesa_numero,
+              mesa_nombre:    turno.mesa_nombre,
+              lote_numero:    turno.lote_numero,
+              proximo_numero: proximo_numero,
+              llamado_en:     turno.llamado_en,
+              es_rezagado:    true,
+              historial:      []
+            }),
+            // Panel de la mesa: actualiza el turno actual
+            fastify.broadcast(`mesa:${mesa_id}`, 'turno_llamado', {
+              turno,
+              proximo_numero,
+              vouchers_restantes,
+              es_rezagado: true
+            }),
+            // Admin: KPI update
+            fastify.broadcast('admin:all', 'kpi_update', {
+              mesa_id,
+              turno_numero:       turno.numero,
+              vouchers_restantes,
+              tipo_evento:        'rezagado'
+            }),
+            // Kiosko público: avisa al celular del estudiante (si origen fue kiosko_web)
+            fastify.broadcast('kiosko:publico', 'llamados', {
+              ultimo_llamado: {
+                numero:         turno.numero,
+                mesa_numero:    turno.mesa_numero,
+                mesa_nombre:    turno.mesa_nombre,
+                llamado_en:     turno.llamado_en
+              },
+              mesa_id,
+              proximo_numero,
+              turnos_esperando: vouchers_restantes
+            }),
+            // Lote/mesas: sincroniza listas de rezagados entre operarios
+            fastify.broadcast('lote:activo', 'rezagados_actualizados', {
+              accion:       'atendido',
+              turno_id:     turno.id,
+              turno_numero: turno.numero,
+              mesa_id,
+              mesa_numero:  turno.mesa_numero
+            })
+          ])
+        } catch (bErr) {
+          fastify.log.error({ err: bErr, mesa_id, turno_id: turno.id }, 'Error en broadcast de rezagado post-commit')
+        }
+      })
+
+      return { turno, proximo_numero, vouchers_restantes, es_rezagado: true }
+    })()
+
+    if (iKey && fastify._idempotencyPromises) {
+      fastify._idempotencyPromises.set(iKey, operacionRezagado)
+    }
+
+    let responseBody
+    try {
+      responseBody = await operacionRezagado
+    } finally {
+      if (iKey && fastify._idempotencyPromises) {
+        fastify._idempotencyPromises.delete(iKey)
+      }
+    }
+
+    if (iKey && fastify._idempotencyCache) {
+      fastify._idempotencyCache.set(iKey, responseBody)
+      setTimeout(() => fastify._idempotencyCache.delete(iKey), 60_000)
+    }
+
+    return reply.status(200).send(responseBody)
+  })
+
+  // ── POST /turnos/:id/finalizar — Finalizar turno en atención (RF-TURN) ───────
+  fastify.post('/:id/finalizar', {
+    preHandler: [fastify.authorizeRol('operador', 'admin')],
+    schema: {
+      params: {
+        type: 'object',
+        properties: { id: { type: 'integer' } }
+      },
+      body: {
+        type: 'object',
+        required: ['mesa_id'],
+        properties: { mesa_id: { type: 'integer' } }
+      }
+    }
+  }, async (request, reply) => {
+    const turnoId    = parseInt(request.params.id)
+    const { mesa_id } = request.body
+    const operadorId   = request.user.id
+
+    const { rows } = await fastify.db.query(
+      `UPDATE turnos
+       SET estado = 'atendido'
+       WHERE id = $1 AND mesa_id = $2 AND estado = 'en_atencion'
+       RETURNING id, numero, lote_id, llamado_en, finalizado_en, duracion_atencion_seg`,
+      [turnoId, mesa_id]
+    )
+
+    if (rows.length === 0) {
+      return reply.status(200).send({ message: 'El turno ya no estaba en atención' })
+    }
+
+    const turno = rows[0]
+
+    // Notificar admin, mesa y auditar
+    await Promise.allSettled([
+      fastify.broadcast('admin:all', 'kpi_update', {
+        mesa_id,
+        turno_numero: turno.numero,
+        tipo_evento:  'finalizado'
+      }),
+      fastify.broadcast(`mesa:${mesa_id}`, 'mesa_actualizada', {
+        mesa_id,
+        turno_id: turno.id,
+        estado:   'atendido'
+      }),
+      fastify.db.query(
+        `INSERT INTO audit_log (mesa_id, turno_id, operador_id, accion, metadata_json, ip_origen)
+         VALUES ($1, $2, $3, 'TURNO_FINALIZADO', $4, $5)`,
+        [mesa_id, turno.id, operadorId, JSON.stringify({ numero: turno.numero }), request.ip]
+      )
+    ])
+
+    return reply.status(200).send({ message: 'Turno finalizado con éxito', turno })
   })
 
   // ── POST /turnos/:id/rellamar — Re-llamar turno actual (RF-MESA / TV) ─────────
@@ -239,10 +466,9 @@ module.exports = async function turnosRoutes (fastify) {
       llamado_en:  new Date().toISOString()
     }
 
-    // Re-anunciar a la TV pública con evento propio 'turno_rellamado' (y alias 'rellamado')
+    // Re-anunciar a la TV pública con evento oficial 'turno_rellamado'
     await Promise.all([
       fastify.broadcast('tv:global', 'turno_rellamado', payloadRellamado),
-      fastify.broadcast('tv:global', 'rellamado', payloadRellamado),
       fastify.db.query(
         `INSERT INTO audit_log (mesa_id, turno_id, operador_id, accion, metadata_json, ip_origen)
          VALUES ($1, $2, $3, 'TURNO_RELLAMADO', $4, $5)`,
@@ -268,6 +494,7 @@ module.exports = async function turnosRoutes (fastify) {
     // Exactamente 1 query consolidada a PostgreSQL (presupuesto 1 query)
     const { rows: [estadoData] } = await fastify.db.query(
       `SELECT
+         (SELECT valor FROM configuracion WHERE clave = 'modo_generacion_turnos' LIMIT 1) AS modo_config,
          (SELECT row_to_json(l) FROM (
             SELECT id, numero_lote, numero_hasta, ultimo_numero_llamado, estado
             FROM lotes_voucher WHERE estado = 'activo' LIMIT 1
@@ -281,7 +508,10 @@ module.exports = async function turnosRoutes (fastify) {
          (CASE WHEN $1::int IS NOT NULL THEN
             (SELECT row_to_json(t) FROM (
                SELECT id, numero, llamado_en, estado
-               FROM turnos WHERE mesa_id = $1::int AND estado = 'en_atencion'
+               FROM turnos
+               WHERE mesa_id = $1::int AND estado = 'en_atencion'
+                 AND llamado_en >= CURRENT_DATE
+                 AND llamado_en >= NOW() - INTERVAL '30 minutes'
                LIMIT 1
              ) t)
           ELSE NULL END) AS turno_actual,
@@ -291,6 +521,15 @@ module.exports = async function turnosRoutes (fastify) {
              WHERE mesa_id = $1::int AND estado = 'atendido' AND llamado_en >= CURRENT_DATE
             )
           ELSE 0 END) AS atendidos_hoy,
+         (SELECT numero
+          FROM turnos
+          WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = CURRENT_DATE
+          ORDER BY numero ASC LIMIT 1
+         ) AS proximo_kiosko,
+         (SELECT COUNT(*)::int
+          FROM turnos
+          WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = CURRENT_DATE
+         ) AS turnos_en_espera_kiosko,
          (SELECT json_agg(u) FROM (
             SELECT t.numero, m.numero AS mesa_numero, m.nombre AS mesa_nombre, t.llamado_en
             FROM turnos t
@@ -303,46 +542,95 @@ module.exports = async function turnosRoutes (fastify) {
       [mesaId]
     )
 
+    const modo = estadoData?.modo_config || 'voucher_fisico'
     const lote = estadoData?.lote || null
+    let proximoNumero = null
+    let vouchersRestantes = 0
+
+    if (modo === 'kiosko_web') {
+      proximoNumero = estadoData?.proximo_kiosko ?? null
+      vouchersRestantes = estadoData?.turnos_en_espera_kiosko ?? 0
+    } else {
+      proximoNumero = lote && lote.ultimo_numero_llamado < lote.numero_hasta ? lote.ultimo_numero_llamado + 1 : null
+      vouchersRestantes = lote ? Math.max(0, lote.numero_hasta - lote.ultimo_numero_llamado) : 0
+    }
 
     return reply.send({
+      modo,
       lote,
-      mesa:           estadoData?.mesa || null,
-      turno_actual:   estadoData?.turno_actual || null,
-      atendidos_hoy:  estadoData?.atendidos_hoy || 0,
-      ultimos_turnos: estadoData?.ultimos_turnos || [],
-      proximo_numero: lote && lote.ultimo_numero_llamado < lote.numero_hasta ? lote.ultimo_numero_llamado + 1 : null
+      mesa:               estadoData?.mesa || null,
+      turno_actual:       estadoData?.turno_actual || null,
+      atendidos_hoy:      estadoData?.atendidos_hoy || 0,
+      ultimos_turnos:     estadoData?.ultimos_turnos || [],
+      proximo_numero:     proximoNumero,
+      vouchers_restantes: vouchersRestantes
     })
   })
 
-  // ── POST /turnos/generar — Kiosko web (RF-GEN-02) ─────────────────────────
-  // Rate limit: 1 turno por IP cada 3 segundos para evitar generacion masiva
+  // ── POST /turnos/generar — Kiosko web (RF-GEN-02 con numeración propia) ───
+  // Rate limit: 5 intentos por IP o dispositivo cada 3 segundos
   fastify.post('/generar', {
     config: {
       rateLimit: {
-        max: 1,
+        max: 5,
         timeWindow: '3 seconds',
-        keyGenerator: (req) => `kiosko:${req.ip}`,
+        keyGenerator: (req) => `kiosko:${req.headers['x-device-id'] || req.ip}`,
         errorResponseBuilder: () => ({
           statusCode: 429,
-          error: { codigo: 'espere_antes_de_reintentar', mensaje: 'Solo puede generar un turno cada 3 segundos.' }
+          error: { codigo: 'espere_antes_de_reintentar', mensaje: 'Demasiadas solicitudes. Espere unos segundos antes de solicitar otro turno.' }
         })
       }
     }
   }, async (request, reply) => {
-    // Verificar limite de turnos en espera (maximo 200 simultaneos)
-    const { rows: [{ total }] } = await fastify.db.query(
-      `SELECT COUNT(*)::int AS total FROM turnos WHERE estado = 'esperando'`
-    )
-    if (total >= 200) {
-      return reply.status(503).header('Retry-After', '30').send({
-        error: { codigo: 'cola_llena', mensaje: 'La cola de espera esta llena. Intente en unos minutos.' }
-      })
-    }
+    const idempotencyKey = request.headers['idempotency-key'] || request.body?.idempotency_key
+    const deviceId       = request.headers['x-device-id'] || request.body?.device_id
+    const esTablet       = request.query?.modo === 'tablet' || request.body?.modo === 'tablet'
 
-    const resultado = await generarTurnoKiosko(fastify, { ip: request.ip })
+    const reqHost     = request.headers['x-forwarded-host'] || request.headers.host
+    const reqProtocol = request.headers['x-forwarded-proto'] || (request.raw.socket.encrypted ? 'https' : 'http')
 
-    await fastify.broadcast('admin:all', 'kiosko_turno_generado', { numero: resultado.numero })
+    const resultado = await generarTurnoKiosko(fastify, {
+      ip: request.ip,
+      idempotencyKey,
+      deviceId,
+      esTablet,
+      reqHost,
+      reqProtocol
+    })
+
+    setImmediate(async () => {
+      try {
+        const { rows: [{ count: enEspera }] } = await fastify.db.query(
+          `SELECT COUNT(*)::int AS count FROM turnos
+           WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()`
+        )
+        const { rows: [proximoRow] } = await fastify.db.query(
+          `SELECT numero FROM turnos
+           WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()
+           ORDER BY numero ASC LIMIT 1`
+        )
+        const proximo = proximoRow ? proximoRow.numero : null
+        await Promise.allSettled([
+          fastify.broadcast('admin:all', 'kiosko_turno_generado', {
+            numero: resultado.numero,
+            posicion: resultado.posicion_en_cola,
+            turnos_en_espera: enEspera,
+            proximo_numero: proximo
+          }),
+          fastify.broadcast('lote:activo', 'proximo_actualizado', {
+            proximo_numero: proximo,
+            vouchers_restantes: enEspera,
+            modo: 'kiosko_web'
+          }),
+          fastify.broadcast('kiosko:publico', 'llamados', {
+            proximo_numero: proximo,
+            turnos_esperando: enEspera
+          })
+        ])
+      } catch (wsErr) {
+        fastify.log.warn({ wsErr }, 'Error emitiendo eventos tras generar turno kiosko')
+      }
+    })
 
     return reply.status(201).send(resultado)
   })
@@ -424,17 +712,29 @@ module.exports = async function turnosRoutes (fastify) {
   // ── GET /turnos/configuracion-publica — Parámetros públicos para TV y Kiosko ──
   fastify.get('/configuracion-publica', async (request, reply) => {
     const { rows } = await fastify.db.query(
-      `SELECT clave, valor FROM configuracion WHERE clave IN ('voz_anuncio_activa', 'kiosko_web_activo', 'alerta_vouchers_restantes')`
+      `SELECT clave, valor FROM configuracion WHERE clave IN ('voz_anuncio_activa', 'kiosko_web_activo', 'alerta_vouchers_restantes', 'tv_escala_turnos', 'tv_escala_principal', 'tv_escala_secundaria')`
     )
     const configMap = {
       voz_anuncio_activa: true,
       kiosko_web_activo: false,
-      alerta_vouchers_restantes: 20
+      alerta_vouchers_restantes: 20,
+      tv_escala_turnos: 100,
+      tv_escala_principal: 100,
+      tv_escala_secundaria: 100
     }
     for (const r of rows) {
       if (r.clave === 'voz_anuncio_activa') configMap.voz_anuncio_activa = r.valor !== 'false'
       else if (r.clave === 'kiosko_web_activo') configMap.kiosko_web_activo = r.valor === 'true'
       else if (r.clave === 'alerta_vouchers_restantes') configMap.alerta_vouchers_restantes = parseInt(r.valor, 10) || 20
+      else if (r.clave === 'tv_escala_turnos') configMap.tv_escala_turnos = parseInt(r.valor, 10) || 100
+      else if (r.clave === 'tv_escala_principal') configMap.tv_escala_principal = parseInt(r.valor, 10) || 100
+      else if (r.clave === 'tv_escala_secundaria') configMap.tv_escala_secundaria = parseInt(r.valor, 10) || 100
+    }
+    if (!rows.some(r => r.clave === 'tv_escala_principal')) {
+      configMap.tv_escala_principal = configMap.tv_escala_turnos
+    }
+    if (!rows.some(r => r.clave === 'tv_escala_secundaria')) {
+      configMap.tv_escala_secundaria = configMap.tv_escala_turnos
     }
     return reply.send(configMap)
   })

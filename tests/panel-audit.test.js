@@ -1,12 +1,21 @@
-'use strict'
+/**
+ * Auditoria del Panel de Operador (Ventanilla)
+ *
+ * Verifica la recepcion de llamados en tiempo real, sincronizacion de estado
+ * y aislamiento de turnos en cada mesa operativa.
+ *
+ * Requiere: Servidor HTTP/WS y Base de Datos corriendo.
+ * Ejecucion: node tests/panel-audit.test.js
+ */
 
 const WebSocket = require('ws')
 const { Pool } = require('pg')
 const crypto = require('crypto')
 require('dotenv').config()
 
-const BASE_HTTP = 'http://localhost:3000'
-const BASE_WS = 'ws://localhost:3000'
+const PORT = process.env.APP_PORT_EXPOSED || process.env.APP_PORT || 3000
+const BASE_HTTP = process.env.APP_URL || `http://localhost:${PORT}`
+const BASE_WS = BASE_HTTP.replace('http', 'ws')
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -14,26 +23,28 @@ function sleep(ms) {
 
 async function run() {
   console.log('======================================================================')
-  console.log('🔬 AUDITORÍA DEL PANEL DE MESA — VERIFICACIÓN Y TESTS AUTOMATIZADOS')
+  console.log('AUDITORIA DEL PANEL DE MESA — VERIFICACION Y TIEMPO REAL')
   console.log('======================================================================\n')
 
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+  const connectionString = process.env.DATABASE_URL ||
+    `postgresql://${process.env.DB_USER || 'turnero_app'}:${process.env.DB_PASSWORD || ''}@${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT_EXPOSED || 5432}/${process.env.DB_NAME || 'turnero'}`
+  const pool = new Pool({ connectionString })
   let passed = 0
   let failed = 0
 
   function assert(condition, message) {
     if (condition) {
-      console.log(`  ✅ [PASS] ${message}`)
+      console.log(`  [PASS] ${message}`)
       passed++
     } else {
-      console.error(`  ❌ [FAIL] ${message}`)
+      console.error(`  [FAIL] ${message}`)
       failed++
     }
   }
 
   // Limpiar límites de tasa previos en Redis
   const Redis = require('ioredis')
-  const redis = new Redis(process.env.REDIS_URL || 'redis://:turnero_redis@localhost:6379', { password: process.env.REDIS_PASSWORD || 'turnero_redis' })
+  const redis = new Redis(process.env.REDIS_URL || `redis://:${process.env.REDIS_PASSWORD || 'turnero_redis'}@${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT_EXPOSED || 6379}`, { password: process.env.REDIS_PASSWORD || 'turnero_redis' })
   const rlKeys = await redis.keys('fastify-rate-limit-*')
   if (rlKeys.length > 0) await redis.del(...rlKeys)
 

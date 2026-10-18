@@ -19,8 +19,8 @@ module.exports = async function mesasRoutes (fastify) {
               COALESCE(th.atendidos_hoy, 0)::integer AS atendidos_hoy,
               th.tiempo_promedio_seg::integer AS tiempo_promedio_seg
        FROM mesas m
-       LEFT JOIN usuarios u ON m.operador_id = u.id
-       LEFT JOIN turnos t ON t.mesa_id = m.id AND t.estado = 'en_atencion'
+       LEFT JOIN usuarios u ON m.operador_id = u.id AND u.eliminado_en IS NULL
+       LEFT JOIN turnos t ON t.mesa_id = m.id AND t.estado = 'en_atencion' AND t.llamado_en >= CURRENT_DATE
        LEFT JOIN (
          SELECT mesa_id,
                 COUNT(*) AS atendidos_hoy,
@@ -29,6 +29,7 @@ module.exports = async function mesasRoutes (fastify) {
          WHERE estado = 'atendido' AND creado_en >= date_trunc('day', NOW())
          GROUP BY mesa_id
        ) th ON th.mesa_id = m.id
+       WHERE m.estado != 'eliminada' AND m.eliminado_en IS NULL
        ORDER BY m.numero`
     )
     return reply.send({ mesas: rows })
@@ -49,6 +50,14 @@ module.exports = async function mesasRoutes (fastify) {
     }
   }, async (request, reply) => {
     const { numero, nombre } = request.body
+
+    const { rows: conflicto } = await fastify.db.query(
+      `SELECT id FROM mesas WHERE numero = $1 AND estado != 'eliminada' AND eliminado_en IS NULL`,
+      [numero]
+    )
+    if (conflicto.length > 0) {
+      return reply.status(409).send({ error: `El número de mesa ${numero} ya está asignado a otra ventanilla.` })
+    }
 
     const { rows: [mesa] } = await fastify.db.query(
       `INSERT INTO mesas (numero, nombre) VALUES ($1, $2)
@@ -80,7 +89,7 @@ module.exports = async function mesasRoutes (fastify) {
       if (operador_id) {
         const { rows } = await fastify.db.query(
           `SELECT id, numero FROM mesas
-           WHERE operador_id = $1 AND id != $2 AND estado != 'inactiva'`,
+           WHERE operador_id = $1 AND id != $2 AND estado NOT IN ('inactiva', 'eliminada')`,
           [operador_id, mesaId]
         )
 
@@ -89,6 +98,24 @@ module.exports = async function mesasRoutes (fastify) {
             error: `Este operador ya está asignado a la Mesa ${rows[0].numero}. Un operador no puede estar en dos mesas.`
           })
         }
+      }
+
+      // Si se reasigna o libera la mesa, cerrar cualquier turno en atención previo como cancelado
+      const { rows: turnosACancelar } = await fastify.db.query(
+        `UPDATE turnos
+         SET estado = 'cancelado', finalizado_en = NOW()
+         WHERE mesa_id = $1 AND estado = 'en_atencion'
+         RETURNING id, numero`,
+        [mesaId]
+      )
+      for (const t of turnosACancelar) {
+        await fastify.db.query(
+          `INSERT INTO audit_log (mesa_id, operador_id, turno_id, accion, ip_origen, metadata_json)
+           VALUES ($1, $2, $3, 'TURNO_CANCELADO', $4, $5)`,
+          [mesaId, request.user.id, t.id, request.ip, JSON.stringify({ motivo: 'mesa_reasignada_o_liberada_admin', turno_numero: t.numero })]
+        )
+        await fastify.broadcast('admin:all', 'turno_cancelado', { turno_id: t.id, turno_numero: t.numero, mesa_id: mesaId })
+        await fastify.broadcast('lote:activo', 'rezagados_actualizados', { accion: 'cancelado', turno_id: t.id, turno_numero: t.numero, mesa_id: mesaId })
       }
 
       const { rows: [mesa] } = await fastify.db.query(
@@ -150,8 +177,11 @@ module.exports = async function mesasRoutes (fastify) {
     const mesaId      = parseInt(request.params.id)
     const { estado }  = request.body
 
-    // Operadores solo pueden pausar/activar su propia mesa
+    // Operadores solo pueden pausar/activar su propia mesa (no inactivar)
     if (request.user.rol === 'operador') {
+      if (estado === 'inactiva') {
+        return reply.status(403).send({ error: 'Los operadores no pueden inactivar mesas.' })
+      }
       const { rows: [mesa] } = await fastify.db.query(
         `SELECT operador_id FROM mesas WHERE id = $1`, [mesaId]
       )
@@ -160,11 +190,34 @@ module.exports = async function mesasRoutes (fastify) {
       }
     }
 
-    const { rows: [mesa] } = await fastify.db.query(
-      `UPDATE mesas SET estado = $1 WHERE id = $2
-       RETURNING id, numero, nombre, estado`,
-      [estado, mesaId]
-    )
+    // Al inactivar: si hay turno en atención, se cierra como cancelado (no concluido)
+    if (estado === 'inactiva') {
+      const { rows: turnosInactivados } = await fastify.db.query(
+        `UPDATE turnos
+         SET estado = 'cancelado', finalizado_en = NOW()
+         WHERE mesa_id = $1 AND estado = 'en_atencion'
+         RETURNING id, numero`,
+        [mesaId]
+      )
+      for (const t of turnosInactivados) {
+        await fastify.db.query(
+          `INSERT INTO audit_log (mesa_id, operador_id, turno_id, accion, ip_origen, metadata_json)
+           VALUES ($1, $2, $3, 'TURNO_CANCELADO', $4, $5)`,
+          [mesaId, request.user.id, t.id, request.ip, JSON.stringify({ motivo: 'mesa_inactivada_admin', turno_numero: t.numero })]
+        )
+        await fastify.broadcast('admin:all', 'turno_cancelado', { turno_id: t.id, turno_numero: t.numero, mesa_id: mesaId })
+        await fastify.broadcast('lote:activo', 'rezagados_actualizados', { accion: 'cancelado', turno_id: t.id, turno_numero: t.numero, mesa_id: mesaId })
+      }
+    }
+
+    // Al inactivar: liberar operador asignado. Al pausar: mantener asignación.
+    const updateQuery = estado === 'inactiva'
+      ? `UPDATE mesas SET estado = $1, operador_id = NULL WHERE id = $2
+         RETURNING id, numero, nombre, estado, operador_id`
+      : `UPDATE mesas SET estado = $1 WHERE id = $2
+         RETURNING id, numero, nombre, estado, operador_id`
+
+    const { rows: [mesa] } = await fastify.db.query(updateQuery, [estado, mesaId])
 
     if (!mesa) return reply.status(404).send({ error: 'Mesa no encontrada' })
 
@@ -175,8 +228,11 @@ module.exports = async function mesasRoutes (fastify) {
       [mesaId, request.user.id, accionLog, request.ip]
     )
 
-    await fastify.broadcast(`mesa:${mesaId}`, `mesa_${estado}`, { mesa })
+    // Notificar al panel del operador en esa mesa para que reaccione en tiempo real
+    const eventoMesa = estado === 'activa' ? 'mesa_activada' : estado === 'pausada' ? 'mesa_pausada' : 'mesa_inactivada'
+    await fastify.broadcast(`mesa:${mesaId}`, eventoMesa, { mesa })
     await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
+    await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', { mesa, accion: estado === 'inactiva' ? 'eliminada' : 'actualizada' })
 
     return reply.send({ mesa })
   })
@@ -203,7 +259,8 @@ module.exports = async function mesasRoutes (fastify) {
 
     if (numero !== undefined) {
       const { rows: conflicto } = await fastify.db.query(
-        'SELECT id FROM mesas WHERE numero = $1 AND id != $2', [numero, mesaId]
+        "SELECT id FROM mesas WHERE numero = $1 AND id != $2 AND estado != 'eliminada' AND eliminado_en IS NULL",
+        [numero, mesaId]
       )
       if (conflicto.length > 0) {
         return reply.status(409).send({ error: `El número de mesa ${numero} ya está asignado a otra ventanilla.` })
@@ -246,48 +303,67 @@ module.exports = async function mesasRoutes (fastify) {
   }, async (request, reply) => {
     const mesaId = parseInt(request.params.id)
 
-    // Validar que no tenga turno en atención activo
-    const { rows: turnosActivos } = await fastify.db.query(
-      `SELECT id, numero FROM turnos WHERE mesa_id = $1 AND estado = 'en_atencion'`,
+    // 1. Validar si tiene turno en atención con operador realmente asignado
+    const { rows: turnosConOperador } = await fastify.db.query(
+      `SELECT t.id, t.numero, m.operador_id, u.nombre_completo AS operador_nombre
+       FROM turnos t
+       JOIN mesas m ON t.mesa_id = m.id
+       LEFT JOIN usuarios u ON m.operador_id = u.id
+       WHERE t.mesa_id = $1 AND t.estado = 'en_atencion' AND m.operador_id IS NOT NULL`,
       [mesaId]
     )
-    if (turnosActivos.length > 0) {
+    if (turnosConOperador.length > 0) {
       return reply.status(409).send({
-        error: `No se puede eliminar la mesa: tiene el turno #${turnosActivos[0].numero} en atención activo.`
+        error: `No se puede eliminar la ventanilla mientras el operador ${turnosConOperador[0].operador_nombre || 'asignado'} tenga el turno #${turnosConOperador[0].numero} en atención activo.`
       })
     }
+
+    // 2. Si hay turno huérfano (sin operador), cerrarlo como cancelado
+    const { rows: turnosHuerfanos } = await fastify.db.query(
+      `UPDATE turnos
+       SET estado = 'cancelado', finalizado_en = NOW()
+       WHERE mesa_id = $1 AND estado = 'en_atencion'
+       RETURNING id, numero`,
+      [mesaId]
+    )
+    for (const th of turnosHuerfanos) {
+      await fastify.db.query(
+        `INSERT INTO audit_log (mesa_id, turno_id, accion, ip_origen, metadata_json)
+         VALUES ($1, $2, 'TURNO_CANCELADO', $3, $4)`,
+        [mesaId, th.id, request.ip, JSON.stringify({ motivo: 'eliminacion_mesa_turno_huerfano', turno_numero: th.numero })]
+      )
+      await fastify.broadcast('admin:all', 'turno_cancelado', { turno_id: th.id, turno_numero: th.numero, mesa_id: mesaId })
+      await fastify.broadcast('lote:activo', 'rezagados_actualizados', { accion: 'cancelado', turno_id: th.id, turno_numero: th.numero, mesa_id: mesaId })
+    }
+
 
     // Desasignar operador primero
     await fastify.db.query('UPDATE mesas SET operador_id = NULL WHERE id = $1', [mesaId])
 
-    try {
-      const { rows: [mesa] } = await fastify.db.query(
-        `DELETE FROM mesas WHERE id = $1 RETURNING id, numero, nombre`,
-        [mesaId]
-      )
+    // Marcar como eliminada permanentemente (libera el número de mesa para volver a usarlo)
+    const { rows: [mesa] } = await fastify.db.query(
+      `UPDATE mesas
+       SET estado = 'eliminada', operador_id = NULL, eliminado_en = NOW()
+       WHERE id = $1 AND estado != 'eliminada'
+       RETURNING id, numero, nombre`,
+      [mesaId]
+    )
 
-      if (!mesa) return reply.status(404).send({ error: 'Mesa no encontrada' })
+    if (!mesa) return reply.status(404).send({ error: 'Mesa no encontrada o ya eliminada' })
 
-      await fastify.db.query(
-        `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
-         VALUES ($1, 'ADMIN_ACTION', $2, $3)`,
-        [request.user.id, request.ip, JSON.stringify({ tipo: 'MESA_ELIMINADA', mesa_id: mesaId, numero: mesa.numero })]
-      )
+    await fastify.db.query(
+      `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
+       VALUES ($1, 'ADMIN_ACTION', $2, $3)`,
+      [request.user.id, request.ip, JSON.stringify({ tipo: 'MESA_ELIMINADA', mesa_id: mesaId, numero: mesa.numero })]
+    )
 
-      await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa_eliminada_id: mesaId })
-      return reply.send({ success: true, message: `Mesa ${mesa.numero} eliminada exitosamente.` })
-    } catch (err) {
-      // Si tiene historial que impide eliminación física, inactivar la mesa
-      await fastify.db.query(
-        `UPDATE mesas SET estado = 'inactiva', operador_id = NULL WHERE id = $1`,
-        [mesaId]
-      )
-      await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa_desactivada_id: mesaId })
-      return reply.send({
-        success: true,
-        message: 'Mesa desactivada y desasignada debido a registros históricos vinculados.'
-      })
-    }
+    await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa_eliminada_id: mesaId })
+    await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', {
+      mesa: { id: mesaId, numero: mesa.numero, estado: 'eliminada' },
+      accion: 'tomada'
+    })
+
+    return reply.send({ success: true, message: `Mesa ${mesa.numero} eliminada exitosamente.` })
   })
 }
 

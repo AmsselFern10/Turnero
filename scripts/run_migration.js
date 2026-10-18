@@ -18,7 +18,7 @@ async function run () {
   if (!file) { console.error('Usage: node run_migration.js <file.sql>'); process.exit(1) }
   const sql = fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8')
   await pool.query(sql)
-  console.log(`✓ Applied: ${file}`)
+  console.log(`[OK] Applied: ${file}`)
   const { rows } = await pool.query(`SELECT rol, COUNT(*) as n FROM usuarios GROUP BY rol ORDER BY rol`)
   console.log('Roles en BD:')
   rows.forEach(r => console.log(`  ${r.rol}: ${r.n} usuario(s)`))

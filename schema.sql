@@ -1,111 +1,98 @@
 -- =============================================================================
--- TURNERO DE MATRÍCULAS 2026
--- Schema de base de datos — v2.1
--- Motor: PostgreSQL 15+
---
--- Changelog v2.1:
---   - Eliminado sede_id de todas las tablas (sistema mono-sede)
---   - lotes_voucher: nombre eliminado, numeración automática (Lote 1, Lote 2…)
---   - origen simplificado: solo 'voucher_fisico' | 'kiosko_web'
---     (kiosko_web cubre tanto empleado en puerta como estudiante desde celular)
---   - Estado default de turnos: 'esperando'
---   - Flujo confirmado: "Llamar Siguiente" hace todo en 1 transacción atómica
+-- TURNERO DE MATRÍCULAS 2026 — SCHEMA INTEGRAL v2.1
+-- Migración 001_initial.sql: Estructura, restricciones, índices, funciones y configuración
+-- Motor: PostgreSQL 15+ (Mono-sede)
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- EXTENSIONES
+-- 1. EXTENSIONES Y SECUENCIAS
 -- -----------------------------------------------------------------------------
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- pg_cron es opcional (solo si el contenedor/entorno tiene soporte de la extensión)
-DO $$
-BEGIN
-    CREATE EXTENSION IF NOT EXISTS pg_cron;
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'pg_cron no disponible en este entorno; se omite la extensión.';
-END $$;
-
--- Secuencia para numeración legible de lotes: Lote 1, Lote 2, Lote 3…
 CREATE SEQUENCE IF NOT EXISTS seq_numero_lote START 1 INCREMENT 1;
 
--- =============================================================================
+-- -----------------------------------------------------------------------------
+-- 2. TABLAS BASE
+-- -----------------------------------------------------------------------------
+
 -- TABLA: usuarios
--- =============================================================================
 CREATE TABLE usuarios (
     id              BIGSERIAL    PRIMARY KEY,
-    username        VARCHAR(30)  NOT NULL UNIQUE,
+    username        VARCHAR(30)  NOT NULL,
     nombre_completo VARCHAR(100) NOT NULL,
-    password_hash   TEXT         NOT NULL,       -- bcrypt cost >= 12 obligatorio
+    password_hash   TEXT         NOT NULL,
     rol             VARCHAR(20)  NOT NULL DEFAULT 'operador'
-                        CHECK (rol IN ('operador', 'supervisor', 'admin')),
+                        CONSTRAINT ck_usuarios_rol CHECK (rol IN ('operador', 'admin')),
     activo          BOOLEAN      NOT NULL DEFAULT TRUE,
+    eliminado_en    TIMESTAMPTZ  DEFAULT NULL,
     creado_en       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     actualizado_en  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-COMMENT ON TABLE  usuarios               IS 'Operadores, supervisores y administradores del sistema';
-COMMENT ON COLUMN usuarios.password_hash IS 'Hash bcrypt cost >= 12. Nunca texto plano.';
+COMMENT ON TABLE usuarios IS 'Operadores y administradores del sistema (roles: operador, admin)';
 
--- =============================================================================
+-- TABLA: configuracion
+CREATE TABLE configuracion (
+    clave           VARCHAR(60)  PRIMARY KEY,
+    valor           TEXT         NOT NULL,
+    descripcion     TEXT,
+    actualizado_en  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    actualizado_por BIGINT       REFERENCES usuarios(id) ON DELETE SET NULL
+);
+
+COMMENT ON TABLE configuracion IS 'Parámetros dinámicos del sistema editables en caliente';
+
+-- Función institucional para cálculo de fecha actual en la zona horaria oficial
+CREATE OR REPLACE FUNCTION fn_fecha_hoy()
+RETURNS DATE LANGUAGE plpgsql STABLE AS $$
+DECLARE
+    v_zona TEXT;
+BEGIN
+    SELECT valor INTO v_zona FROM configuracion WHERE clave = 'zona_horaria';
+    IF v_zona IS NULL OR v_zona = '' THEN
+        v_zona := 'America/Tegucigalpa';
+    END IF;
+    RETURN (NOW() AT TIME ZONE v_zona)::DATE;
+EXCEPTION WHEN OTHERS THEN
+    RETURN (NOW() AT TIME ZONE 'America/Tegucigalpa')::DATE;
+END;
+$$;
+
 -- TABLA: mesas
--- El admin asigna operadores a mesas cada mañana desde el panel
--- =============================================================================
 CREATE TABLE mesas (
     id             BIGSERIAL    PRIMARY KEY,
-    numero         INTEGER      NOT NULL UNIQUE,  -- Número visible en TV y panel (1, 2…)
-    nombre         VARCHAR(60)  NOT NULL,          -- "Mesa 1 — Caja", "Mesa 3 — Docs"
+    numero         INTEGER      NOT NULL,
+    nombre         VARCHAR(60)  NOT NULL,
     estado         VARCHAR(20)  NOT NULL DEFAULT 'inactiva'
-                       CHECK (estado IN ('activa', 'pausada', 'inactiva')),
+                       CONSTRAINT ck_mesas_estado CHECK (estado IN ('activa', 'pausada', 'inactiva', 'eliminada')),
     operador_id    BIGINT       REFERENCES usuarios(id) ON DELETE SET NULL,
+    eliminado_en   TIMESTAMPTZ  DEFAULT NULL,
     creado_en      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     actualizado_en TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-COMMENT ON TABLE  mesas             IS 'Ventanillas de atención. El admin reconfigura operadores cada mañana.';
-COMMENT ON COLUMN mesas.operador_id IS 'Operador asignado hoy. NULL = mesa libre o inactiva.';
+COMMENT ON TABLE mesas IS 'Ventanillas o sitios de atención en sala';
 
--- =============================================================================
 -- TABLA: lotes_voucher
--- Representa un lote de tickets físicos impresos y distribuidos en el portón.
--- Es el CONTADOR CENTRAL — avanza atómicamente con cada llamado.
---
--- NUMERACIÓN:
---   Cada lote recibe un número correlativo automático: Lote 1, Lote 2…
---   via seq_numero_lote. No requiere que el admin ingrese nombre.
---
--- FLUJO:
---   Admin crea lote → activa → operadores llaman vouchers
---   → ultimo_numero_llamado avanza con FOR UPDATE (atómico, sin duplicados)
---   → al llegar a numero_hasta → alerta WS al admin
---
--- EXTENSIÓN EN CALIENTE:
---   Admin cambia numero_hasta de 500 → 700 sin reiniciar nada
---
--- REINICIO DESDE 1:
---   Admin cierra lote actual → crea Lote N+1 con numero_desde = 1
---
--- MULTI-DÍA:
---   El lote NO se reinicia automáticamente.
---   Hoy llegó al 300 → mañana continúa desde 301.
---   Al fin del día el admin pausa el lote; al día siguiente lo reactiva.
--- =============================================================================
 CREATE TABLE lotes_voucher (
     id                    BIGSERIAL    PRIMARY KEY,
-    numero_lote           INTEGER      NOT NULL UNIQUE DEFAULT nextval('seq_numero_lote'),
+    numero_lote           INTEGER      NOT NULL DEFAULT nextval('seq_numero_lote'),
     numero_desde          INTEGER      NOT NULL DEFAULT 1,
     numero_hasta          INTEGER      NOT NULL,
     ultimo_numero_llamado INTEGER      NOT NULL DEFAULT 0,
     estado                VARCHAR(20)  NOT NULL DEFAULT 'preparado'
-                              CHECK (estado IN (
-                                  'preparado',  -- Creado, aún no iniciado
-                                  'activo',     -- En uso actualmente
-                                  'pausado',    -- Pausado entre días
-                                  'agotado',    -- Llegó al último número
-                                  'cerrado'     -- Cerrado definitivamente
+                              CONSTRAINT ck_lotes_estado CHECK (estado IN (
+                                  'preparado',
+                                  'activo',
+                                  'pausado',
+                                  'agotado',
+                                  'cerrado',
+                                  'eliminado'
                               )),
-    fecha_creacion        DATE         NOT NULL DEFAULT CURRENT_DATE,
+    fecha_creacion        DATE         NOT NULL DEFAULT fn_fecha_hoy(),
     fecha_activacion      TIMESTAMPTZ,
     fecha_cierre          TIMESTAMPTZ,
+    eliminado_en          TIMESTAMPTZ  DEFAULT NULL,
     creado_por            BIGINT       REFERENCES usuarios(id) ON DELETE SET NULL,
     creado_en             TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     actualizado_en        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
@@ -116,119 +103,68 @@ CREATE TABLE lotes_voucher (
         CHECK (ultimo_numero_llamado >= 0 AND ultimo_numero_llamado <= numero_hasta)
 );
 
-COMMENT ON TABLE  lotes_voucher                      IS 'Lotes de vouchers físicos. Contador central multi-día.';
-COMMENT ON COLUMN lotes_voucher.numero_lote           IS 'Número correlativo auto-asignado: Lote 1, Lote 2… Se muestra en el UI.';
-COMMENT ON COLUMN lotes_voucher.numero_hasta          IS 'Último voucher declarado. Admin puede aumentarlo en caliente.';
-COMMENT ON COLUMN lotes_voucher.ultimo_numero_llamado IS 'Progreso actual. Avanza atómicamente con FOR UPDATE al llamar.';
+COMMENT ON TABLE lotes_voucher IS 'Contador central correlativo multi-día para vouchers físicos';
 
--- Solo puede haber 1 lote activo a la vez (Garantía RF-LOTE-02)
-CREATE UNIQUE INDEX ux_un_lote_activo
-    ON lotes_voucher ((estado))
-    WHERE estado = 'activo';
+-- TABLA: kiosko_contador_diario
+CREATE TABLE kiosko_contador_diario (
+    fecha          DATE        PRIMARY KEY,
+    ultimo_numero  INTEGER     NOT NULL DEFAULT 0,
+    actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
--- =============================================================================
+COMMENT ON TABLE kiosko_contador_diario IS 'Contador diario correlativo independiente para el autoservicio Kiosko Web';
+
 -- TABLA: turnos
--- Registro de cada voucher llamado a una mesa.
--- Los turnos se crean en el momento del llamado, no antes.
---
--- FLUJO VOUCHER FÍSICO (modo principal):
---
---   Operador presiona "Llamar Siguiente":
---   ┌─────────────────────────────────────────────────┐
---   │ BEGIN                                           │
---   │  1. Finaliza turno anterior de esta mesa        │
---   │     UPDATE turnos SET estado='atendido'         │
---   │     WHERE mesa_id=$1 AND estado='en_atencion'   │
---   │                                                 │
---   │  2. Obtiene siguiente número del lote           │
---   │     SELECT ... FROM lotes_voucher               │
---   │     WHERE estado='activo' FOR UPDATE            │
---   │     → nuevo = ultimo_numero_llamado + 1         │
---   │     UPDATE lotes_voucher SET                    │
---   │     ultimo_numero_llamado = nuevo               │
---   │                                                 │
---   │  3. Crea el turno                               │
---   │     INSERT INTO turnos (numero, estado='en_atencion')│
---   │                                                 │
---   │  4. Si nuevo = numero_hasta → emite alerta WS   │
---   │ COMMIT                                          │
---   └─────────────────────────────────────────────────┘
---
--- FLUJO KIOSKO WEB (empleado en puerta o estudiante desde celular):
---   POST /turnos/generar → INSERT estado='esperando'
---   Operador llama → UPDATE estado='en_atencion'
--- =============================================================================
 CREATE TABLE turnos (
     id                    BIGSERIAL    PRIMARY KEY,
     numero                INTEGER      NOT NULL,
-    lote_id               BIGINT       NOT NULL REFERENCES lotes_voucher(id),
-
-    -- -------------------------------------------------------------------------
-    -- Estado — 4 estados, flujo de 1 clic
-    -- -------------------------------------------------------------------------
+    fecha_turno           DATE         NOT NULL DEFAULT fn_fecha_hoy(),
+    lote_id               BIGINT       REFERENCES lotes_voucher(id),
     estado                VARCHAR(20)  NOT NULL DEFAULT 'esperando'
-                              CHECK (estado IN (
-                                  'esperando',    -- En cola (kiosko_web pre-registrado)
-                                  'en_atencion',  -- Llamado + siendo atendido (voucher: nace aquí)
-                                  'atendido',     -- Finalizado al presionar "Llamar Siguiente"
-                                  'cancelado'     -- No se presentó / desistió
+                              CONSTRAINT ck_turnos_estado CHECK (estado IN (
+                                  'esperando',
+                                  'en_atencion',
+                                  'atendido',
+                                  'cancelado'
                               )),
-
-    -- -------------------------------------------------------------------------
-    -- Origen: quién/cómo generó el turno
-    -- kiosko_web cubre tanto al empleado en puerta como al estudiante con celular
-    -- -------------------------------------------------------------------------
     origen                VARCHAR(20)  NOT NULL DEFAULT 'voucher_fisico'
-                              CHECK (origen IN (
-                                  'voucher_fisico', -- Portón entrega papel → operador llama
-                                  'kiosko_web'      -- URL/QR: empleado en puerta o estudiante
+                              CONSTRAINT ck_turnos_origen CHECK (origen IN (
+                                  'voucher_fisico',
+                                  'kiosko_web'
                               )),
-
-    -- -------------------------------------------------------------------------
-    -- Relaciones
-    -- -------------------------------------------------------------------------
-    mesa_id               BIGINT       REFERENCES mesas(id)    ON DELETE SET NULL,
-    operador_id           BIGINT       REFERENCES usuarios(id)  ON DELETE SET NULL,
-
-    -- -------------------------------------------------------------------------
-    -- Timestamps del ciclo de vida
-    -- -------------------------------------------------------------------------
+    mesa_id               BIGINT       REFERENCES mesas(id) ON DELETE SET NULL,
+    operador_id           BIGINT       REFERENCES usuarios(id) ON DELETE SET NULL,
     creado_en             TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    llamado_en            TIMESTAMPTZ,          -- SET al pasar a en_atencion (trigger)
-    finalizado_en         TIMESTAMPTZ,          -- SET al pasar a atendido/cancelado (trigger)
+    llamado_en            TIMESTAMPTZ,
+    finalizado_en         TIMESTAMPTZ,
+    duracion_espera_seg   INTEGER,
+    duracion_atencion_seg INTEGER,
+    token_consulta        VARCHAR(64)  CONSTRAINT ux_turnos_token_consulta UNIQUE,
+    idempotency_key       VARCHAR(64),
+    device_id             VARCHAR(64),
 
-    -- -------------------------------------------------------------------------
-    -- Métricas — calculadas automáticamente por trigger
-    -- -------------------------------------------------------------------------
-    duracion_espera_seg   INTEGER,              -- llamado_en - creado_en
-    duracion_atencion_seg INTEGER,              -- finalizado_en - llamado_en
-
-    -- Token para kiosko_web (NULL en voucher_fisico)
-    token_consulta        VARCHAR(64)  UNIQUE
+    CONSTRAINT ck_turnos_origen_atributos
+        CHECK (
+            (origen = 'voucher_fisico' AND lote_id IS NOT NULL) OR
+            (origen = 'kiosko_web' AND token_consulta IS NOT NULL)
+        )
 );
 
-COMMENT ON TABLE  turnos                       IS 'Vouchers llamados a mesa. En flujo voucher: creados directo en en_atencion.';
-COMMENT ON COLUMN turnos.numero                IS 'Número del voucher físico. Proviene del lote activo.';
-COMMENT ON COLUMN turnos.estado                IS 'voucher_fisico: nace en en_atencion. kiosko_web: nace en esperando.';
-COMMENT ON COLUMN turnos.origen                IS 'kiosko_web cubre empleado en puerta Y estudiante desde celular.';
-COMMENT ON COLUMN turnos.duracion_espera_seg   IS 'Solo aplica en kiosko_web (tiempo entre registro y llamado).';
-COMMENT ON COLUMN turnos.duracion_atencion_seg IS 'Segundos de atención efectiva. Calculado por trigger al finalizar.';
+COMMENT ON TABLE turnos IS 'Registro de turnos atendidos (voucher físico) o en cola (kiosko web)';
 
--- =============================================================================
 -- TABLA: audit_log
--- Trazabilidad inmutable. Solo INSERT. Nunca UPDATE ni DELETE.
--- =============================================================================
 CREATE TABLE audit_log (
     id            BIGSERIAL    PRIMARY KEY,
-    turno_id      BIGINT       REFERENCES turnos(id)         ON DELETE SET NULL,
-    mesa_id       BIGINT       REFERENCES mesas(id)          ON DELETE SET NULL,
-    operador_id   BIGINT       REFERENCES usuarios(id)        ON DELETE SET NULL,
-    lote_id       BIGINT       REFERENCES lotes_voucher(id)  ON DELETE SET NULL,
+    turno_id      BIGINT,
+    mesa_id       BIGINT,
+    operador_id   BIGINT,
+    lote_id       BIGINT,
     accion        VARCHAR(50)  NOT NULL
-                      CHECK (accion IN (
+                      CONSTRAINT audit_log_accion_check CHECK (accion IN (
                           -- Turno
                           'TURNO_GENERADO',
                           'TURNO_LLAMADO',
+                          'TURNO_RELLAMADO',
                           'ATENCION_FINALIZADA',
                           'TURNO_CANCELADO',
                           -- Lote
@@ -239,18 +175,18 @@ CREATE TABLE audit_log (
                           'LOTE_EXTENDIDO',
                           'LOTE_CERRADO',
                           'LOTE_NUEVO_DESDE_UNO',
-                          -- Mesa
+                          'LOTE_CONTADOR_AJUSTADO',
+                          -- Mesa / Operador
                           'MESA_ACTIVADA',
                           'MESA_PAUSADA',
                           'MESA_INACTIVADA',
                           'OPERADOR_ASIGNADO',
                           'OPERADOR_LIBERADO',
-                          'TURNO_RELLAMADO',
                           -- Sesión
                           'LOGIN_EXITOSO',
                           'LOGIN_FALLIDO',
                           'LOGOUT',
-                          -- Admin
+                          -- Administración
                           'USUARIO_CREADO',
                           'USUARIO_EDITADO',
                           'USUARIO_DESACTIVADO',
@@ -262,110 +198,108 @@ CREATE TABLE audit_log (
     metadata_json JSONB
 );
 
-COMMENT ON TABLE audit_log IS 'Log de auditoría inmutable. REVOKE UPDATE, DELETE para usuario de la app.';
+COMMENT ON TABLE audit_log IS 'Trazabilidad inmutable del sistema. Solo-INSERT.';
 
--- =============================================================================
--- TABLA: configuracion
--- =============================================================================
-CREATE TABLE configuracion (
-    clave           VARCHAR(60)  PRIMARY KEY,
-    valor           TEXT         NOT NULL,
-    descripcion     TEXT,
-    actualizado_en  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    actualizado_por BIGINT       REFERENCES usuarios(id) ON DELETE SET NULL
-);
+-- -----------------------------------------------------------------------------
+-- 3. ÍNDICES
+-- -----------------------------------------------------------------------------
 
-INSERT INTO configuracion (clave, valor, descripcion) VALUES
-    ('tiempo_max_atencion_min',   '10',             'Tiempo máximo sugerido por atención (min). Afecta semáforo en admin.'),
-    ('tiempo_max_pausa_min',      '15',             'Tiempo máximo de pausa por mesa (min).'),
-    ('alerta_vouchers_restantes', '20',             'Alertar al admin cuando queden N vouchers en el lote.'),
-    ('modo_generacion_turnos',    'voucher_fisico', 'Modo activo: voucher_fisico | kiosko_web | mixto'),
-    ('kiosko_web_activo',         'false',          'Habilita URL/QR pública para generar turno desde celular o por empleado.'),
-    ('mostrar_estimado_espera',   'true',           'Mostrar estimado de espera en TV cuando hay turnos en espera.');
+-- usuarios (unicidad entre usuarios activos/no eliminados)
+CREATE UNIQUE INDEX ux_usuarios_username_activos
+    ON usuarios (LOWER(username))
+    WHERE eliminado_en IS NULL;
 
--- =============================================================================
--- ÍNDICES
--- =============================================================================
+CREATE UNIQUE INDEX ux_usuarios_username_exacto_activos
+    ON usuarios (username)
+    WHERE eliminado_en IS NULL;
 
--- ── lotes_voucher ────────────────────────────────────────────────────────────
+-- mesas (unicidad de número solo entre mesas no eliminadas)
+CREATE UNIQUE INDEX ux_mesas_numero_activas
+    ON mesas (numero)
+    WHERE estado != 'eliminada' AND eliminado_en IS NULL;
 
--- Búsqueda O(1) del lote activo para la transacción FOR UPDATE.
--- NOTA: el ux_un_lote_activo ya es un índice parcial WHERE estado='activo',
---       pero este índice compuesto acelera cualquier filtro por estado.
-CREATE INDEX ix_lotes_estado
-    ON lotes_voucher (estado)
-    WHERE estado IN ('activo', 'pausado', 'preparado');
-
--- ── turnos ───────────────────────────────────────────────────────────────────
-
--- 2ª línea de defensa anti-duplicados (la 1ª es FOR UPDATE en el lote).
--- Si dos transacciones obtuvieran el mismo número (imposible con FOR UPDATE),
--- este UNIQUE index rechaza el segundo INSERT con error 23505.
-CREATE UNIQUE INDEX ux_turnos_lote_numero
-    ON turnos (lote_id, numero);
-
--- Turno activo de una mesa. Usado en:
---   UPDATE turnos SET estado='atendido' WHERE mesa_id=$1 AND estado='en_atencion'
--- Cardinalidad muy baja (1 fila por mesa activa) → O(1) siempre.
-CREATE UNIQUE INDEX uq_turnos_mesa_activa
-    ON turnos (mesa_id)
-    WHERE estado = 'en_atencion';
-
--- Turnos en espera (modo kiosko_web). Usado para calcular posición en cola.
--- NO se usa SKIP LOCKED aquí — el orden de llamado es serial y garantizado
--- por el FOR UPDATE en lotes_voucher. SKIP LOCKED solo aplicaría si varios
--- workers procesaran turnos en paralelo sin importar el orden (no es el caso).
-CREATE INDEX ix_turnos_esperando
-    ON turnos (lote_id, numero ASC)
-    WHERE estado = 'esperando';
-
--- Reportes por lote (KPIs del admin)
-CREATE INDEX ix_turnos_lote_estado
-    ON turnos (lote_id, estado);
-
--- Reportes históricos por fecha
-CREATE INDEX ix_turnos_fecha
-    ON turnos (creado_en DESC);
-
--- Índices en Foreign Keys (evitan Seq Scans en cascada y joins)
-CREATE INDEX ix_turnos_operador_id ON turnos (operador_id);
-CREATE INDEX ix_turnos_mesa_id     ON turnos (mesa_id);
-
--- Pantalla pública de TV (RF-TV-01, RF-TV-02) — últimos llamados ordenados rápidamente
-CREATE INDEX ix_turnos_tv_recientes
-    ON turnos (llamado_en DESC NULLS LAST)
-    WHERE estado IN ('en_atencion', 'atendido');
-
--- Métricas por mesa del día (RF-MESA-04) — conteo de turnos atendidos hoy
-CREATE INDEX ix_turnos_mesa_atendidos_hoy
-    ON turnos (mesa_id, estado, llamado_en);
-
--- ── mesas ────────────────────────────────────────────────────────────────────
-
--- Un operador como máximo en 1 mesa asignada (Garantía RF-AUTH-07 e Invariante 4)
 CREATE UNIQUE INDEX ux_mesas_operador_unico
     ON mesas (operador_id)
     WHERE operador_id IS NOT NULL;
 
--- ── usuarios ─────────────────────────────────────────────────────────────────
+-- lotes_voucher (unicidad de número de lote solo entre no eliminados)
+CREATE UNIQUE INDEX ux_lotes_numero_lote_activos
+    ON lotes_voucher (numero_lote)
+    WHERE estado != 'eliminado' AND eliminado_en IS NULL;
 
--- Login sin duplicados por mayúsculas
-CREATE UNIQUE INDEX uq_usuarios_username_lower
-    ON usuarios (LOWER(username));
+CREATE UNIQUE INDEX ux_lotes_un_lote_activo
+    ON lotes_voucher ((estado))
+    WHERE estado = 'activo';
 
--- ── audit_log ────────────────────────────────────────────────────────────────
+CREATE INDEX ix_lotes_estado
+    ON lotes_voucher (estado)
+    WHERE estado IN ('activo', 'pausado', 'preparado');
 
-CREATE INDEX ix_audit_operador_ts  ON audit_log (operador_id, timestamp DESC);
-CREATE INDEX ix_audit_accion_ts    ON audit_log (accion, timestamp DESC);
-CREATE INDEX ix_audit_lote         ON audit_log (lote_id, timestamp DESC);
-CREATE INDEX ix_audit_turno_id     ON audit_log (turno_id);
-CREATE INDEX ix_audit_mesa_id      ON audit_log (mesa_id);
+-- turnos
+CREATE UNIQUE INDEX ux_turnos_lote_numero
+    ON turnos (lote_id, numero)
+    WHERE lote_id IS NOT NULL;
 
--- =============================================================================
--- TRIGGERS
--- =============================================================================
+CREATE UNIQUE INDEX ux_turnos_mesa_activa
+    ON turnos (mesa_id)
+    WHERE estado = 'en_atencion';
 
--- ── 1. Actualizar actualizado_en ────────────────────────────────────────────
+CREATE UNIQUE INDEX ux_turnos_kiosko_dia_numero
+    ON turnos (fecha_turno, numero)
+    WHERE origen = 'kiosko_web';
+
+CREATE UNIQUE INDEX ux_turnos_idempotency_key
+    ON turnos (idempotency_key)
+    WHERE idempotency_key IS NOT NULL;
+
+CREATE UNIQUE INDEX ux_turnos_device_esperando
+    ON turnos (device_id)
+    WHERE device_id IS NOT NULL AND estado = 'esperando';
+
+CREATE INDEX ix_turnos_esperando_kiosko
+    ON turnos (fecha_turno, numero ASC)
+    WHERE estado = 'esperando' AND origen = 'kiosko_web';
+
+CREATE INDEX ix_turnos_lote_estado
+    ON turnos (lote_id, estado);
+
+CREATE INDEX ix_turnos_fecha
+    ON turnos (creado_en DESC);
+
+CREATE INDEX ix_turnos_tv_recientes
+    ON turnos (llamado_en DESC NULLS LAST)
+    WHERE estado IN ('en_atencion', 'atendido');
+
+CREATE INDEX ix_turnos_mesa_atendidos_hoy
+    ON turnos (mesa_id, estado, llamado_en);
+
+CREATE INDEX ix_turnos_operador_id
+    ON turnos (operador_id);
+
+-- audit_log
+CREATE INDEX ix_audit_operador_ts ON audit_log (operador_id, timestamp DESC);
+CREATE INDEX ix_audit_accion_ts   ON audit_log (accion, timestamp DESC);
+CREATE INDEX ix_audit_lote        ON audit_log (lote_id, timestamp DESC);
+CREATE INDEX ix_audit_turno_id    ON audit_log (turno_id);
+CREATE INDEX ix_audit_mesa_id     ON audit_log (mesa_id);
+
+-- -----------------------------------------------------------------------------
+-- 4. FUNCIONES Y TRIGGERS
+-- -----------------------------------------------------------------------------
+
+-- Inmutabilidad estricta de audit_log
+CREATE OR REPLACE FUNCTION fn_bloquear_modificacion_audit_log()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'audit_log es inmutable. No se permite UPDATE ni DELETE (SQLSTATE: 42501)';
+END;
+$$;
+
+CREATE TRIGGER trg_audit_log_inmutable
+    BEFORE UPDATE OR DELETE ON audit_log
+    FOR EACH ROW EXECUTE FUNCTION fn_bloquear_modificacion_audit_log();
+
+-- Actualización automática de columna actualizado_en
 CREATE OR REPLACE FUNCTION fn_set_actualizado_en()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
@@ -386,7 +320,7 @@ CREATE TRIGGER trg_lotes_actualizado_en
     BEFORE UPDATE ON lotes_voucher
     FOR EACH ROW EXECUTE FUNCTION fn_set_actualizado_en();
 
--- ── 2. Calcular timestamps y duraciones al cambiar estado ───────────────────
+-- Cálculo automático de duraciones y transiciones de turnos
 CREATE OR REPLACE FUNCTION fn_calcular_duraciones_turno()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
@@ -416,7 +350,7 @@ CREATE TRIGGER trg_turnos_duraciones
     BEFORE UPDATE ON turnos
     FOR EACH ROW EXECUTE FUNCTION fn_calcular_duraciones_turno();
 
--- ── 3. Auditoría automática de turnos ───────────────────────────────────────
+-- Auditoría automática de turnos
 CREATE OR REPLACE FUNCTION fn_audit_turno()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
@@ -424,9 +358,9 @@ DECLARE
 BEGIN
     IF TG_OP = 'INSERT' THEN
         IF NEW.estado = 'en_atencion' THEN
-            v_accion := 'TURNO_LLAMADO';  -- Voucher físico: INSERT directo en en_atencion
+            v_accion := 'TURNO_LLAMADO';
         ELSIF NEW.estado = 'esperando' THEN
-            v_accion := 'TURNO_GENERADO'; -- Kiosko web: pre-registro esperando turno
+            v_accion := 'TURNO_GENERADO';
         ELSE
             v_accion := NULL;
         END IF;
@@ -434,7 +368,7 @@ BEGIN
     ELSIF TG_OP = 'UPDATE' AND OLD.estado IS DISTINCT FROM NEW.estado THEN
         CASE
             WHEN NEW.estado = 'en_atencion' AND OLD.estado = 'esperando'
-                THEN v_accion := 'TURNO_LLAMADO';        -- kiosko_web: esperando → en_atencion
+                THEN v_accion := 'TURNO_LLAMADO';
             WHEN NEW.estado = 'atendido'
                 THEN v_accion := 'ATENCION_FINALIZADA';
             WHEN NEW.estado = 'cancelado'
@@ -477,37 +411,27 @@ CREATE TRIGGER trg_audit_turnos_update
     WHEN (OLD.estado IS DISTINCT FROM NEW.estado)
     EXECUTE FUNCTION fn_audit_turno();
 
--- ── 4. Inmutabilidad estricta de audit_log (solo-INSERT) ─────────────────────
-CREATE OR REPLACE FUNCTION fn_bloquear_modificacion_audit_log()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
-BEGIN
-    RAISE EXCEPTION 'audit_log es inmutable. No se permite UPDATE ni DELETE (SQLSTATE: 42501)';
-END;
-$$;
-
-DROP TRIGGER IF EXISTS trg_audit_log_inmutable ON audit_log;
-CREATE TRIGGER trg_audit_log_inmutable
-    BEFORE UPDATE OR DELETE ON audit_log
-    FOR EACH STATEMENT EXECUTE FUNCTION fn_bloquear_modificacion_audit_log();
-
--- ── 5. Control de no-regresión en lotes_voucher.ultimo_numero_llamado ─────────
+-- Control de no-regresión de lotes con autorización explícita para contingencias
 CREATE OR REPLACE FUNCTION fn_check_lote_no_regresion()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
     IF NEW.ultimo_numero_llamado < OLD.ultimo_numero_llamado THEN
-        RAISE EXCEPTION 'El progreso del lote no puede retroceder de % a %',
+        IF current_setting('app.permitir_retroceso_lote', true) IN ('on', 'true') THEN
+            RETURN NEW;
+        END IF;
+
+        RAISE EXCEPTION 'El progreso del lote no puede retroceder de % a % sin autorizacion explicita',
             OLD.ultimo_numero_llamado, NEW.ultimo_numero_llamado;
     END IF;
     RETURN NEW;
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_lotes_no_regresion ON lotes_voucher;
 CREATE TRIGGER trg_lotes_no_regresion
     BEFORE UPDATE ON lotes_voucher
     FOR EACH ROW EXECUTE FUNCTION fn_check_lote_no_regresion();
 
--- ── 6. Función transaccional atómica de 1 Round-Trip fn_llamar_siguiente ─────
+-- Función SQL atómica: Llamar Siguiente Turno (1 round-trip)
 CREATE OR REPLACE FUNCTION fn_llamar_siguiente(
     p_mesa_id BIGINT,
     p_operador_id BIGINT
@@ -526,7 +450,8 @@ RETURNS TABLE (
     vouchers_restantes INTEGER,
     proximo_numero INTEGER,
     es_lote_agotado BOOLEAN,
-    es_idempotente BOOLEAN
+    es_idempotente BOOLEAN,
+    modo VARCHAR(20)
 ) LANGUAGE plpgsql AS $$
 DECLARE
     v_mesa RECORD;
@@ -538,8 +463,18 @@ DECLARE
     v_vouchers_restantes INTEGER;
     v_proximo INTEGER;
     v_es_agotado BOOLEAN := FALSE;
+    v_modo_activo VARCHAR(20);
+    v_fecha_hoy DATE;
+    v_turno_kiosko RECORD;
 BEGIN
-    -- 1. Bloqueo y verificación de la mesa
+    -- 1. Determinar modo de generación y fecha oficial
+    SELECT COALESCE(valor, 'voucher_fisico') INTO v_modo_activo
+    FROM configuracion WHERE clave = 'modo_generacion_turnos';
+    IF v_modo_activo IS NULL THEN v_modo_activo := 'voucher_fisico'; END IF;
+
+    v_fecha_hoy := fn_fecha_hoy();
+
+    -- 2. Bloqueo y verificación de la mesa
     SELECT m.id, m.numero, m.nombre, m.estado, m.operador_id
     INTO v_mesa
     FROM mesas m
@@ -558,44 +493,133 @@ BEGIN
         RAISE EXCEPTION 'Esta mesa no te está asignada' USING ERRCODE = 'P0001';
     END IF;
 
-    -- 2. Idempotencia ante doble clic rápido (< 1.5 segundos)
-    SELECT t.id, t.numero, t.llamado_en, t.lote_id
+    -- 3. Idempotencia ante doble clic rápido (< 1.5 segundos)
+    SELECT t.id, t.numero, t.llamado_en, t.lote_id, t.origen
     INTO v_turno_existente
     FROM turnos t
     WHERE t.mesa_id = p_mesa_id AND t.estado = 'en_atencion'
     LIMIT 1;
 
     IF FOUND AND (NOW() - v_turno_existente.llamado_en) < INTERVAL '1.5 second' THEN
-        SELECT lv.numero_lote, lv.numero_hasta, lv.ultimo_numero_llamado
-        INTO v_lote
-        FROM lotes_voucher lv WHERE lv.id = v_turno_existente.lote_id;
+        IF v_turno_existente.origen = 'kiosko_web' OR v_modo_activo = 'kiosko_web' THEN
+            SELECT COUNT(*)::int INTO v_vouchers_restantes
+            FROM turnos WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = v_fecha_hoy;
 
-        v_vouchers_restantes := GREATEST(0, v_lote.numero_hasta - v_lote.ultimo_numero_llamado);
-        IF v_lote.ultimo_numero_llamado + 1 <= v_lote.numero_hasta THEN
-            v_proximo := v_lote.ultimo_numero_llamado + 1;
+            SELECT numero INTO v_proximo
+            FROM turnos WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = v_fecha_hoy
+            ORDER BY numero ASC LIMIT 1;
+
+            RETURN QUERY SELECT
+                v_turno_existente.id,
+                v_turno_existente.numero,
+                v_turno_existente.llamado_en,
+                v_mesa.id,
+                v_mesa.numero,
+                v_mesa.nombre,
+                NULL::BIGINT,
+                NULL::INTEGER,
+                NULL::INTEGER,
+                v_turno_existente.numero,
+                v_vouchers_restantes,
+                v_proximo,
+                FALSE,
+                TRUE,
+                'kiosko_web'::VARCHAR(20);
+            RETURN;
         ELSE
-            v_proximo := NULL;
+            SELECT lv.numero_lote, lv.numero_hasta, lv.ultimo_numero_llamado
+            INTO v_lote
+            FROM lotes_voucher lv WHERE lv.id = v_turno_existente.lote_id;
+
+            v_vouchers_restantes := GREATEST(0, v_lote.numero_hasta - v_lote.ultimo_numero_llamado);
+            IF v_lote.ultimo_numero_llamado + 1 <= v_lote.numero_hasta THEN
+                v_proximo := v_lote.ultimo_numero_llamado + 1;
+            ELSE
+                v_proximo := NULL;
+            END IF;
+
+            RETURN QUERY SELECT
+                v_turno_existente.id,
+                v_turno_existente.numero,
+                v_turno_existente.llamado_en,
+                v_mesa.id,
+                v_mesa.numero,
+                v_mesa.nombre,
+                v_turno_existente.lote_id,
+                v_lote.numero_lote,
+                v_lote.numero_hasta,
+                v_lote.ultimo_numero_llamado,
+                v_vouchers_restantes,
+                v_proximo,
+                FALSE,
+                TRUE,
+                'voucher_fisico'::VARCHAR(20);
+            RETURN;
+        END IF;
+    END IF;
+
+    -- ─────────────────────────────────────────────────────────────────────────
+    -- RAMA A: MODO KIOSKO_WEB (Toma de cola con FOR UPDATE SKIP LOCKED)
+    -- ─────────────────────────────────────────────────────────────────────────
+    IF v_modo_activo = 'kiosko_web' THEN
+        SELECT t.id, t.numero, t.creado_en
+        INTO v_turno_kiosko
+        FROM turnos t
+        WHERE t.estado = 'esperando'
+          AND t.origen = 'kiosko_web'
+          AND t.fecha_turno = v_fecha_hoy
+        ORDER BY t.numero ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED;
+
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'No hay turnos en espera en este momento.' USING ERRCODE = 'P0001';
         END IF;
 
+        -- Finalizar turno anterior en esta mesa
+        UPDATE turnos
+        SET estado = 'atendido'
+        WHERE turnos.mesa_id = p_mesa_id AND turnos.estado = 'en_atencion';
+
+        -- Asignar el turno a la mesa en 'en_atencion'
+        v_llamado_en := NOW();
+        UPDATE turnos
+        SET estado = 'en_atencion',
+            mesa_id = p_mesa_id,
+            operador_id = p_operador_id,
+            llamado_en = v_llamado_en
+        WHERE turnos.id = v_turno_kiosko.id;
+
+        -- Calcular próximos en espera
+        SELECT COUNT(*)::int INTO v_vouchers_restantes
+        FROM turnos WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = v_fecha_hoy;
+
+        SELECT numero INTO v_proximo
+        FROM turnos WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = v_fecha_hoy
+        ORDER BY numero ASC LIMIT 1;
+
         RETURN QUERY SELECT
-            v_turno_existente.id,
-            v_turno_existente.numero,
-            v_turno_existente.llamado_en,
+            v_turno_kiosko.id,
+            v_turno_kiosko.numero,
+            v_llamado_en,
             v_mesa.id,
             v_mesa.numero,
             v_mesa.nombre,
-            v_turno_existente.lote_id,
-            v_lote.numero_lote,
-            v_lote.numero_hasta,
-            v_lote.ultimo_numero_llamado,
+            NULL::BIGINT,
+            NULL::INTEGER,
+            NULL::INTEGER,
+            v_turno_kiosko.numero,
             v_vouchers_restantes,
             v_proximo,
             FALSE,
-            TRUE;
+            FALSE,
+            'kiosko_web'::VARCHAR(20);
         RETURN;
     END IF;
 
-    -- 3. Bloqueo y verificación del lote activo (FOR UPDATE serializado)
+    -- ─────────────────────────────────────────────────────────────────────────
+    -- RAMA B: MODO VOUCHER_FISICO (Contador central de lotes_voucher)
+    -- ─────────────────────────────────────────────────────────────────────────
     SELECT lv.id, lv.numero_lote, lv.numero_desde, lv.numero_hasta, lv.ultimo_numero_llamado
     INTO v_lote
     FROM lotes_voucher lv
@@ -606,7 +630,6 @@ BEGIN
         RAISE EXCEPTION 'No hay un lote activo. El admin debe activar un lote antes de llamar turnos.' USING ERRCODE = 'P0001';
     END IF;
 
-    -- 4. Verificar si el lote ya estaba agotado antes de este llamado
     IF v_lote.ultimo_numero_llamado >= v_lote.numero_hasta THEN
         UPDATE lotes_voucher
         SET estado = 'agotado', fecha_cierre = NOW()
@@ -615,28 +638,28 @@ BEGIN
         RAISE EXCEPTION 'El lote de vouchers se ha agotado. El admin debe extenderlo o crear uno nuevo.' USING ERRCODE = 'P0001';
     END IF;
 
-    -- 5. Finalizar turno anterior de esta mesa (si existía)
+    -- Finalizar turno anterior de esta mesa
     UPDATE turnos
     SET estado = 'atendido'
     WHERE turnos.mesa_id = p_mesa_id AND turnos.estado = 'en_atencion';
 
-    -- 6. Avanzar contador del lote de forma atómica
+    -- Avanzar contador del lote de forma atómica
     v_nuevo_numero := v_lote.ultimo_numero_llamado + 1;
 
     UPDATE lotes_voucher
     SET ultimo_numero_llamado = v_nuevo_numero
     WHERE id = v_lote.id;
 
-    -- 7. Crear el nuevo turno directo en 'en_atencion'
+    -- Crear el nuevo turno directo en 'en_atencion'
     v_llamado_en := NOW();
     INSERT INTO turnos (
-        numero, lote_id, estado, origen, mesa_id, operador_id, llamado_en
+        numero, fecha_turno, lote_id, estado, origen, mesa_id, operador_id, llamado_en
     ) VALUES (
-        v_nuevo_numero, v_lote.id, 'en_atencion', 'voucher_fisico', p_mesa_id, p_operador_id, v_llamado_en
+        v_nuevo_numero, v_fecha_hoy, v_lote.id, 'en_atencion', 'voucher_fisico', p_mesa_id, p_operador_id, v_llamado_en
     )
     RETURNING id INTO v_turno_nuevo_id;
 
-    -- 8. Si este llamado fue el último voucher, marcar agotado atómicamente
+    -- Si este llamado fue el último voucher, marcar agotado atómicamente
     IF v_nuevo_numero >= v_lote.numero_hasta THEN
         UPDATE lotes_voucher
         SET estado = 'agotado', fecha_cierre = NOW()
@@ -665,68 +688,28 @@ BEGIN
         v_vouchers_restantes,
         v_proximo,
         v_es_agotado,
-        FALSE;
+        FALSE,
+        'voucher_fisico'::VARCHAR(20);
 END;
 $$;
 
--- =============================================================================
--- SEGURIDAD
--- =============================================================================
+-- -----------------------------------------------------------------------------
+-- 5. CONFIGURACIÓN INICIAL DEL SISTEMA
+-- -----------------------------------------------------------------------------
+INSERT INTO configuracion (clave, valor, descripcion) VALUES
+    ('alerta_vouchers_restantes', '20',                  'Alertar al admin cuando queden N vouchers en el lote.'),
+    ('modo_generacion_turnos',    'voucher_fisico',      'Modo activo de operacion: voucher_fisico | kiosko_web.'),
+    ('kiosko_web_activo',         'false',               'Habilita URL/QR publica para generar turno desde celular o kiosko.'),
+    ('mostrar_estimado_espera',   'true',                'Mostrar estimado de espera en TV cuando hay turnos en espera.'),
+    ('zona_horaria',              'America/Tegucigalpa', 'Zona horaria oficial del sistema para calculo de fecha y cambio de dia.'),
+    ('kiosko_tope_diario',        '0',                   'Tope maximo de turnos diarios por kiosko (0 = ilimitado).'),
+    ('kiosko_url_base',           '',                    'URL base publica para seguimiento QR (vacio = autodeteccion LAN).'),
+    ('voz_anuncio_activa',        'true',                'Habilita el anuncio de voz sintetica en pantallas de TV.'),
+    ('impresora_ip',              '',                    'IP de la impresora de tickets en la LAN (vacio = impresion desactivada).'),
+    ('impresora_puerto',          '9100',                'Puerto TCP de la impresora ESC/POS (estandar: 9100).'),
+    ('impresora_activa',          'false',               'Habilita la impresion directa ESC/POS desde el servidor.')
+ON CONFLICT (clave) DO NOTHING;
 
 -- =============================================================================
--- pg_cron: mantenimiento nocturno 11:30 PM (si la extensión está disponible)
--- NO reinicia el lote — el admin decide cuándo pausarlo o cerrarlo
--- =============================================================================
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
-        PERFORM cron.schedule(
-            'reset-mesas-noche',
-            '30 23 * * *',
-            $cron$
-                UPDATE mesas
-                SET estado = 'inactiva', operador_id = NULL
-                WHERE estado IN ('activa', 'pausada');
-            $cron$
-        );
-    END IF;
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'pg_cron no disponible; omitiendo schedule automático.';
-END $$;
-
--- =============================================================================
--- SEED — Datos iniciales para desarrollo
--- Usar scripts/seed.js para generar hashes bcrypt reales
--- =============================================================================
-
-INSERT INTO usuarios (username, nombre_completo, password_hash, rol) VALUES
-    ('admin',       'Administrador del Sistema',  '$2b$12$PLACEHOLDER_ADMIN',  'admin'),
-    ('supervisor1', 'Supervisor Principal',        '$2b$12$PLACEHOLDER_SUP',    'supervisor'),
-    ('op1',         'Operador Mesa 1',             '$2b$12$PLACEHOLDER_OP1',    'operador'),
-    ('op2',         'Operador Mesa 2',             '$2b$12$PLACEHOLDER_OP2',    'operador'),
-    ('op3',         'Operador Mesa 3',             '$2b$12$PLACEHOLDER_OP3',    'operador'),
-    ('op4',         'Operador Mesa 4',             '$2b$12$PLACEHOLDER_OP4',    'operador'),
-    ('op5',         'Operador Mesa 5',             '$2b$12$PLACEHOLDER_OP5',    'operador'),
-    ('portón',      'Empleado Portón / Kiosko',    '$2b$12$PLACEHOLDER_PORT',   'operador');
-
-INSERT INTO mesas (numero, nombre, estado) VALUES
-    (1,  'Mesa 1 — Matrícula',      'inactiva'),
-    (2,  'Mesa 2 — Matrícula',      'inactiva'),
-    (3,  'Mesa 3 — Pagos',          'inactiva'),
-    (4,  'Mesa 4 — Pagos',          'inactiva'),
-    (5,  'Mesa 5 — Documentos',     'inactiva'),
-    (6,  'Mesa 6 — Documentos',     'inactiva'),
-    (7,  'Mesa 7 — Inscripciones',  'inactiva'),
-    (8,  'Mesa 8 — Inscripciones',  'inactiva'),
-    (9,  'Mesa 9 — Validación',     'inactiva'),
-    (10, 'Mesa 10 — Validación',    'inactiva'),
-    (11, 'Mesa 11 — General',       'inactiva'),
-    (12, 'Mesa 12 — General',       'inactiva');
-
--- Lote de prueba para desarrollo (Lote 1 automáticamente)
-INSERT INTO lotes_voucher (numero_desde, numero_hasta, estado, creado_por)
-VALUES (1, 50, 'preparado', 1);
-
--- =============================================================================
--- FIN DEL SCHEMA — Turnero de Matrículas 2026 v2.1
+-- FIN DE LA MIGRACION INICIAL (v2.1)
 -- =============================================================================

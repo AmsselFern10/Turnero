@@ -7,13 +7,75 @@
   <link rel="stylesheet" href="/css/base.css">
   <link rel="stylesheet" href="/css/components.css">
   <link rel="stylesheet" href="/css/animations.css">
-  <!-- CDN Tailwind: pendiente migrar a CSS precompilado (INC-3, ver frontend-architecture.md) -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/css/tailwind.css">
+  <link rel="icon" href="data:,">
 </head>
 <body x-data="adminView()" x-init="init()" x-cloak class="min-h-full flex flex-col bg-app antialiased text-slate-800">
 
+  <!-- ── COMPONENTE DE NOTIFICACIONES UNIFICADO (Arriba y al Centro) ── -->
+  <div class="toast-container"
+       aria-live="polite"
+       role="region"
+       aria-label="Notificaciones del sistema">
+    <template x-for="t in toasts" :key="t.id">
+      <div class="pointer-events-auto w-full bg-white rounded-2xl shadow-xl p-3.5 flex items-start gap-3 transition-all duration-200"
+           :class="{
+             'toast--success': t.tipo === 'success',
+             'toast--error':   t.tipo === 'error',
+             'toast--warning': t.tipo === 'warning',
+             'toast--info':    t.tipo === 'info'
+           }"
+           :role="t.tipo === 'error' || t.tipo === 'warning' ? 'alert' : 'status'"
+           @mouseenter="pausarToast(t.id)"
+           @mouseleave="reanudarToast(t.id)">
+
+        <!-- Icono según tipo (SVG puro, cero emojis) -->
+        <div class="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+             :class="{
+               'bg-emerald-50 text-emerald-600': t.tipo === 'success',
+               'bg-rose-50 text-rose-600': t.tipo === 'error',
+               'bg-amber-50 text-amber-600': t.tipo === 'warning',
+               'bg-blue-50 text-blue-600': t.tipo === 'info'
+             }">
+          <!-- Success icon -->
+          <svg x-show="t.tipo === 'success'" class="w-4 h-4 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+          </svg>
+          <!-- Error icon -->
+          <svg x-show="t.tipo === 'error'" class="w-4 h-4 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          <!-- Warning icon -->
+          <svg x-show="t.tipo === 'warning'" class="w-4 h-4 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
+          <!-- Info icon -->
+          <svg x-show="t.tipo === 'info'" class="w-4 h-4 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+          </svg>
+        </div>
+
+        <!-- Textos de Notificación -->
+        <div class="flex-1 min-w-0 pr-1">
+          <h4 class="text-xs font-bold text-slate-900 leading-tight" x-text="t.titulo"></h4>
+          <p class="text-xs text-slate-600 mt-0.5 leading-snug break-words" x-text="t.mensaje"></p>
+        </div>
+
+        <!-- Botón Cerrar -->
+        <button type="button" @click="cerrarToast(t.id)"
+                class="text-slate-400 hover:text-slate-600 rounded-lg p-1 -mr-1 -mt-1 transition-colors cursor-pointer"
+                title="Cerrar notificación"
+                aria-label="Cerrar notificación">
+          <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    </template>
+  </div>
+
   <!-- ── 1. ENCABEZADO Y TABS (Diseño Imagen 2) ── -->
-  <header class="app-header sticky top-0 z-30 bg-white border-b border-slate-200/90 shadow-2xs">
+  <header class="app-header sticky top-0 z-30 bg-white border-b border-slate-200/90">
     <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
       <!-- Identidad Izquierda -->
       <div class="flex items-center space-x-2.5">
@@ -29,16 +91,17 @@
         <button type="button" @click="cambiarTab('lotes')" :class="tab === 'lotes' ? 'bg-white text-blue-700 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'" class="px-3.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer">Lotes</button>
         <button type="button" @click="cambiarTab('mesas')" :class="tab === 'mesas' ? 'bg-white text-blue-700 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'" class="px-3.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer">Mesas</button>
         <button type="button" @click="cambiarTab('reportes')" :class="tab === 'reportes' ? 'bg-white text-blue-700 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'" class="px-3.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer">Reportes</button>
+        <button type="button" @click="cambiarTab('usuarios')" :class="tab === 'usuarios' ? 'bg-white text-blue-700 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'" class="px-3.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer">Usuarios</button>
         <button type="button" @click="cambiarTab('config')" :class="tab === 'config' ? 'bg-white text-blue-700 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'" class="px-3.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer">Configuración</button>
       </nav>
 
       <!-- Acciones Derecha: Pantalla TV, Salir y Reloj -->
       <div class="flex items-center space-x-2.5">
-        <a href="/tv.html" target="_blank" rel="noopener noreferrer" class="btn-ghost btn-sm text-xs flex items-center gap-1.5 text-slate-700 hover:text-blue-700 border border-slate-200/80 bg-white shadow-2xs">
+        <a href="/tv.html" target="_blank" rel="noopener noreferrer" class="btn-ghost btn-sm text-xs flex items-center gap-1.5 text-slate-700 hover:text-blue-700 border border-slate-200/80 bg-white">
           <svg class="w-3.5 h-3.5 text-blue-600 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" /></svg>
           <span>Pantalla TV</span>
         </a>
-        <button type="button" @click="logout()" title="Cerrar sesión" class="btn-ghost btn-sm text-xs text-rose-600 hover:text-rose-800 hover:bg-rose-50 border border-slate-200/80 bg-white flex items-center gap-1.5 shadow-2xs cursor-pointer">
+        <button type="button" @click="logout()" title="Cerrar sesión" class="btn-ghost btn-sm text-xs text-rose-600 hover:text-rose-800 hover:bg-rose-50 border border-slate-200/80 bg-white flex items-center gap-1.5 cursor-pointer">
           <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" /></svg>
           <span>Salir</span>
         </button>
@@ -47,7 +110,7 @@
   </header>
 
   <!-- ── BANNER PERSISTENTE: Lote Agotado ── -->
-  <div x-show="loteAgotadoAlerta" x-cloak
+  <div x-show="loteAgotadoAlerta && config.modo_generacion_turnos !== 'kiosko_web'" x-cloak
        class="bg-rose-600 text-white text-xs font-bold px-6 py-2.5 flex items-center justify-between gap-4"
        role="alert">
     <span>LOTE AGOTADO: No hay mas turnos disponibles. Extienda el lote actual o cree uno nuevo.</span>
@@ -55,7 +118,7 @@
   </div>
 
   <!-- ── 2. CONTENIDO PRINCIPAL POR PESTAÑAS ── -->
-  <main class="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
+  <main class="flex-1 max-w-7xl w-full mx-auto p-6">
 
     <!-- PESTANA 1: MONITOREO (4 KPIs + Tabla Mesas) -->
     <section x-show="tab === 'monitoreo'" x-cloak class="space-y-6">
@@ -66,9 +129,9 @@
           <p class="text-xs text-slate-500">Métricas globales y estado operativo de las ventanillas en sala</p>
         </div>
         <div class="flex items-center gap-2.5">
-          <button type="button" @click="cargarDashboard()" class="btn-ghost btn-sm flex items-center gap-1.5 text-xs text-slate-700 border border-slate-300 bg-white hover:bg-slate-50 shadow-2xs cursor-pointer">
-            <svg class="w-3.5 h-3.5 stroke-[2] text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
-            <span>Actualizar</span>
+          <button type="button" @click="cargarDashboard()" :disabled="cargandoDashboard" class="btn-ghost btn-sm flex items-center gap-1.5 text-xs text-slate-700 border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer">
+            <svg class="w-3.5 h-3.5 stroke-[2] text-slate-600" :class="cargandoDashboard ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+            <span x-text="cargandoDashboard ? 'Actualizando...' : 'Actualizar'">Actualizar</span>
           </button>
         </div>
       </div>
@@ -78,7 +141,10 @@
         <div class="card-kpi"><span class="text-xs font-semibold text-slate-500 block uppercase">Atendidos Hoy</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.atendidos_hoy">0</span></div>
         <div class="card-kpi"><span class="text-xs font-semibold text-slate-500 block uppercase">Espera Promedio</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.espera_promedio_min !== '--' ? (kpis.espera_promedio_min + ' min') : '--'">-- min</span></div>
         <div class="card-kpi"><span class="text-xs font-semibold text-slate-500 block uppercase">Mesas Activas</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.mesas_activas">0</span></div>
-        <div class="card-kpi" :class="kpis.vouchers_restantes <= 20 ? 'border-amber-400 bg-amber-50/50' : ''"><span class="text-xs font-semibold text-slate-500 block uppercase">Turnos Restantes</span><span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="kpis.vouchers_restantes">0</span></div>
+        <div class="card-kpi" :class="(config.modo_generacion_turnos !== 'kiosko_web' && kpis.vouchers_restantes <= 20) ? 'border-amber-400 bg-amber-50/50' : ''">
+          <span class="text-xs font-semibold text-slate-500 block uppercase" x-text="config.modo_generacion_turnos === 'kiosko_web' ? 'En Espera (Kiosko)' : 'Turnos Restantes'">Turnos Restantes</span>
+          <span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="config.modo_generacion_turnos === 'kiosko_web' ? (kpis.turnos_en_espera ?? 0) : kpis.vouchers_restantes">0</span>
+        </div>
       </div>
 
       <!-- Tabla de Ventanillas en Tiempo Real -->
@@ -93,11 +159,11 @@
               <option value="inactiva">Solo Inactivas</option>
             </select>
           </div>
-          <button type="button" @click="cargarDashboard()" class="text-xs text-[#1D4ED8] font-semibold hover:underline cursor-pointer">Actualizar</button>
+          <button type="button" @click="cargarDashboard()" :disabled="cargandoDashboard" class="text-xs text-blue-700 font-semibold hover:underline cursor-pointer">Actualizar</button>
         </div>
         <table class="table-base">
           <thead class="table-head">
-            <tr><th class="p-3">Mesa</th><th class="p-3">Operador</th><th class="p-3">Estado</th><th class="p-3">Turno Actual</th><th class="p-3">Atendidos</th><th class="p-3">Tiempo Medio</th><th class="p-3">Eficiencia</th></tr>
+            <tr><th class="p-3">Mesa</th><th class="p-3">Operador</th><th class="p-3">Estado</th><th class="p-3">Turno Actual</th><th class="p-3">Atendidos</th><th class="p-3">Tiempo Medio</th></tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
             <template x-for="mesa in getMesasFiltradasDashboard()" :key="mesa.id">
@@ -107,8 +173,7 @@
                 <td class="p-3"><span class="pill text-[10px] uppercase" :class="mesa.estado === 'activa' ? 'pill-success' : (mesa.estado === 'pausada' ? 'pill-warning' : 'pill-neutral')" x-text="mesa.estado"></span></td>
                 <td class="p-3 font-mono-num font-bold text-slate-900" x-text="mesa.turno_actual ? ('#' + String(mesa.turno_actual).padStart(3, '0')) : '--'"></td>
                 <td class="p-3 font-mono-num" x-text="mesa.atendidos_hoy || 0"></td>
-                <td class="p-3 font-mono-num" x-text="(mesa.tiempo_promedio_min || 0) + ' min'"></td>
-                <td class="p-3"><span class="w-2.5 h-2.5 rounded-full inline-block" :class="semaforoClass(mesa.tiempo_promedio_min || 0)"></span></td>
+                <td class="p-3 font-mono-num" x-text="mesa.tiempo_promedio_min ? (mesa.tiempo_promedio_min + ' min') : '--'"></td>
               </tr>
             </template>
           </tbody>
@@ -126,83 +191,75 @@
         </div>
         <div class="flex items-center gap-2.5">
           <button type="button" @click="modalLote = true"
-                  class="btn-primary btn-sm text-xs font-bold px-3.5 h-9 flex items-center gap-1.5 shadow-xs cursor-pointer">
-            <svg class="w-3.5 h-3.5 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                  class="btn-primary btn-sm flex items-center gap-1.5 shadow-xs cursor-pointer">
+            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
             <span>Nuevo Lote</span>
           </button>
         </div>
       </div>
 
-      <!-- Card del Lote Activo (Diseño con Barra de Progreso y Acciones) -->
-      <div class="card p-6 rounded-2xl border border-slate-200/90 shadow-2xs" x-show="loteActivo">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-100">
-          <div>
-            <div class="flex items-center gap-2.5 flex-wrap">
-              <h3 class="text-base font-bold text-slate-900" x-text="loteActivo?.nombre || ('Lote ' + (loteActivo?.numero_lote || ''))"></h3>
-              <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
-                    :class="loteActivo?.estado === 'activo' ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' : 'bg-amber-50 border border-amber-200 text-amber-700'">
-                <span class="w-1.5 h-1.5 rounded-full" :class="loteActivo?.estado === 'activo' ? 'bg-emerald-500' : 'bg-amber-500'"></span>
-                <span x-text="loteActivo?.estado === 'activo' ? 'Activo en Sala / TV' : 'Pausado en Sala'"></span>
-              </span>
-            </div>
-            <p class="text-xs text-slate-500 mt-0.5">Emisión abierta hacia los módulos de atención</p>
+      <!-- Card del Lote Activo (Diseño Limpio, Sin Sobrecarga) -->
+      <div class="card p-5 rounded-2xl border border-slate-200/90 space-y-4" x-show="loteActivo">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div class="flex items-center gap-2.5 flex-wrap">
+            <h3 class="text-base font-bold text-slate-900" x-text="loteActivo?.nombre || ('Lote ' + (loteActivo?.numero_lote || ''))"></h3>
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
+                  :class="loteActivo?.estado === 'activo' ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' : 'bg-amber-50 border border-amber-200 text-amber-700'">
+              <span class="w-1.5 h-1.5 rounded-full" :class="loteActivo?.estado === 'activo' ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+              <span x-text="loteActivo?.estado === 'activo' ? 'Activo en Sala' : 'Pausado en Sala'"></span>
+            </span>
           </div>
 
           <!-- Botones de Acción del Lote Activo -->
           <div class="flex items-center gap-2 flex-wrap">
             <button type="button" @click="loteActivo.estado === 'activo' ? pausarLote(loteActivo.id) : activarLote(loteActivo.id)"
-                    class="btn-ghost btn-sm text-xs font-semibold px-3.5 h-9 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer">
+                    class="btn-ghost btn-sm flex items-center gap-1.5 cursor-pointer">
               <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" /></svg>
-              <span x-text="loteActivo?.estado === 'activo' ? 'Pausar Lote' : 'Reanudar Lote'">Pausar Lote</span>
+              <span x-text="loteActivo?.estado === 'activo' ? 'Pausar' : 'Reanudar'">Pausar</span>
             </button>
 
-            <!-- Botón Extender abre el modal dedicado -->
             <button type="button" @click="abrirModalExtender()"
-                    class="btn-ghost btn-sm text-xs font-semibold px-3.5 h-9 bg-blue-50/60 border border-blue-200 text-[#1D4ED8] hover:bg-blue-100 flex items-center gap-1.5 cursor-pointer">
+                    class="btn-ghost btn-sm flex items-center gap-1.5 text-blue-700 border-blue-200 bg-blue-50/50 hover:bg-blue-100 cursor-pointer">
               <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-              <span>Extender Rango (+50)</span>
+              <span>Extender Lote</span>
             </button>
 
-            <button type="button" @click="cerrarLote(loteActivo.id)"
-                    class="btn-ghost btn-sm text-xs font-semibold px-3.5 h-9 bg-rose-50/60 border border-rose-200 text-rose-700 hover:bg-rose-100 flex items-center gap-1.5 cursor-pointer">
+            <button type="button" @click="cerrarLote(loteActivo.id, loteActivo.numero_lote)"
+                    class="btn-ghost btn-sm flex items-center gap-1.5 text-rose-600 border-rose-200 bg-rose-50/50 hover:bg-rose-100 cursor-pointer">
               <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-              <span>Cerrar Lote</span>
+              <span>Cerrar</span>
             </button>
           </div>
         </div>
 
-        <!-- Fila de Métricas: Rango, Turnos Emitidos y Restantes -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-5 pb-4">
+        <!-- Métricas Claras y Equilibradas -->
+        <div class="grid grid-cols-3 gap-4 py-1">
           <div>
-            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">RANGO CORRELATIVO</span>
-            <div class="font-mono-num font-bold text-slate-900 text-base mt-1"
-                 x-text="'#' + (loteActivo?.numero_desde || 1) + ' — #' + (loteActivo?.numero_hasta || 0)"></div>
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500 block">Rango</span>
+            <span class="font-mono-num font-bold text-slate-900 text-base mt-0.5 block"
+                  x-text="'#' + (loteActivo?.numero_desde || 1) + ' — #' + (loteActivo?.numero_hasta || 0)"></span>
           </div>
           <div>
-            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">TURNOS EMITIDOS</span>
-            <div class="flex items-baseline gap-2 mt-1">
-              <span class="font-mono-num font-bold text-[#1D4ED8] text-base"
-                    x-text="calcularTurnosEmitidos() + ' / ' + (loteActivo?.numero_hasta || 0)"></span>
-              <span class="font-mono-num text-xs text-slate-500 font-semibold"
-                    x-text="'(' + calcularProgresoLote() + '%)'"></span>
-            </div>
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500 block">Llamados</span>
+            <span class="font-mono-num font-bold text-blue-700 text-base mt-0.5 block"
+                  x-text="calcularTurnosEmitidos() + ' / ' + (loteActivo?.numero_hasta || 0)"></span>
           </div>
           <div>
-            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">ESTADO DE DISPONIBILIDAD</span>
-            <div class="font-mono-num font-bold text-slate-900 text-base mt-1"
-                 x-text="calcularTurnosRestantesLote() + ' turnos disponibles'"></div>
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500 block">Restantes</span>
+            <span class="font-mono-num font-bold text-slate-900 text-base mt-0.5 block"
+                  x-text="calcularTurnosRestantesLote()"></span>
           </div>
         </div>
 
-        <!-- Barra de Progreso y Leyenda -->
-        <div class="pt-2">
-          <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-            <div class="bg-[#1D4ED8] h-full rounded-full transition-all duration-500"
+        <!-- Barra de Progreso Discreta -->
+        <div class="space-y-1.5 pt-1">
+          <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+            <div class="bg-blue-700 h-full rounded-full transition-all duration-500"
                  :style="'width: ' + calcularProgresoLote() + '%'"></div>
           </div>
-          <div class="flex justify-between items-center text-[11px] text-slate-500 mt-2 font-mono-num">
-            <span>Progreso del lote: <strong class="text-slate-700" x-text="calcularProgresoLote() + '%'"></strong></span>
-            <span>Restan <strong class="text-slate-800" x-text="calcularTurnosRestantesLote()"></strong> turnos</span>
+          <div class="flex justify-between items-center text-[11px] text-slate-500 font-mono-num">
+            <span>Progreso: <strong class="text-slate-700 font-semibold" x-text="calcularProgresoLote() + '%'"></strong></span>
+            <span class="text-slate-400" x-text="'Último llamado: #' + (loteActivo?.ultimo_numero_llamado || 0)"></span>
           </div>
         </div>
       </div>
@@ -233,18 +290,75 @@
               <option value="cerrado">Cerrados</option>
             </select>
           </div>
-          <button type="button" @click="modalLote = true" class="text-xs text-[#1D4ED8] font-semibold hover:underline cursor-pointer">Nuevo Lote</button>
+          <button type="button" @click="modalLote = true" class="text-xs text-blue-700 font-semibold hover:underline cursor-pointer">Nuevo Lote</button>
         </div>
         <table class="table-base">
-          <thead class="table-head"><tr><th class="p-3">Lote</th><th class="p-3">Rango</th><th class="p-3">Progreso</th><th class="p-3">Estado</th><th class="p-3">Acción</th></tr></thead>
+          <thead class="table-head">
+            <tr>
+              <th class="p-3 text-left">Lote</th>
+              <th class="p-3 text-left">Rango</th>
+              <th class="p-3 text-left">Progreso</th>
+              <th class="p-3 text-left">Estado</th>
+              <th class="p-3 text-left">Creado</th>
+              <th class="p-3 text-right">Acciones</th>
+            </tr>
+          </thead>
           <tbody class="divide-y divide-slate-100">
             <template x-for="lote in getLotesFiltrados()" :key="lote.id">
               <tr class="table-row">
-                <td class="p-3 font-bold font-mono-num" x-text="'Lote ' + lote.numero_lote"></td>
-                <td class="p-3 font-mono-num" x-text="lote.numero_desde + ' → ' + lote.numero_hasta"></td>
-                <td class="p-3 font-mono-num" x-text="lote.ultimo_numero_llamado + ' llamados'"></td>
-                <td class="p-3"><span class="pill text-[10px] uppercase" :class="lote.estado === 'activo' ? 'pill-success' : 'pill-neutral'" x-text="lote.estado"></span></td>
-                <td class="p-3"><button type="button" x-show="lote.estado !== 'activo' && lote.estado !== 'cerrado'" @click="activarLote(lote.id)" class="text-[#1D4ED8] font-bold hover:underline cursor-pointer">Activar</button></td>
+                <td class="p-3 font-bold font-mono-num text-slate-900 whitespace-nowrap" x-text="'Lote ' + lote.numero_lote"></td>
+                <td class="p-3 font-mono-num text-slate-700 whitespace-nowrap" x-text="lote.numero_desde + ' \u2192 ' + lote.numero_hasta"></td>
+                <td class="p-3 font-mono-num text-slate-700 whitespace-nowrap" x-text="lote.ultimo_numero_llamado + ' llamados'"></td>
+                <td class="p-3 whitespace-nowrap">
+                  <span class="pill text-[10px] uppercase font-semibold"
+                        :class="{
+                          'pill-success': lote.estado === 'activo',
+                          'pill-warning': lote.estado === 'pausado',
+                          'pill-neutral': lote.estado === 'preparado' || lote.estado === 'cerrado'
+                        }"
+                        x-text="lote.estado">
+                  </span>
+                </td>
+                <td class="p-3 text-xs text-slate-600 font-mono-num whitespace-nowrap">
+                  <span x-text="formatearFechaLote(lote.fecha_creacion)"></span>
+                  <span x-show="lote.creado_por_nombre" class="block text-[10px] text-slate-400 font-sans truncate max-w-[120px]" x-text="lote.creado_por_nombre"></span>
+                </td>
+                <td class="p-3 text-right whitespace-nowrap">
+                  <div class="flex items-center justify-end gap-3">
+                    <!-- Indicador para lote en atención actual -->
+                    <span x-show="lote.estado === 'activo'"
+                          class="text-emerald-600 text-xs font-semibold">
+                      En Sala
+                    </span>
+
+                    <!-- Activar: para lotes preparados o pausados -->
+                    <button type="button"
+                            x-show="lote.estado !== 'activo' && lote.estado !== 'cerrado'"
+                            @click="activarLote(lote.id)"
+                            class="text-blue-700 text-xs font-semibold hover:underline cursor-pointer"
+                            title="Activar lote para despachar en sala">
+                      Activar
+                    </button>
+
+                    <!-- Cerrar: disponible para cualquier lote que no esté ya cerrado -->
+                    <button type="button"
+                            x-show="lote.estado !== 'cerrado'"
+                            @click="cerrarLote(lote.id, lote.numero_lote)"
+                            class="text-amber-600 text-xs font-semibold hover:underline cursor-pointer"
+                            title="Cerrar lote definitivamente">
+                      Cerrar
+                    </button>
+
+                    <!-- Eliminar: solo para lotes que no estén actualmente activos -->
+                    <button type="button"
+                            x-show="lote.estado !== 'activo'"
+                            @click="eliminarLote(lote.id, lote.numero_lote)"
+                            class="text-rose-600 text-xs font-semibold hover:underline cursor-pointer"
+                            title="Eliminar lote del sistema">
+                      Eliminar
+                    </button>
+                  </div>
+                </td>
               </tr>
             </template>
           </tbody>
@@ -261,7 +375,7 @@
           <p class="text-xs text-slate-500">Configure las mesas habilitadas para la jornada de hoy</p>
         </div>
         <div class="flex items-center gap-2.5">
-          <select x-model="filtroMesas" aria-label="Filtrar ventanillas" class="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 font-medium shadow-2xs cursor-pointer">
+          <select x-model="filtroMesas" aria-label="Filtrar ventanillas" class="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 font-medium cursor-pointer">
             <option value="todas">Todas las mesas</option>
             <option value="activa">Activas</option>
             <option value="pausada">Pausadas</option>
@@ -279,7 +393,7 @@
       <!-- Cuadrícula de Mesas -->
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <template x-for="mesa in getMesasFiltradasConfig()" :key="mesa.id">
-          <div class="card p-5 flex flex-col justify-between min-h-[168px] rounded-2xl border border-slate-200/90 shadow-2xs">
+          <div class="card p-5 flex flex-col justify-between min-h-[168px] rounded-2xl border border-slate-200/90">
             <div class="flex justify-between items-center">
               <div>
                 <span class="font-mono-num font-bold text-base text-slate-900" x-text="'MESA ' + mesa.numero"></span>
@@ -291,15 +405,36 @@
               <label :for="'op-select-' + mesa.id" class="text-[11px] font-semibold text-slate-500">Operador asignado:</label>
               <select :id="'op-select-' + mesa.id" @change="asignarOperador(mesa.id, $event.target.value)" class="select-field">
                 <option value="">-- Sin asignar --</option>
-                <template x-for="op in operadoresDisponibles" :key="op.id"><option :value="op.id" :selected="mesa.operador_id === op.id" x-text="op.nombre_completo"></option></template>
+                <template x-for="op in operadoresDisponibles" :key="op.id"><option :value="op.id" :selected="mesa.operador_id === op.id" x-text="op.nombre_completo + (op.rol === 'admin' ? ' (Admin)' : '')"></option></template>
               </select>
             </div>
             <div class="pt-2 border-t border-slate-100 text-xs flex items-center justify-between">
-              <button type="button" @click="mesa.estado === 'activa' ? pausarMesaAdmin(mesa.id) : activarMesaAdmin(mesa.id)" title="Pausar o activar mesa" aria-label="Pausar o activar mesa" class="text-slate-600 font-semibold hover:text-slate-900 cursor-pointer">
-                <span x-text="mesa.estado === 'activa' ? 'Pausar mesa' : 'Activar mesa'"></span>
-              </button>
+              <!-- Acción izquierda: Pausar / Reanudar según estado -->
+              <div class="flex items-center gap-3">
+                <button type="button"
+                        x-show="mesa.estado === 'activa'"
+                        @click="pausarMesaAdmin(mesa.id)"
+                        :disabled="_loading"
+                        class="text-slate-600 font-semibold hover:text-slate-900 cursor-pointer disabled:opacity-40">Pausar</button>
+                <button type="button"
+                        x-show="mesa.estado === 'pausada'"
+                        @click="activarMesaAdmin(mesa.id)"
+                        :disabled="_loading"
+                        class="text-emerald-700 font-semibold hover:text-emerald-900 cursor-pointer disabled:opacity-40">Reanudar</button>
+                <button type="button"
+                        x-show="mesa.estado === 'inactiva'"
+                        @click="activarMesaAdmin(mesa.id)"
+                        :disabled="_loading"
+                        class="text-blue-700 font-semibold hover:underline cursor-pointer disabled:opacity-40">Activar</button>
+                <!-- Inactivar: disponible en activa y pausada -->
+                <button type="button"
+                        x-show="mesa.estado !== 'inactiva'"
+                        @click="inactivarMesaAdmin(mesa.id)"
+                        :disabled="_loading"
+                        class="text-rose-600 font-semibold hover:text-rose-800 cursor-pointer disabled:opacity-40">Inactivar</button>
+              </div>
               <div class="flex items-center gap-2">
-                <button type="button" @click="abrirEditarMesa(mesa)" class="text-[#1D4ED8] font-semibold hover:underline cursor-pointer">
+                <button type="button" @click="abrirEditarMesa(mesa)" class="text-blue-700 font-semibold hover:underline cursor-pointer">
                   Editar
                 </button>
                 <button type="button" @click="eliminarMesa(mesa.id, mesa.numero)" class="text-rose-600 font-semibold hover:underline cursor-pointer">
@@ -313,7 +448,7 @@
     </section>
 
     <!-- PESTANA 4: REPORTES Y EXPORTACIÓN XLS -->
-    <section x-show="tab === 'reportes'" x-cloak class="space-y-6">
+    <section x-show="tab === 'reportes'" x-cloak class="space-y-6" x-data="{ _lastUpdated: '', _errorReporte: false }">
       <!-- Cabecera Uniforme -->
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
         <div>
@@ -321,20 +456,24 @@
           <p class="text-xs text-slate-500">Consulte el rendimiento operativo por fecha, ventanilla y operador</p>
         </div>
         <div class="flex items-center gap-2.5">
-          <button type="button" @click="cargarReporte()" class="btn-ghost btn-sm flex items-center gap-1.5 text-xs text-slate-700 border border-slate-300 bg-white hover:bg-slate-50 shadow-2xs cursor-pointer">
+          <!-- Timestamp última actualización -->
+          <span x-show="_lastUpdated" class="text-[11px] text-slate-400 font-mono-num" x-text="'Actualizado: ' + _lastUpdated"></span>
+          <button type="button"
+                  @click="cargarReporte().then(() => { _lastUpdated = new Date().toLocaleTimeString('es-ES'); _errorReporte = false; }).catch(() => { _errorReporte = true; })"
+                  :disabled="cargandoReporte"
+                  class="btn-ghost btn-sm flex items-center gap-1.5 text-xs text-slate-700 border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
             <svg class="w-3.5 h-3.5 stroke-[2] text-slate-600" :class="cargandoReporte ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
-            <span>Actualizar</span>
+            <span x-text="cargandoReporte ? 'Cargando...' : 'Actualizar'">Actualizar</span>
           </button>
-          <!-- Botón Primario: AZUL (#1D4ED8), no verde -->
-          <button type="button" @click="exportarReporteXLS()" class="btn-primary btn-sm flex items-center gap-1.5 text-xs font-bold px-3.5 shadow-xs cursor-pointer">
-            <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+          <button type="button" @click="exportarReporteXLS()" :disabled="_loading" class="btn-primary btn-sm flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50">
+            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
             <span>Exportar XLS</span>
           </button>
         </div>
       </div>
 
       <!-- Filtros interactivos en Card -->
-      <div class="card p-5 rounded-2xl border border-slate-200/90 shadow-2xs">
+      <div class="card p-5 rounded-2xl border border-slate-200/90">
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
           <div>
             <label for="rep-fecha" class="font-semibold text-slate-700 block mb-1">Fecha de consulta:</label>
@@ -371,6 +510,13 @@
       </div>
 
       <!-- Tarjetas KPIs del Reporte -->
+      <!-- Alerta de error de carga -->
+      <div x-show="_errorReporte" class="card-callout-warning p-4 flex items-center gap-3">
+        <svg class="w-5 h-5 stroke-[2] text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+        <span class="text-xs font-semibold text-amber-800">No se pudo actualizar el reporte. Los datos mostrados pueden estar desactualizados.</span>
+        <button type="button" @click="cargarReporte().then(() => { _lastUpdated = new Date().toLocaleTimeString('es-ES'); _errorReporte = false; }).catch(() => {})" class="ml-auto btn-ghost btn-sm text-xs border border-amber-300 text-amber-800 hover:bg-amber-100">Reintentar</button>
+      </div>
+
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div class="card-kpi">
           <span class="text-xs font-semibold text-slate-500 block uppercase">Atendidos en Fecha</span>
@@ -382,28 +528,38 @@
         </div>
         <div class="card-kpi">
           <span class="text-xs font-semibold text-slate-500 block uppercase">Tiempo Medio Atención</span>
-          <span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="formatSegMin(reporteData.kpis.promedio_atencion_seg)">--:--</span>
+          <!-- null → '--', 0 → '--' (sin atendidos no hay media real) -->
+          <span class="font-mono-num text-3xl font-black text-slate-900 mt-1 block" x-text="formatSegMin(reporteData.kpis.promedio_atencion_seg)">--</span>
         </div>
         <div class="card-kpi">
+          <!-- Mesas activas con operador asignado el día consultado -->
           <span class="text-xs font-semibold text-slate-500 block uppercase">Mesas Operativas</span>
           <span class="font-mono-num text-3xl font-black text-blue-700 mt-1 block" x-text="reporteData.kpis.mesas_activas">0</span>
         </div>
       </div>
 
-      <!-- Resumen por Ventanilla -->
-      <div class="card p-5 rounded-2xl border border-slate-200/90 shadow-2xs" x-show="reporteData.mesas_resumen && reporteData.mesas_resumen.length > 0">
+      <!-- Resumen por Ventanilla (solo mesas con actividad ese día o activas ahora) -->
+      <div class="card p-5 rounded-2xl border border-slate-200/90" x-show="reporteData.mesas_resumen && reporteData.mesas_resumen.length > 0">
         <h3 class="font-bold text-xs uppercase text-slate-700 mb-3">Rendimiento por Ventanilla</h3>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           <template x-for="mr in reporteData.mesas_resumen" :key="mr.mesa_id">
             <div class="p-3 rounded-xl border border-slate-200/90 bg-slate-50/60">
               <span class="font-mono-num font-bold text-xs text-slate-900 block" x-text="'MESA ' + mr.mesa_numero"></span>
+              <span class="text-[10px] text-slate-400 block truncate" x-text="mr.mesa_nombre"></span>
               <div class="mt-2 text-xs">
                 <span class="text-slate-500 text-[11px] block">Atendidos: <strong class="text-slate-900 font-mono-num" x-text="mr.atendidos"></strong></span>
+                <span class="text-slate-500 text-[11px] block">Cancelados: <strong class="text-rose-600 font-mono-num" x-text="mr.cancelados"></strong></span>
                 <span class="text-slate-500 text-[11px] block">Media: <strong class="text-slate-900 font-mono-num" x-text="formatSegMin(mr.promedio_atencion_seg)"></strong></span>
               </div>
             </div>
           </template>
         </div>
+      </div>
+      <!-- Estado vacío cuando no hay actividad en esa fecha -->
+      <div x-show="!cargandoReporte && reporteData.mesas_resumen && reporteData.mesas_resumen.length === 0 && reporteData.turnos.length === 0" class="card p-8 text-center rounded-2xl border border-slate-200/90">
+        <svg class="w-10 h-10 stroke-[1.5] text-slate-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+        <p class="text-sm font-semibold text-slate-500">Sin turnos en esta fecha</p>
+        <p class="text-xs text-slate-400 mt-1">No se registraron turnos con los filtros seleccionados.</p>
       </div>
 
       <!-- Tabla Detallada de Turnos -->
@@ -452,93 +608,630 @@
       </div>
     </section>
 
-    <!-- PESTANA 5: CONFIGURACION Y USUARIOS -->
-    <section x-show="tab === 'config'" x-cloak class="space-y-6">
-      <!-- Cabecera Uniforme -->
+    <!-- PESTANA 5: USUARIOS Y OPERADORES -->
+    <section x-show="tab === 'usuarios'" x-cloak class="space-y-5">
+      <!-- Cabecera -->
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
         <div>
-          <h2 class="font-bold text-base text-slate-900">Configuración General y Personal</h2>
-          <p class="text-xs text-slate-500">Ajustes operativos en caliente y administración de usuarios</p>
+          <h2 class="font-bold text-base text-slate-900">Usuarios y Operadores</h2>
+          <p class="text-xs text-slate-500">Gestione cuentas, roles y asignación de mesas. Los cambios son en vivo.</p>
         </div>
-        <div class="flex items-center gap-2.5">
-          <button type="button" @click="modalUsuario = true" class="btn-primary btn-sm flex items-center gap-1.5 shadow-xs cursor-pointer">
-            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-            <span>Nuevo Usuario</span>
-          </button>
-        </div>
+        <button type="button" @click="modalUsuario = true"
+                class="btn-primary btn-sm flex items-center gap-1.5 shadow-xs cursor-pointer self-start sm:self-auto">
+          <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+          <span>Nuevo Usuario</span>
+        </button>
       </div>
 
-      <!-- Card: Ajustes Operativos en Caliente -->
-      <div class="card p-5 space-y-4 rounded-2xl border border-slate-200/90 shadow-2xs">
-        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div>
-            <h3 class="font-bold text-xs uppercase text-slate-700">Ajustes Operativos en Caliente</h3>
-            <p class="text-xs text-slate-400">Modifique los parámetros del sistema en tiempo real</p>
-          </div>
-          <button type="button" @click="guardarConfiguracion()" class="btn-primary btn-sm flex items-center gap-1.5 shadow-xs cursor-pointer">
-            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-            <span>Guardar Ajustes</span>
-          </button>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-          <div>
-            <label for="cfg-alerta-vouchers" class="font-semibold block mb-1">Alerta turnos restantes:</label>
-            <input id="cfg-alerta-vouchers" type="number" x-model.number="config.alerta_vouchers_restantes" min="1" class="input-field font-mono-num">
-            <p class="text-[11px] text-slate-400 mt-1">Umbral para notificar al admin.</p>
-          </div>
-          <div class="flex items-center space-x-2 pt-5">
-            <input id="cfg-voz-activa" type="checkbox" x-model="config.voz_anuncio_activa" class="rounded border-slate-300 text-blue-600">
-            <label for="cfg-voz-activa" class="font-semibold text-slate-700">Voz de Anuncio en TV</label>
-          </div>
-          <div class="flex items-center space-x-2 pt-5">
-            <input id="cfg-kiosko-activo" type="checkbox" x-model="config.kiosko_web_activo" class="rounded border-slate-300 text-blue-600">
-            <label for="cfg-kiosko-activo" class="font-semibold text-slate-700">Kiosko Web Activo</label>
-          </div>
-        </div>
+      <!-- Filtros -->
+      <div class="flex items-center gap-3">
+        <select x-model="filtroUsuarios" aria-label="Filtrar usuarios"
+                class="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 font-medium cursor-pointer">
+          <option value="todos">Todos los usuarios</option>
+          <option value="operador">Operadores</option>
+          <option value="admin">Administradores</option>
+          <option value="activos">Solo Activos</option>
+          <option value="inactivos">Solo Inactivos</option>
+        </select>
+        <span class="text-[11px] text-slate-400" x-text="getUsuariosFiltrados().length + ' usuario(s) mostrado(s)'"></span>
       </div>
 
-      <!-- Tabla: Usuarios y Operadores -->
+      <!-- Tabla de usuarios -->
       <div class="table-container shadow-xs">
-        <div class="p-4 px-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div class="flex items-center gap-3">
-            <h3 class="font-bold text-xs uppercase text-slate-700">Usuarios y Operadores</h3>
-            <select x-model="filtroUsuarios" aria-label="Filtrar usuarios" class="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-slate-700 font-medium cursor-pointer">
-              <option value="todos">Todos los usuarios</option>
-              <option value="operador">Operadores</option>
-              
-              <option value="admin">Administradores</option>
-              <option value="activos">Solo Activos</option>
-              <option value="inactivos">Solo Inactivos</option>
-            </select>
-          </div>
-          <button type="button" @click="modalUsuario = true" class="text-xs text-[#1D4ED8] font-semibold hover:underline cursor-pointer">Nuevo Usuario</button>
-        </div>
         <table class="table-base">
           <thead class="table-head">
             <tr>
               <th class="p-2.5">Nombre</th>
               <th class="p-2.5">Usuario</th>
               <th class="p-2.5">Rol</th>
+              <th class="p-2.5">Mesa</th>
               <th class="p-2.5">Estado</th>
               <th class="p-2.5 text-right">Acciones</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
+            <!-- Estado vacío -->
+            <tr x-show="getUsuariosFiltrados().length === 0">
+              <td colspan="6" class="p-8 text-center text-slate-400 text-xs">
+                <svg class="w-8 h-8 mx-auto mb-2 stroke-[1.5] text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>
+                No hay usuarios con ese filtro.
+              </td>
+            </tr>
             <template x-for="usr in getUsuariosFiltrados()" :key="usr.id">
               <tr class="table-row">
-                <td class="p-2.5 font-medium" x-text="usr.nombre_completo"></td>
-                <td class="p-2.5 font-mono-num" x-text="usr.username"></td>
-                <td class="p-2.5 uppercase font-bold text-[10px]" x-text="usr.rol"></td>
-                <td class="p-2.5"><span class="pill text-[10px]" :class="usr.activo ? 'pill-success' : 'pill-danger'" x-text="usr.activo ? 'Activo' : 'Inactivo'"></span></td>
-                <td class="p-2.5 text-right space-x-2">
-                  <button type="button" @click="abrirEditarUsuario(usr)" class="text-[#1D4ED8] text-xs font-semibold hover:underline cursor-pointer">Editar</button>
-                  <button type="button" @click="toggleActivoUsuario(usr)" class="text-xs font-semibold hover:underline cursor-pointer" :class="usr.activo ? 'text-amber-600' : 'text-blue-600'" x-text="usr.activo ? 'Desactivar' : 'Activar'"></button>
-                  <button type="button" @click="eliminarUsuario(usr.id, usr.username)" class="text-rose-600 text-xs font-semibold hover:underline cursor-pointer">Eliminar</button>
+                <!-- Nombre -->
+                <td class="p-2.5">
+                  <div class="flex items-center gap-2">
+                    <!-- Dot activo/inactivo -->
+                    <span class="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                          :class="usr.activo ? 'bg-emerald-400' : 'bg-slate-300'"></span>
+                    <span class="font-medium text-slate-900" x-text="usr.nombre_completo"></span>
+                  </div>
+                </td>
+                <!-- Username -->
+                <td class="p-2.5 font-mono-num text-slate-600" x-text="usr.username"></td>
+                <!-- Rol -->
+                <td class="p-2.5">
+                  <span class="pill text-[10px] font-bold uppercase"
+                        :class="usr.rol === 'admin' ? 'pill-primary' : 'bg-slate-100 text-slate-600 border border-slate-200'"
+                        x-text="usr.rol"></span>
+                </td>
+                <!-- Mesa (asignación rápida) -->
+                <td class="p-2 min-w-[130px]">
+                  <select
+                    :disabled="_loading || !usr.activo"
+                    :aria-label="'Mesa para ' + usr.username"
+                    class="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-slate-700 font-medium cursor-pointer w-full disabled:opacity-40 disabled:cursor-not-allowed"
+                    @change="asignarMesaAUsuario($event.target.value ? parseInt($event.target.value) : null, usr.id, usr.username); $event.target.value = usr.mesa_id || ''"
+                    :value="usr.mesa_id || ''">
+                    <option value="">Sin mesa</option>
+                    <!-- Mesas libres (sin operador) + la mesa ya asignada a este usuario -->
+                    <template x-for="m in mesas.filter(m => m.estado === 'activa' && (!m.operador_id || m.operador_id == usr.id || String(m.operador_id) == String(usr.id)))" :key="m.id">
+                      <option :value="m.id" x-text="'Mesa ' + m.numero + (m.nombre ? ' – ' + m.nombre : '')"></option>
+                    </template>
+                  </select>
+                </td>
+                <!-- Estado -->
+                <td class="p-2.5">
+                  <span class="pill text-[10px]"
+                        :class="usr.activo ? 'pill-success' : 'pill-danger'"
+                        x-text="usr.activo ? 'Activo' : 'Inactivo'"></span>
+                </td>
+                <!-- Acciones -->
+                <td class="p-2.5 text-right">
+                  <div class="flex items-center justify-end gap-3">
+                    <button type="button" @click="abrirEditarUsuario(usr)"
+                            class="text-blue-700 text-xs font-semibold hover:underline cursor-pointer">Editar</button>
+                    <button type="button" @click="toggleActivoUsuario(usr)"
+                            :disabled="_loading"
+                            class="text-xs font-semibold hover:underline cursor-pointer disabled:opacity-40"
+                            :class="usr.activo ? 'text-amber-600' : 'text-emerald-600'"
+                            x-text="usr.activo ? 'Desactivar' : 'Activar'"></button>
+                    <button type="button" @click="eliminarUsuario(usr.id, usr.username)"
+                            :disabled="_loading"
+                            class="text-rose-600 text-xs font-semibold hover:underline cursor-pointer disabled:opacity-40">Eliminar</button>
+                  </div>
                 </td>
               </tr>
             </template>
           </tbody>
         </table>
+      </div>
+    </section>
+
+    <!-- PESTANA 6: CONFIGURACION -->
+    <section x-show="tab === 'config'" x-cloak class="space-y-6">
+      <!-- Cabecera Uniforme y Filtros por Módulo -->
+      <div class="space-y-3 pb-1">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="font-bold text-base text-slate-900">Configuración del Sistema</h2>
+            <p class="text-xs text-slate-500">Parámetros operativos y preferencias organizados por módulo. Para gestionar operadores ve a <button type="button" @click="cambiarTab('usuarios')" class="text-blue-700 font-semibold hover:underline cursor-pointer">Usuarios</button>.</p>
+          </div>
+          <!-- Pill de estado de red / conexión -->
+          <div class="flex items-center gap-2">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold border"
+                  :class="wsConnected ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-rose-50 text-rose-700 border-rose-200 animate-pulse'">
+              <span class="w-2 h-2 rounded-full" :class="wsConnected ? 'bg-emerald-500' : 'bg-rose-500'"></span>
+              <span x-text="wsConnected ? 'En línea (Sincronizado)' : 'Sin conexión (Solo lectura)'"></span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Filtros Rápidos de Sección (Sub-tabs con estilo pastel limpio) -->
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs border-b border-slate-200/80">
+          <button type="button" @click="subTabConfig = 'todos'"
+                  class="px-3.5 py-1.5 rounded-xl font-semibold transition-all whitespace-nowrap cursor-pointer"
+                  :class="subTabConfig === 'todos' ? 'bg-blue-50 text-blue-700 border border-blue-300' : 'text-slate-600 hover:bg-slate-100 border border-transparent'">
+            Todos los Módulos
+          </button>
+          <button type="button" @click="subTabConfig = 'tv'"
+                  class="px-3.5 py-1.5 rounded-xl font-semibold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5"
+                  :class="subTabConfig === 'tv' ? 'bg-blue-50 text-blue-700 border border-blue-300' : 'text-slate-600 hover:bg-slate-100 border border-transparent'">
+            <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 20.25h12m-7.5-3v3m3-3v3m-10.125-3h17.25c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125z" /></svg>
+            <span>Pantalla TV</span>
+          </button>
+          <button type="button" @click="subTabConfig = 'kiosko'"
+                  class="px-3.5 py-1.5 rounded-xl font-semibold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5"
+                  :class="subTabConfig === 'kiosko' ? 'bg-blue-50 text-blue-700 border border-blue-300' : 'text-slate-600 hover:bg-slate-100 border border-transparent'">
+            <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 8.25h3m-3 3.75h3m-6-3.75H6.375a2.25 2.25 0 00-2.25 2.25v4.5a2.25 2.25 0 002.25 2.25h.75" /></svg>
+            <span>Kiosko Digital</span>
+          </button>
+          <button type="button" @click="subTabConfig = 'impresora'"
+                  class="px-3.5 py-1.5 rounded-xl font-semibold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5"
+                  :class="subTabConfig === 'impresora' ? 'bg-blue-50 text-blue-700 border border-blue-300' : 'text-slate-600 hover:bg-slate-100 border border-transparent'">
+            <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24-1.03-.48-2.06-.72-3.09a3 3 0 012.91-3.68h6.18a3 3 0 012.91 3.68c-.24 1.03-.48 2.06-.72 3.09M6.72 13.829H3.75a2.25 2.25 0 00-2.25 2.25v3.75a2.25 2.25 0 002.25 2.25h16.5a2.25 2.25 0 002.25-2.25v-3.75a2.25 2.25 0 00-2.25-2.25h-2.97M6.72 13.829a3.75 3.75 0 017.5 0m-7.5 0h7.5m-9 7.5v-3a1.5 1.5 0 011.5-1.5h7.5a1.5 1.5 0 011.5 1.5v3" /></svg>
+            <span>Impresora LAN</span>
+          </button>
+          <button type="button" @click="subTabConfig = 'sistema'"
+                  class="px-3.5 py-1.5 rounded-xl font-semibold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5"
+                  :class="subTabConfig === 'sistema' ? 'bg-blue-50 text-blue-700 border border-blue-300' : 'text-slate-600 hover:bg-slate-100 border border-transparent'">
+            <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" /></svg>
+            <span>Operación</span>
+          </button>
+          <button type="button" @click="subTabConfig = 'contingencia'"
+                  class="px-3.5 py-1.5 rounded-xl font-semibold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5"
+                  :class="subTabConfig === 'contingencia' ? 'bg-slate-100 text-slate-800 border border-slate-300' : 'text-slate-600 hover:bg-slate-100 border border-transparent'">
+            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg>
+            <span>Plan B (Contingencia)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ── BLOQUE 1: PANTALLA TV Y ANUNCIOS ── -->
+      <div x-show="subTabConfig === 'todos' || subTabConfig === 'tv'" class="card p-5 space-y-5 rounded-2xl border border-slate-200/90 bg-white">
+        <!-- Cabecera de Tarjeta -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center flex-shrink-0">
+              <svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 20.25h12m-7.5-3v3m3-3v3m-10.125-3h17.25c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125z" /></svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-xs uppercase text-slate-800 tracking-wide">Pantalla TV y Anuncios Públicos</h3>
+              <p class="text-xs text-slate-400">Preferencias de audio y escala de visualización para la sala de espera</p>
+            </div>
+          </div>
+          <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 self-start sm:self-auto">
+            <svg class="w-3 h-3 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
+            <span>Cambios aplicados al instante en TV</span>
+          </span>
+        </div>
+
+        <div class="space-y-4 text-xs">
+          <!-- Switch de TV: Voz de Anuncio de Turnos -->
+          <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 flex items-center justify-between gap-3">
+            <div class="space-y-0.5">
+              <div class="flex items-center gap-2">
+                <p class="font-semibold text-slate-800 text-xs">Voz de Anuncio de Turnos</p>
+                <span class="text-[10px] font-mono-num px-2 py-0.5 rounded-lg font-semibold border"
+                      :class="config.voz_anuncio_activa ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-slate-200 text-slate-600 border-slate-300'"
+                      x-text="config.voz_anuncio_activa ? 'ACTIVA' : 'SILENCIADA'"></span>
+              </div>
+              <p class="text-[11px] text-slate-500">Síntesis de voz automática ("Turno 14, Mesa 3") al llamar cada turno en pantalla pública.</p>
+            </div>
+            <div class="switch-track flex-shrink-0" :class="config.voz_anuncio_activa ? 'active' : ''"
+                 @click="alternarSwitchConfig('voz_anuncio_activa', 'Voz de Anuncio')"
+                 role="switch" aria-checked="false" :aria-checked="config.voz_anuncio_activa ? 'true' : 'false'"
+                 tabindex="0" title="Activar/desactivar locución de voz">
+              <div class="switch-thumb"></div>
+            </div>
+          </div>
+
+          <!-- Control 1: Escala del Turno Principal -->
+          <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wide">1. Tamaño Turno y Mesa Principal</h4>
+                  <span class="pill pill-primary font-mono-num text-xs font-bold" x-text="config.tv_escala_principal + '%'">100%</span>
+                  <span x-show="config.tv_escala_principal > 120" x-cloak class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-300">
+                    Auto-limitado si excede pantalla
+                  </span>
+                  <span x-show="avisoGuardadoPrincipal" x-cloak class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-300 animate-pulse">
+                    <svg class="w-3 h-3 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                    Guardado
+                  </span>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-0.5">Ajusta el número grande y el banner de mesa ('DIRÍJASE A MESA X') de la tarjeta principal en la TV (75% a 140%). Transmisión en vivo.</p>
+              </div>
+
+              <!-- Botón Restablecer estilo pastel -->
+              <button type="button" @click="restablecerEscalaPrincipal()"
+                      class="btn-ghost btn-sm flex items-center gap-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold rounded-xl px-3 py-1.5 self-start sm:self-auto cursor-pointer"
+                      title="Restablecer tamaño de la tarjeta principal al valor por defecto (100%)"
+                      aria-label="Restablecer tamaño de la tarjeta principal al valor por defecto (100%)">
+                <svg class="w-3.5 h-3.5 stroke-[2] text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+                <span>Restablecer (100%)</span>
+              </button>
+            </div>
+
+            <!-- Controles: Stepper [-] + Slider + Stepper [+] -->
+            <div class="flex items-center gap-3">
+              <button type="button" @click="cambiarEscalaPrincipal(-5)" :disabled="config.tv_escala_principal <= 75"
+                      class="w-8 h-8 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center font-bold text-slate-700 transition-colors cursor-pointer"
+                      title="Reducir tamaño del turno principal 5%"
+                      aria-label="Reducir tamaño del turno principal 5%">
+                <svg class="w-3.5 h-3.5 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" /></svg>
+              </button>
+
+              <div class="flex-1 flex items-center gap-3">
+                <span class="text-[11px] font-mono-num font-semibold text-slate-400">75%</span>
+                <input type="range" min="75" max="140" step="5" x-model.number="config.tv_escala_principal"
+                       @input="onInputEscalaPrincipal()"
+                       @change="_guardarEscalaPrincipalInmediata(config.tv_escala_principal)"
+                       class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 focus:outline-none"
+                       aria-label="Escala porcentual del turno y mesa principal en TV">
+                <span class="text-[11px] font-mono-num font-semibold text-slate-400">140%</span>
+              </div>
+
+              <button type="button" @click="cambiarEscalaPrincipal(5)" :disabled="config.tv_escala_principal >= 140"
+                      class="w-8 h-8 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center font-bold text-slate-700 transition-colors cursor-pointer"
+                      title="Aumentar tamaño del turno principal 5%"
+                      aria-label="Aumentar tamaño del turno principal 5%">
+                <svg class="w-3.5 h-3.5 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Control 2: Escala de Turnos Anteriores (Historial) -->
+          <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wide">2. Tamaño Turnos Anteriores (Historial)</h4>
+                  <span class="pill pill-primary font-mono-num text-xs font-bold" x-text="config.tv_escala_secundaria + '%'">100%</span>
+                  <span x-show="config.tv_escala_secundaria > 120" x-cloak class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-300">
+                    Auto-limitado si excede pantalla
+                  </span>
+                  <span x-show="avisoGuardadoSecundaria" x-cloak class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-300 animate-pulse">
+                    <svg class="w-3 h-3 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                    Guardado
+                  </span>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-0.5">Ajusta exclusivamente las 4 tarjetas del historial de turnos anteriores en la TV (75% a 140%). Transmisión en vivo.</p>
+              </div>
+
+              <!-- Botón Restablecer estilo pastel -->
+              <button type="button" @click="restablecerEscalaSecundaria()"
+                      class="btn-ghost btn-sm flex items-center gap-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold rounded-xl px-3 py-1.5 self-start sm:self-auto cursor-pointer"
+                      title="Restablecer tamaño de turnos anteriores al valor por defecto (100%)"
+                      aria-label="Restablecer tamaño de turnos anteriores al valor por defecto (100%)">
+                <svg class="w-3.5 h-3.5 stroke-[2] text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+                <span>Restablecer (100%)</span>
+              </button>
+            </div>
+
+            <!-- Controles: Stepper [-] + Slider + Stepper [+] -->
+            <div class="flex items-center gap-3">
+              <button type="button" @click="cambiarEscalaSecundaria(-5)" :disabled="config.tv_escala_secundaria <= 75"
+                      class="w-8 h-8 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center font-bold text-slate-700 transition-colors cursor-pointer"
+                      title="Reducir tamaño de turnos anteriores 5%"
+                      aria-label="Reducir tamaño de turnos anteriores 5%">
+                <svg class="w-3.5 h-3.5 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" /></svg>
+              </button>
+
+              <div class="flex-1 flex items-center gap-3">
+                <span class="text-[11px] font-mono-num font-semibold text-slate-400">75%</span>
+                <input type="range" min="75" max="140" step="5" x-model.number="config.tv_escala_secundaria"
+                       @input="onInputEscalaSecundaria()"
+                       @change="_guardarEscalaSecundariaInmediata(config.tv_escala_secundaria)"
+                       class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 focus:outline-none"
+                       aria-label="Escala porcentual de turnos anteriores y banner en TV">
+                <span class="text-[11px] font-mono-num font-semibold text-slate-400">140%</span>
+              </div>
+
+              <button type="button" @click="cambiarEscalaSecundaria(5)" :disabled="config.tv_escala_secundaria >= 140"
+                      class="w-8 h-8 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center font-bold text-slate-700 transition-colors cursor-pointer"
+                      title="Aumentar tamaño de turnos anteriores 5%"
+                      aria-label="Aumentar tamaño de turnos anteriores 5%">
+                <svg class="w-3.5 h-3.5 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── BLOQUE 2: KIOSKO DIGITAL Y AUTOSERVICIO ── -->
+      <div x-show="subTabConfig === 'todos' || subTabConfig === 'kiosko'" class="card p-5 space-y-4 rounded-2xl border border-slate-200/90 bg-white">
+        <!-- Cabecera de Tarjeta -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center flex-shrink-0">
+              <svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 8.25h3m-3 3.75h3m-6-3.75H6.375a2.25 2.25 0 00-2.25 2.25v4.5a2.25 2.25 0 002.25 2.25h.75" /></svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-xs uppercase text-slate-800 tracking-wide">Kiosko Digital y Autoservicio</h3>
+              <p class="text-xs text-slate-400">Emisión digital de turnos en tablet, smartphone o módulo de recepción</p>
+            </div>
+          </div>
+          <!-- Enlace pastel a Kiosko -->
+          <a href="/kiosko.html" target="_blank" rel="noopener noreferrer"
+             class="btn-ghost btn-sm flex items-center gap-1.5 self-start sm:self-auto cursor-pointer text-blue-700 border border-blue-200 bg-blue-50/60 hover:bg-blue-100 rounded-xl px-3 py-1.5 font-semibold">
+            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+            <span>Abrir Interfaz Kiosko</span>
+          </a>
+        </div>
+
+        <div class="space-y-4 text-xs">
+          <!-- Interruptor de Modo (Único y directo) -->
+          <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="space-y-0.5">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full" :class="config.kiosko_web_activo ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'"></span>
+                <p class="font-semibold text-slate-900 text-xs"
+                   x-text="config.kiosko_web_activo ? 'Modo Kiosko Digital Activo' : 'Modo Vouchers Físicos (Portón)'"></p>
+                <span class="text-[10px] font-mono-num px-2 py-0.5 rounded-lg font-semibold border"
+                      :class="config.kiosko_web_activo ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-slate-200 text-slate-600 border-slate-300'"
+                      x-text="config.kiosko_web_activo ? 'ACTIVO' : 'EN REPOSO'"></span>
+              </div>
+              <p class="text-[11px] text-slate-500"
+                 x-text="config.kiosko_web_activo
+                   ? 'Los turnos se generan vía digital / QR y alimentan la cola en tiempo real.'
+                   : 'Los operadores llaman correlativamente del lote impreso. El kiosko web no emite turnos.'">
+              </p>
+            </div>
+            <div class="flex items-center gap-3 self-end sm:self-auto">
+              <span class="font-semibold text-xs text-slate-600 hidden sm:inline" x-text="config.kiosko_web_activo ? 'Habilitado' : 'Deshabilitado'"></span>
+              <div class="switch-track" :class="config.kiosko_web_activo ? 'active' : ''"
+                   @click="alternarModoKiosko()"
+                   role="switch" aria-checked="false" :aria-checked="config.kiosko_web_activo ? 'true' : 'false'"
+                   tabindex="0" title="Alternar modo de generación de turnos">
+                <div class="switch-thumb"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Parámetros en grid uniforme -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            <div>
+              <label for="cfg-kiosko-modo" class="font-semibold block mb-1 text-slate-700">Modalidad de Uso:</label>
+              <select id="cfg-kiosko-modo" x-model="config.kiosko_modo_uso"
+                      class="input-field transition-colors bg-white">
+                <option value="empleado">Módulo Asistido (Personal en Recepción)</option>
+                <option value="estudiante">Autoservicio (Estudiante en Pantalla/Móvil)</option>
+              </select>
+              <p class="text-[11px] text-slate-400 mt-1">Flujo en la pantalla de autoservicio.</p>
+            </div>
+
+            <div>
+              <label for="cfg-kiosko-tope" class="font-semibold block mb-1 text-slate-700">Límite Diario de Turnos:</label>
+              <input id="cfg-kiosko-tope" type="number" min="0" x-model.number="config.kiosko_tope_diario"
+                     @input="validarKioskoTope()"
+                     class="input-field font-mono-num transition-colors bg-white"
+                     :class="erroresValidacion.cfgKioskoTope ? 'border-rose-400 focus:border-rose-500' : ''">
+              <p x-show="erroresValidacion.cfgKioskoTope" x-text="erroresValidacion.cfgKioskoTope" class="text-[11px] text-rose-600 font-medium mt-1"></p>
+              <p x-show="!erroresValidacion.cfgKioskoTope" class="text-[11px] text-slate-400 mt-1">0 = Sin límite de turnos diarios.</p>
+            </div>
+
+            <div>
+              <label for="cfg-kiosko-url" class="font-semibold block mb-1 text-slate-700">URL Base / IP LAN:</label>
+              <input id="cfg-kiosko-url" type="text" x-model.trim="config.kiosko_url_base"
+                     placeholder="http://192.168.1.100:3000/kiosko.html"
+                     class="input-field font-mono-num text-[11px] transition-colors bg-white">
+              <p class="text-[11px] text-slate-400 mt-1">Dirección para el código QR de acceso.</p>
+            </div>
+          </div>
+
+          <!-- Impresión automática en tablet (fila completa, toggle independiente) -->
+          <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="flex-1 min-w-0 pr-4">
+              <p class="font-semibold text-xs text-slate-800">Impresión automática al generar turno</p>
+              <p class="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                Solo modo tablet (empleado). Al generar un turno, el comprobante se envía a la impresora ESC/POS de inmediato sin botón adicional.
+                Requiere impresora activa y configurada. En modo celular (estudiante) no aplica.
+              </p>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <span class="font-semibold text-xs"
+                    :class="config.kiosko_impresion_automatica ? 'text-emerald-700' : 'text-slate-500'"
+                    x-text="config.kiosko_impresion_automatica ? 'Activada' : 'Desactivada'"></span>
+              <div class="switch-track" :class="config.kiosko_impresion_automatica ? 'active' : ''"
+                   @click="config.kiosko_impresion_automatica = !config.kiosko_impresion_automatica"
+                   role="switch" aria-checked="false" :aria-checked="config.kiosko_impresion_automatica ? 'true' : 'false'"
+                   id="switch-impresion-automatica"
+                   tabindex="0" title="Activar o desactivar impresión automática en tablet">
+                <div class="switch-thumb"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+        <!-- Pie de tarjeta: botón pastel verde ubicado coherentemente abajo -->
+        <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+          <span class="text-[11px] text-slate-400">Guarda los parámetros de modalidad y límites de emisión digital.</span>
+          <button type="button" @click="guardarKioskoParams()"
+                  :disabled="!cfgKioskoValida || _guardandoSeccion.kiosko || !wsConnected"
+                  class="btn-ghost btn-sm flex items-center gap-1.5 text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 cursor-pointer font-semibold rounded-xl px-4 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            <svg x-show="!_guardandoSeccion.kiosko" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+            <svg x-show="_guardandoSeccion.kiosko" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+            <span x-text="_guardandoSeccion.kiosko ? 'Guardando Ajustes...' : 'Guardar Ajustes de Kiosko'">Guardar Ajustes de Kiosko</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ── BLOQUE 3: IMPRESORA TÉRMICA LAN ── -->
+      <div x-show="subTabConfig === 'todos' || subTabConfig === 'impresora'" class="card p-5 space-y-4 rounded-2xl border border-slate-200/90 bg-white">
+        <!-- Cabecera de Tarjeta -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-teal-50 border border-teal-200 text-teal-700 flex items-center justify-center flex-shrink-0">
+              <svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24-1.03-.48-2.06-.72-3.09a3 3 0 012.91-3.68h6.18a3 3 0 012.91 3.68c-.24 1.03-.48 2.06-.72 3.09M6.72 13.829H3.75a2.25 2.25 0 00-2.25 2.25v3.75a2.25 2.25 0 002.25 2.25h16.5a2.25 2.25 0 002.25-2.25v-3.75a2.25 2.25 0 00-2.25-2.25h-2.97M6.72 13.829a3.75 3.75 0 017.5 0m-7.5 0h7.5m-9 7.5v-3a1.5 1.5 0 011.5-1.5h7.5a1.5 1.5 0 011.5 1.5v3" /></svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-xs uppercase text-slate-800 tracking-wide">Impresora Térmica de Red LAN (ESC/POS)</h3>
+              <p class="text-xs text-slate-400">Impresión física directa de comprobantes de turno en ventanilla o tótem</p>
+            </div>
+          </div>
+          <!-- Switch de Impresora Activa -->
+          <div class="flex items-center gap-2.5 self-start sm:self-auto bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-1.5">
+            <span class="text-xs font-semibold" :class="config.impresora_activa ? 'text-emerald-700' : 'text-slate-500'"
+                  x-text="config.impresora_activa ? 'Impresión Habilitada' : 'Impresión Inactiva'"></span>
+            <div class="switch-track" :class="config.impresora_activa ? 'active' : ''"
+                 @click="alternarSwitchConfig('impresora_activa', 'Impresora Térmica')"
+                 role="switch" aria-checked="false" :aria-checked="config.impresora_activa ? 'true' : 'false'"
+                 tabindex="0" title="Activar/desactivar envío a impresora térmica">
+              <div class="switch-thumb"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-4 text-xs">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label for="cfg-impresora-ip" class="font-semibold block mb-1 text-slate-700">Dirección IP de la Impresora:</label>
+              <input id="cfg-impresora-ip" type="text" x-model.trim="config.impresora_ip"
+                     placeholder="Ej: 192.168.1.200"
+                     class="input-field font-mono-num transition-colors">
+              <p class="text-[11px] text-slate-400 mt-1">IP estática en la red local universitaria.</p>
+            </div>
+
+            <div>
+              <label for="cfg-impresora-puerto" class="font-semibold block mb-1 text-slate-700">Puerto TCP (RAW ESC/POS):</label>
+              <input id="cfg-impresora-puerto" type="number" min="1" max="65535" x-model.number="config.impresora_puerto"
+                     @input="validarImpresoraPuerto()"
+                     placeholder="9100"
+                     class="input-field font-mono-num transition-colors"
+                     :class="erroresValidacion.cfgImpresoraPuerto ? 'border-rose-400 focus:border-rose-500' : ''">
+              <p x-show="erroresValidacion.cfgImpresoraPuerto" x-text="erroresValidacion.cfgImpresoraPuerto" class="text-[11px] text-rose-600 font-medium mt-1"></p>
+              <p x-show="!erroresValidacion.cfgImpresoraPuerto" class="text-[11px] text-slate-400 mt-1">Puerto estándar RAW ESC/POS es 9100 (Rango: 1 a 65535).</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pie de tarjeta: botón pastel verde ubicado coherentemente abajo -->
+        <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+          <span class="text-[11px] text-slate-400">Si está inactiva, el kiosko mostrará el comprobante en pantalla.</span>
+          <button type="button" @click="guardarImpresoraParams()"
+                  :disabled="!cfgImpresoraValida || _guardandoSeccion.impresora || !wsConnected"
+                  class="btn-ghost btn-sm flex items-center gap-1.5 text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 cursor-pointer font-semibold rounded-xl px-4 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            <svg x-show="!_guardandoSeccion.impresora" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+            <svg x-show="_guardandoSeccion.impresora" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+            <span x-text="_guardandoSeccion.impresora ? 'Guardando...' : 'Guardar Ajustes de Impresora'">Guardar Ajustes de Impresora</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ── BLOQUE 4: OPERACIÓN Y PARÁMETROS DEL SISTEMA ── -->
+      <div x-show="subTabConfig === 'todos' || subTabConfig === 'sistema'" class="card p-5 space-y-4 rounded-2xl border border-slate-200/90 bg-white">
+        <!-- Cabecera de Tarjeta -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center flex-shrink-0">
+              <svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" /></svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-xs uppercase text-slate-800 tracking-wide">Operación y Parámetros del Sistema</h3>
+              <p class="text-xs text-slate-400">Umbrales de supervisión de lotes y sincronización horaria oficial</p>
+            </div>
+          </div>
+          <span class="inline-flex items-center px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 self-start sm:self-auto">
+            Configuración Global
+          </span>
+        </div>
+
+        <div class="space-y-4 text-xs">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label for="cfg-alerta-vouchers" class="font-semibold block mb-1 text-slate-700">Alerta de Lote por Agotarse (Vouchers Restantes):</label>
+              <input id="cfg-alerta-vouchers" type="number" x-model.number="config.alerta_vouchers_restantes"
+                     @input="validarCfgAlerta()" min="1" max="500"
+                     class="input-field font-mono-num transition-colors"
+                     :class="erroresValidacion.cfgAlertaVouchers ? 'border-rose-400 focus:border-rose-500' : ''">
+              <p x-show="erroresValidacion.cfgAlertaVouchers" x-text="erroresValidacion.cfgAlertaVouchers" class="text-[11px] text-rose-600 font-medium mt-1"></p>
+              <p x-show="!erroresValidacion.cfgAlertaVouchers" class="text-[11px] text-slate-400 mt-1">Dispara aviso visual en el admin cuando queden N números en el lote (1 a 500).</p>
+            </div>
+
+            <div>
+              <label for="cfg-zona-horaria" class="font-semibold block mb-1 text-slate-700">Zona Horaria Oficial:</label>
+              <select id="cfg-zona-horaria" x-model="config.zona_horaria" @change="validarZonaHoraria()"
+                      class="input-field font-mono-num transition-colors bg-white"
+                      :class="erroresValidacion.cfgZonaHoraria ? 'border-rose-400 focus:border-rose-500' : ''">
+                <option value="America/Tegucigalpa">America/Tegucigalpa (UTC-6: Honduras / Centroamérica)</option>
+                <option value="America/Guatemala">America/Guatemala (UTC-6)</option>
+                <option value="America/El_Salvador">America/El_Salvador (UTC-6)</option>
+                <option value="America/Managua">America/Managua (UTC-6)</option>
+                <option value="America/Costa_Rica">America/Costa_Rica (UTC-6)</option>
+                <option value="America/Panama">America/Panama (UTC-5)</option>
+                <option value="America/Mexico_City">America/Mexico_City (UTC-6)</option>
+                <option value="America/Bogota">America/Bogota (UTC-5)</option>
+                <option value="UTC">UTC (Tiempo Universal Coordinado)</option>
+              </select>
+              <p x-show="erroresValidacion.cfgZonaHoraria" x-text="erroresValidacion.cfgZonaHoraria" class="text-[11px] text-rose-600 font-medium mt-1"></p>
+              <p x-show="!erroresValidacion.cfgZonaHoraria" class="text-[11px] text-slate-400 mt-1">Sincroniza el reloj en TV, cronómetros y reportes auditados.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pie de tarjeta: botón pastel verde ubicado coherentemente abajo -->
+        <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+          <span class="text-[11px] text-slate-400">Guarda los umbrales de alerta y huso horario institucional.</span>
+          <button type="button" @click="guardarSistemaParams()"
+                  :disabled="!cfgSistemaValida || !cfgAlertaValida || _guardandoSeccion.sistema || !wsConnected"
+                  class="btn-ghost btn-sm flex items-center gap-1.5 text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 cursor-pointer font-semibold rounded-xl px-4 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            <svg x-show="!_guardandoSeccion.sistema" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+            <svg x-show="_guardandoSeccion.sistema" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+            <span x-text="_guardandoSeccion.sistema ? 'Guardando...' : 'Guardar Parámetros de Operación'">Guardar Parámetros de Operación</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ── BLOQUE 5: ZONA DE CONTINGENCIA (PLAN B) — DISEÑO NEUTRO SIN AMARILLO ── -->
+      <div x-show="subTabConfig === 'todos' || subTabConfig === 'contingencia'" class="card p-5 space-y-4 rounded-2xl border border-slate-200/90 bg-white">
+        <!-- Cabecera de Tarjeta -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center flex-shrink-0">
+              <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-xs uppercase text-slate-800 tracking-wide">Zona de Contingencia y Plan B</h3>
+              <p class="text-xs text-slate-400">Recuperación operativa ante fallas de energía o atención manual con vouchers durante corte de red</p>
+            </div>
+          </div>
+          <span class="inline-flex items-center px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 self-start sm:self-auto">
+            Acción Especial de Emergencia
+          </span>
+        </div>
+
+        <!-- Estado actual del lote (Neutro, sin amarillo) -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div class="bg-slate-50 rounded-xl p-3 border border-slate-200/80">
+            <span class="text-slate-400 block mb-1">Lote en Seguimiento</span>
+            <span class="font-mono-num font-bold text-slate-900 text-sm"
+                  x-text="loteActivo ? ('Lote ' + loteActivo.numero_lote + ' (Activo)') : (lotePausado ? ('Lote ' + lotePausado.numero_lote + ' (Pausado)') : 'Sin lote activo')"></span>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-3 border border-slate-200/80">
+            <span class="text-slate-400 block mb-1">Último Número Registrado</span>
+            <span class="font-mono-num font-bold text-slate-900 text-sm"
+                  x-text="(loteActivo || lotePausado)?.ultimo_numero_llamado ?? '—'"></span>
+          </div>
+          <div class="bg-slate-50 rounded-xl p-3 border border-slate-200/80">
+            <span class="text-slate-400 block mb-1">Rango del Lote</span>
+            <span class="font-mono-num font-bold text-slate-900 text-sm"
+                  x-text="((loteActivo || lotePausado)?.numero_desde || '?') + ' – ' + ((loteActivo || lotePausado)?.numero_hasta || '?')"></span>
+          </div>
+        </div>
+
+        <div class="rounded-xl bg-slate-50 p-3 border border-slate-200/80 text-[11px] text-slate-600 space-y-1">
+          <p class="font-semibold text-slate-800">Instrucciones para el Administrador:</p>
+          <p>Utilice esta herramienta únicamente si se despacharon vouchers en papel fuera del sistema durante una interrupción de energía o falla de red. El ajuste exige un motivo obligatorio que se guardará de forma inmutable en el registro de auditoría.</p>
+        </div>
+
+        <!-- Pie de tarjeta: botón pastel verde ubicado coherentemente abajo a la derecha -->
+        <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+          <span class="text-[11px] text-slate-400">Permite sincronizar el correlativo del lote activo con los vouchers entregados.</span>
+          <button type="button" @click="abrirModalAjustarContador()"
+                  :disabled="(!loteActivo && !lotePausado) || !wsConnected"
+                  class="btn-ghost btn-sm flex items-center gap-1.5 text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 cursor-pointer font-semibold rounded-xl px-4 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+            <span>Ajustar Contador del Lote</span>
+          </button>
+        </div>
       </div>
     </section>
 
@@ -554,15 +1247,113 @@
           <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
       </div>
-      <form @submit.prevent="crearLoteSubmit" class="space-y-3.5 text-xs">
+      <form novalidate @submit.prevent="crearLoteSubmit" class="space-y-3.5 text-xs">
         <div>
           <label for="nuevo-lote-hasta" class="font-semibold block mb-1">Número hasta (límite del lote):</label>
-          <input id="nuevo-lote-hasta" type="number" x-model.number="nuevoLoteHasta" required min="1" class="input-field font-mono-num text-sm">
-          <p class="text-[11px] text-slate-400 mt-1">El lote iniciará secuencialmente para la jornada.</p>
+          <input id="nuevo-lote-hasta" type="number" x-model.number="nuevoLoteHasta" @input="validarNuevoLoteHasta()"
+                 placeholder="Ej: 500"
+                 class="input-field font-mono-num text-sm transition-colors"
+                 :class="erroresValidacion.nuevoLoteHasta ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200' : ''">
+          <p x-show="erroresValidacion.nuevoLoteHasta" x-text="erroresValidacion.nuevoLoteHasta" class="text-[11px] text-rose-600 font-medium mt-1"></p>
+          <p x-show="!erroresValidacion.nuevoLoteHasta" class="text-[11px] text-slate-400 mt-1">El lote iniciará secuencialmente para la jornada.</p>
         </div>
         <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100">
           <button type="button" @click="modalLote = false" class="btn-ghost btn-sm">Cancelar</button>
-          <button type="submit" class="btn-primary btn-sm">Crear Lote</button>
+          <button type="submit" :disabled="!nuevoLoteValido || _loading"
+                  class="btn-primary btn-sm flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+            <svg x-show="!_loading" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+            <svg x-show="_loading" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+            <span x-text="_loading ? 'Creando...' : 'Crear Lote'">Crear Lote</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Ajustar Contador del Lote (Plan B) -->
+  <div x-show="modalAjustarContador" x-cloak class="modal-backdrop">
+    <div class="modal-box space-y-4 max-w-md">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center">
+            <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+          </div>
+          <h3 class="text-base font-bold text-slate-900">Ajustar Contador del Lote</h3>
+        </div>
+        <button type="button" @click="cerrarModalAjustarContador()" title="Cerrar modal" aria-label="Cerrar modal" class="text-slate-400 hover:text-slate-600 cursor-pointer">
+          <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+
+      <!-- Contexto del lote -->
+      <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs space-y-1.5">
+        <div class="flex justify-between">
+          <span class="text-slate-500">Lote:</span>
+          <span class="font-mono-num font-bold text-slate-900" x-text="'Lote ' + ((loteActivo || lotePausado)?.numero_lote || '—')"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Ultimo numero llamado:</span>
+          <span class="font-mono-num font-bold text-slate-900" x-text="(loteActivo || lotePausado)?.ultimo_numero_llamado ?? '—'"></span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-500">Rango valido:</span>
+          <span class="font-mono-num font-bold text-slate-900" x-text="((loteActivo || lotePausado)?.numero_desde || 0) + ' a ' + ((loteActivo || lotePausado)?.numero_hasta || '?')"></span>
+        </div>
+      </div>
+
+      <form novalidate @submit.prevent="submitAjustarContador()" class="space-y-3.5 text-xs">
+        <div>
+          <label for="ajuste-nuevo-ultimo" class="font-semibold block mb-1">
+            Nuevo último número llamado:
+          </label>
+          <input id="ajuste-nuevo-ultimo" type="number"
+            x-model.number="ajusteContador.nuevoUltimo"
+            @input="validarAjusteNumero()"
+            class="input-field font-mono-num text-sm transition-colors"
+            :class="erroresValidacion.ajusteContadorNumero ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200' : ''">
+          <p x-show="erroresValidacion.ajusteContadorNumero" x-text="erroresValidacion.ajusteContadorNumero" class="text-[11px] text-rose-600 font-medium mt-1"></p>
+          <p x-show="!erroresValidacion.ajusteContadorNumero" class="text-[11px] text-slate-400 mt-1">El próximo turno a llamar será el <strong class="text-slate-700 font-mono-num" x-text="(ajusteContador.nuevoUltimo || 0) + 1"></strong>.</p>
+        </div>
+
+        <div>
+          <label for="ajuste-motivo" class="font-semibold block mb-1">Motivo del ajuste <span class="text-rose-500">*</span></label>
+          <textarea id="ajuste-motivo"
+            x-model="ajusteContador.motivo"
+            @input="validarAjusteMotivo()"
+            rows="3"
+            placeholder="Ej: Caída del sistema 11:00-12:30. Se atendieron turnos 215-240 en papel. Hojas archivadas en carpeta física."
+            class="input-field resize-none transition-colors"
+            :class="erroresValidacion.ajusteContadorMotivo ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200' : ''"></textarea>
+          <p x-show="erroresValidacion.ajusteContadorMotivo" x-text="erroresValidacion.ajusteContadorMotivo" class="text-[11px] text-rose-600 font-medium mt-1"></p>
+          <p x-show="!erroresValidacion.ajusteContadorMotivo" class="text-[11px] text-slate-400 mt-1">Queda registrado en el historial de auditoría.</p>
+        </div>
+
+        <!-- Advertencia de retroceso -->
+        <div x-show="ajusteContador.nuevoUltimo < ((loteActivo || lotePausado)?.ultimo_numero_llamado ?? 0)"
+          class="flex items-start gap-2 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-3">
+          <svg class="w-4 h-4 stroke-[2] flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+          <div>
+            <p class="font-semibold text-xs">Advertencia: estás retrocediendo el contador</p>
+            <p class="text-[11px] mt-0.5">Esto puede causar que números ya llamados sean llamados de nuevo. Confirma que es intencional.</p>
+            <label class="flex items-center gap-1.5 mt-2 cursor-pointer">
+              <input type="checkbox" x-model="ajusteContador.confirmarRetroceso" class="rounded border-rose-300 text-rose-600">
+              <span class="font-semibold">Confirmo el retroceso del contador</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+          <button type="button" @click="cerrarModalAjustarContador()" class="btn-ghost btn-sm">Cancelar</button>
+          <button type="submit"
+            title="Confirmar ajuste del contador del lote"
+            aria-label="Confirmar ajuste del contador del lote"
+            class="btn-sm flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-xs cursor-pointer active:scale-[0.98] transition-all"
+            :disabled="!ajusteContadorValido || ajusteContador.cargando || (ajusteContador.nuevoUltimo < ((loteActivo || lotePausado)?.ultimo_numero_llamado ?? 0) && !ajusteContador.confirmarRetroceso)">
+
+            <svg x-show="!ajusteContador.cargando" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+            <svg x-show="ajusteContador.cargando" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+            <span x-text="ajusteContador.cargando ? 'Ajustando...' : 'Confirmar Ajuste'"></span>
+          </button>
         </div>
       </form>
     </div>
@@ -585,7 +1376,7 @@
 
       <div class="text-xs text-slate-600 space-y-3">
         <p class="leading-relaxed">
-          El <strong class="text-slate-900" x-text="'Lote ' + (loteActivo?.numero_lote || '')"></strong> aún está activo en sala y tiene turnos disponibles. Para habilitar el <strong class="text-[#1D4ED8]" x-text="'Lote ' + (lotePendienteActivar?.numero_lote || '')"></strong>, debe pausar o cerrar el lote actual:
+          El <strong class="text-slate-900" x-text="'Lote ' + (loteActivo?.numero_lote || '')"></strong> aún está activo en sala y tiene turnos disponibles. Para habilitar el <strong class="text-blue-700" x-text="'Lote ' + (lotePendienteActivar?.numero_lote || '')"></strong>, debe pausar o cerrar el lote actual:
         </p>
 
         <div class="bg-amber-50/60 p-3 rounded-xl border border-amber-200/80 space-y-1.5">
@@ -618,12 +1409,12 @@
     </div>
   </div>
 
-  <!-- Modal: Extender Rango de Lote (Modal Solicitado por Usuario) -->
+  <!-- Modal: Extender Rango de Lote (Manual y Sin Atajos Fijos) -->
   <div x-show="modalExtender" x-cloak class="modal-backdrop">
     <div class="modal-box space-y-4 max-w-sm">
       <div class="flex items-center justify-between pb-2 border-b border-slate-100">
         <div class="flex items-center gap-2">
-          <div class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-[#1D4ED8] flex items-center justify-center">
+          <div class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center">
             <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
           </div>
           <h3 class="text-base font-bold text-slate-900">Extender Rango del Lote</h3>
@@ -635,28 +1426,37 @@
 
       <div class="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-1">
         <div class="flex justify-between">
-          <span class="text-slate-500">Lote activo:</span>
-          <strong class="font-mono-num text-slate-900" x-text="'Lote ' + (loteActivo?.numero_lote || '')"></strong>
+          <span class="text-slate-500">Lote a extender:</span>
+          <strong class="font-mono-num text-slate-900" x-text="'Lote ' + ((loteAExtender || loteActivo)?.numero_lote || '')"></strong>
         </div>
         <div class="flex justify-between">
           <span class="text-slate-500">Límite actual:</span>
-          <span class="font-mono-num text-slate-900" x-text="'Hasta #' + (loteActivo?.numero_hasta || 0)"></span>
+          <span class="font-mono-num text-slate-900" x-text="'Hasta #' + ((loteAExtender || loteActivo)?.numero_hasta || 0)"></span>
         </div>
       </div>
 
-      <form @submit.prevent="extenderLoteSubmit" class="space-y-3.5 text-xs">
+      <form novalidate @submit.prevent="extenderLoteSubmit" class="space-y-3.5 text-xs">
         <div>
           <label for="extension-turnos-input" class="font-semibold text-slate-700 block mb-1">Cantidad de turnos a adicionar:</label>
-          <input id="extension-turnos-input" type="number" x-model.number="extensionCantidad" required min="1" step="10" placeholder="50" class="input-field font-mono-num text-sm">
-          <p class="text-[11px] text-slate-400 mt-1">
-            Nuevo límite correlativo: <strong class="text-blue-700 font-mono-num" x-text="'#' + ((loteActivo?.numero_hasta || 0) + (extensionCantidad || 0))"></strong>
+          <input id="extension-turnos-input" type="number" x-model="extensionCantidad" @input="validarExtensionCantidad()"
+                 placeholder="Escribe la cantidad (ej. 100)"
+                 class="input-field font-mono-num text-sm transition-colors"
+                 :class="erroresValidacion.extensionCantidad ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200' : ''">
+          <p x-show="erroresValidacion.extensionCantidad" x-text="erroresValidacion.extensionCantidad" class="text-[11px] text-rose-600 font-medium mt-1"></p>
+          <p x-show="!erroresValidacion.extensionCantidad && extensionValida" class="text-[11px] text-slate-600 mt-1">
+            El nuevo límite quedará en <strong class="text-blue-700 font-mono-num" x-text="'#' + (((loteAExtender || loteActivo)?.numero_hasta || 0) + (parseInt(extensionCantidad, 10) || 0))"></strong>
+          </p>
+          <p x-show="!erroresValidacion.extensionCantidad && !extensionCantidad" class="text-[11px] text-slate-400 mt-1">
+            Escribe la cantidad de turnos correlativos que deseas sumar al lote.
           </p>
         </div>
         <div class="flex justify-end space-x-2 pt-3 border-t border-slate-100">
           <button type="button" @click="modalExtender = false" class="btn-ghost btn-sm">Cancelar</button>
-          <button type="submit" class="btn-primary btn-sm flex items-center gap-1.5">
-            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-            <span>Confirmar Extensión</span>
+          <button type="submit" :disabled="!extensionValida || _loading"
+                  class="btn-primary btn-sm flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+            <svg x-show="!_loading" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+            <svg x-show="_loading" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+            <span x-text="_loading ? 'Extendiendo...' : 'Confirmar Extensión'">Confirmar Extensión</span>
           </button>
         </div>
       </form>
@@ -668,7 +1468,7 @@
     <div class="modal-box space-y-4 max-w-sm">
       <div class="flex items-center justify-between pb-2 border-b border-slate-100">
         <div class="flex items-center gap-2">
-          <div class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-[#1D4ED8] flex items-center justify-center">
+          <div class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center">
             <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 16.875h3.375m0 0h3.375m-3.375 0V13.5m0 3.375v3.375M6 10.5h2.25a2.25 2.25 0 002.25-2.25V6a2.25 2.25 0 00-2.25-2.25H6A2.25 2.25 0 003.75 6v2.25A2.25 2.25 0 006 10.5zm0 9.75h2.25A2.25 2.25 0 0010.5 18v-2.25a2.25 2.25 0 00-2.25-2.25H6a2.25 2.25 0 00-2.25 2.25V18A2.25 2.25 0 006 20.25zm9.75-9.75H18a2.25 2.25 0 002.25-2.25V6A2.25 2.25 0 0018 3.75h-2.25A2.25 2.25 0 0013.5 6v2.25a2.25 2.25 0 002.25 2.25z" /></svg>
           </div>
           <h3 class="text-base font-bold text-slate-900">Crear Nueva Mesa</h3>
@@ -678,32 +1478,118 @@
         </button>
       </div>
 
-      <form @submit.prevent="crearMesaSubmit" class="space-y-3.5 text-xs">
+      <form novalidate @submit.prevent="crearMesaSubmit" class="space-y-3.5 text-xs">
         <div>
           <label for="nueva-mesa-num" class="font-semibold text-slate-700 block mb-1">Número de Mesa (entero):</label>
-          <input id="nueva-mesa-num" type="number" x-model.number="nuevaMesa.numero" required min="1" class="input-field font-mono-num text-sm">
+          <input id="nueva-mesa-num" type="number" x-model.number="nuevaMesa.numero" @input="validarNuevaMesaNumero()"
+                 placeholder="Ej: 5"
+                 class="input-field font-mono-num text-sm transition-colors"
+                 :class="erroresValidacion.nuevaMesaNumero ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200' : ''">
+          <p x-show="erroresValidacion.nuevaMesaNumero" x-text="erroresValidacion.nuevaMesaNumero" class="text-[11px] text-rose-600 font-medium mt-1"></p>
         </div>
         <div>
           <label for="nueva-mesa-nombre" class="font-semibold text-slate-700 block mb-1">Nombre / Identificador de Ventanilla:</label>
-          <input id="nueva-mesa-nombre" type="text" x-model="nuevaMesa.nombre" placeholder="ej. Mesa 5 — Matrícula" class="input-field text-sm">
-          <p class="text-[11px] text-slate-400 mt-1">Nombre descriptivo que verán los operadores y admines.</p>
+          <input id="nueva-mesa-nombre" type="text" x-model="nuevaMesa.nombre" @input="validarNuevaMesaNombre()"
+                 placeholder="ej. Mesa 5 — Matrícula"
+                 class="input-field text-sm transition-colors"
+                 :class="erroresValidacion.nuevaMesaNombre ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200' : ''">
+          <p x-show="erroresValidacion.nuevaMesaNombre" x-text="erroresValidacion.nuevaMesaNombre" class="text-[11px] text-rose-600 font-medium mt-1"></p>
+          <p x-show="!erroresValidacion.nuevaMesaNombre" class="text-[11px] text-slate-400 mt-1">Nombre descriptivo que verán los operadores y admines.</p>
         </div>
         <div class="flex justify-end space-x-2 pt-3 border-t border-slate-100">
           <button type="button" @click="modalMesa = false" class="btn-ghost btn-sm">Cancelar</button>
-          <button type="submit" class="btn-primary btn-sm flex items-center gap-1.5">
-            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-            <span>Crear Mesa</span>
+          <button type="submit" :disabled="!nuevaMesaValida || _loading"
+                  class="btn-primary btn-sm flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+            <svg x-show="!_loading" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+            <svg x-show="_loading" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+            <span x-text="_loading ? 'Creando...' : 'Crear Mesa'">Crear Mesa</span>
           </button>
         </div>
       </form>
     </div>
   </div>
+  <!-- Modal: Lote Agotado — Activar siguiente o crear nuevo -->
+  <div x-show="modalLoteAgotado" x-cloak class="modal-backdrop modal-backdrop--top">
+    <div class="modal-box space-y-4 max-w-md" @click.stop>
+      <!-- Header -->
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 flex items-center justify-center">
+            <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-900">Lote de Vouchers Agotado</h3>
+            <p class="text-[11px] text-slate-500 mt-0.5"
+               x-text="loteAgotadoInfo ? 'Lote ' + (loteAgotadoInfo.loteAgotado.numero_lote || '?') + ' — #' + (loteAgotadoInfo.loteAgotado.numero_hasta || '?') + ' llamados' : 'El lote activo ha llegado a su límite'"></p>
+          </div>
+        </div>
+        <button type="button" @click="modalLoteAgotado = false" title="Cerrar" aria-label="Cerrar modal" class="text-slate-400 hover:text-slate-600 cursor-pointer">
+          <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="text-xs text-slate-700 space-y-3">
+        <p>El lote activo de vouchers ha sido <strong class="text-rose-700">completamente agotado</strong>. Las ventanillas no pueden llamar nuevos turnos hasta que active un nuevo lote.</p>
+
+        <!-- Opcion A: Hay un lote preparado -->
+        <template x-if="loteAgotadoInfo && loteAgotadoInfo.loteSiguiente">
+          <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-2">
+            <p class="font-semibold text-emerald-800 text-[11px] uppercase tracking-wide">Lote disponible para activar</p>
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="font-bold text-slate-900" x-text="'Lote ' + loteAgotadoInfo.loteSiguiente.numero_lote"></span>
+                <span class="text-slate-500 ml-2 font-mono-num text-[11px]"
+                      x-text="'#' + (loteAgotadoInfo.loteSiguiente.numero_desde || 1) + ' al #' + loteAgotadoInfo.loteSiguiente.numero_hasta"></span>
+              </div>
+              <span class="pill pill-neutral text-[10px] uppercase" x-text="loteAgotadoInfo.loteSiguiente.estado"></span>
+            </div>
+            <button type="button" @click="activarSiguienteLotePreparado()" :disabled="_loading"
+              class="btn-primary w-full h-9 text-xs flex items-center justify-center gap-1.5 mt-1">
+              <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+              </svg>
+              <span x-text="_loading ? 'Activando...' : 'Activar este Lote Ahora'"></span>
+            </button>
+          </div>
+        </template>
+
+        <!-- Opcion B: No hay lote preparado -->
+        <template x-if="!loteAgotadoInfo || !loteAgotadoInfo.loteSiguiente">
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-800">
+            <p class="text-[11px]">No hay lotes preparados disponibles. Cree un nuevo lote para continuar la atención.</p>
+          </div>
+        </template>
+      </div>
+
+      <div class="flex flex-wrap justify-end gap-2 pt-2 border-t border-slate-100">
+        <button type="button" @click="modalLoteAgotado = false" class="btn-ghost btn-sm">Cerrar por ahora</button>
+        <button type="button" @click="abrirModalExtender(loteAgotadoInfo?.loteAgotado || loteActivo); modalLoteAgotado = false"
+                class="btn-ghost btn-sm text-blue-700 border border-blue-200 bg-blue-50/50 hover:bg-blue-100 flex items-center gap-1.5 cursor-pointer">
+          <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+          <span>Extender Lote Agotado</span>
+        </button>
+        <template x-if="!loteAgotadoInfo || !loteAgotadoInfo.loteSiguiente">
+          <button type="button" @click="crearLoteDesdeModal()" class="btn-primary btn-sm flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            <span>Crear Nuevo Lote</span>
+          </button>
+        </template>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Crear Nuevo Usuario -->
   <div x-show="modalUsuario" x-cloak class="modal-backdrop">
     <div class="modal-box space-y-4 max-w-sm">
       <div class="flex items-center justify-between pb-2 border-b border-slate-100">
         <div class="flex items-center gap-2">
-          <div class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-[#1D4ED8] flex items-center justify-center">
+          <div class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center">
             <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.765z" /></svg>
           </div>
           <h3 class="text-base font-bold text-slate-900">Crear Nuevo Usuario</h3>
@@ -712,32 +1598,42 @@
           <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
       </div>
-      <form @submit.prevent="crearUsuarioSubmit" class="space-y-3.5 text-xs">
+      <form novalidate @submit.prevent="crearUsuarioSubmit" class="space-y-3.5 text-xs">
         <div>
           <label for="usr-nombre" class="font-semibold text-slate-700 block mb-1">Nombre completo:</label>
-          <input id="usr-nombre" type="text" x-model="nuevoUsuario.nombre_completo" required placeholder="ej. Carlos Ruiz" class="input-field text-sm">
+          <input id="usr-nombre" type="text" x-model="nuevoUsuario.nombre_completo" @input="validarNuevoUsrNombre()"
+                 placeholder="ej. Carlos Ruiz" class="input-field text-sm transition-colors"
+                 :class="erroresValidacion.nuevoUsrNombre ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200' : ''">
+          <p x-show="erroresValidacion.nuevoUsrNombre" x-text="erroresValidacion.nuevoUsrNombre" class="text-[11px] text-rose-600 font-medium mt-1"></p>
         </div>
         <div>
           <label for="usr-username" class="font-semibold text-slate-700 block mb-1">Usuario / Identificador:</label>
-          <input id="usr-username" type="text" x-model="nuevoUsuario.username" required placeholder="ej. cruiz" class="input-field font-mono-num text-sm">
+          <input id="usr-username" type="text" x-model="nuevoUsuario.username" @input="validarNuevoUsrUsername()"
+                 placeholder="ej. cruiz" class="input-field font-mono-num text-sm transition-colors"
+                 :class="erroresValidacion.nuevoUsrUsername ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200' : ''">
+          <p x-show="erroresValidacion.nuevoUsrUsername" x-text="erroresValidacion.nuevoUsrUsername" class="text-[11px] text-rose-600 font-medium mt-1"></p>
         </div>
         <div>
           <label for="usr-password" class="font-semibold text-slate-700 block mb-1">Contraseña de acceso:</label>
-          <input id="usr-password" type="password" x-model="nuevoUsuario.password" required class="input-field text-sm">
+          <input id="usr-password" type="password" x-model="nuevoUsuario.password" @input="validarNuevoUsrPassword()"
+                 placeholder="Mínimo 4 caracteres" class="input-field text-sm transition-colors"
+                 :class="erroresValidacion.nuevoUsrPassword ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200' : ''">
+          <p x-show="erroresValidacion.nuevoUsrPassword" x-text="erroresValidacion.nuevoUsrPassword" class="text-[11px] text-rose-600 font-medium mt-1"></p>
         </div>
         <div>
           <label for="usr-rol" class="font-semibold text-slate-700 block mb-1">Rol en el sistema:</label>
           <select id="usr-rol" x-model="nuevoUsuario.rol" class="select-field text-sm">
             <option value="operador">Operador de Ventanilla</option>
-            
             <option value="admin">Administrador General</option>
           </select>
         </div>
         <div class="flex justify-end space-x-2 pt-3 border-t border-slate-100">
           <button type="button" @click="modalUsuario = false" class="btn-ghost btn-sm">Cancelar</button>
-          <button type="submit" class="btn-primary btn-sm flex items-center gap-1.5">
-            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-            <span>Crear Usuario</span>
+          <button type="submit" :disabled="!nuevoUsuarioValido || _loading"
+                  class="btn-primary btn-sm flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+            <svg x-show="!_loading" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+            <svg x-show="_loading" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+            <span x-text="_loading ? 'Creando...' : 'Crear Usuario'">Crear Usuario</span>
           </button>
         </div>
       </form>
@@ -753,18 +1649,29 @@
           <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
       </div>
-      <form @submit.prevent="editarMesaSubmit" class="space-y-3.5 text-xs">
+      <form novalidate @submit.prevent="editarMesaSubmit" class="space-y-3.5 text-xs">
         <div>
           <label for="edit-mesa-num" class="font-semibold text-slate-700 block mb-1">Número de Mesa:</label>
-          <input id="edit-mesa-num" type="number" x-model.number="mesaEditando.numero" required min="1" class="input-field font-mono-num text-sm">
+          <input id="edit-mesa-num" type="number" x-model.number="mesaEditando.numero" @input="validarEditMesaNumero()"
+                 class="input-field font-mono-num text-sm transition-colors"
+                 :class="erroresValidacion.editMesaNumero ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200' : ''">
+          <p x-show="erroresValidacion.editMesaNumero" x-text="erroresValidacion.editMesaNumero" class="text-[11px] text-rose-600 font-medium mt-1"></p>
         </div>
         <div>
           <label for="edit-mesa-nombre" class="font-semibold text-slate-700 block mb-1">Nombre / Identificador:</label>
-          <input id="edit-mesa-nombre" type="text" x-model="mesaEditando.nombre" class="input-field text-sm">
+          <input id="edit-mesa-nombre" type="text" x-model="mesaEditando.nombre" @input="validarEditMesaNombre()"
+                 class="input-field text-sm transition-colors"
+                 :class="erroresValidacion.editMesaNombre ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200' : ''">
+          <p x-show="erroresValidacion.editMesaNombre" x-text="erroresValidacion.editMesaNombre" class="text-[11px] text-rose-600 font-medium mt-1"></p>
         </div>
         <div class="flex justify-end space-x-2 pt-3 border-t border-slate-100">
           <button type="button" @click="modalEditarMesa = false" class="btn-ghost btn-sm">Cancelar</button>
-          <button type="submit" class="btn-primary btn-sm">Guardar Cambios</button>
+          <button type="submit" :disabled="!editarMesaValida || _loading"
+                  class="btn-primary btn-sm flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+            <svg x-show="!_loading" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+            <svg x-show="_loading" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+            <span x-text="_loading ? 'Guardando...' : 'Guardar Cambios'">Guardar Cambios</span>
+          </button>
         </div>
       </form>
     </div>
@@ -779,19 +1686,224 @@
           <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
       </div>
-      <form @submit.prevent="editarUsuarioSubmit" class="space-y-3 text-xs">
-        <div><label for="edit-usr-nombre" class="font-semibold block mb-1">Nombre completo:</label><input id="edit-usr-nombre" type="text" x-model="usuarioEditando.nombre_completo" required class="input-field"></div>
-        <div><label for="edit-usr-username" class="font-semibold block mb-1">Usuario / DNI:</label><input id="edit-usr-username" type="text" x-model="usuarioEditando.username" required class="input-field font-mono-num"></div>
-        <div><label for="edit-usr-password" class="font-semibold block mb-1">Nueva contraseña (opcional):</label><input id="edit-usr-password" type="password" x-model="usuarioEditando.password" placeholder="Dejar vacío si no cambia" class="input-field"></div>
-        <div><label for="edit-usr-rol" class="font-semibold block mb-1">Rol:</label><select id="edit-usr-rol" x-model="usuarioEditando.rol" class="select-field"><option value="operador">Operador</option><option value="admin">Admin</option></select></div>
-        <div class="flex items-center space-x-2 pt-1"><input id="edit-usr-activo" type="checkbox" x-model="usuarioEditando.activo" class="rounded border-slate-300 text-blue-600"><label for="edit-usr-activo" class="font-semibold">Usuario Activo</label></div>
-        <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100"><button type="button" @click="modalEditarUsuario = false" class="btn-ghost btn-sm">Cancelar</button><button type="submit" class="btn-primary btn-sm">Guardar</button></div>
+      <form novalidate @submit.prevent="editarUsuarioSubmit" class="space-y-3 text-xs">
+        <div>
+          <label for="edit-usr-nombre" class="font-semibold block mb-1">Nombre completo:</label>
+          <input id="edit-usr-nombre" type="text" x-model="usuarioEditando.nombre_completo" @input="validarEditUsrNombre()"
+                 class="input-field transition-colors"
+                 :class="erroresValidacion.editUsrNombre ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200' : ''">
+          <p x-show="erroresValidacion.editUsrNombre" x-text="erroresValidacion.editUsrNombre" class="text-[11px] text-rose-600 font-medium mt-1"></p>
+        </div>
+        <div>
+          <label for="edit-usr-username" class="font-semibold block mb-1">Usuario / DNI:</label>
+          <input id="edit-usr-username" type="text" x-model="usuarioEditando.username" @input="validarEditUsrUsername()"
+                 class="input-field font-mono-num transition-colors"
+                 :class="erroresValidacion.editUsrUsername ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200' : ''">
+          <p x-show="erroresValidacion.editUsrUsername" x-text="erroresValidacion.editUsrUsername" class="text-[11px] text-rose-600 font-medium mt-1"></p>
+        </div>
+        <div>
+          <label for="edit-usr-password" class="font-semibold block mb-1">Nueva contraseña (opcional):</label>
+          <input id="edit-usr-password" type="password" x-model="usuarioEditando.password" @input="validarEditUsrPassword()"
+                 placeholder="Mínimo 4 caracteres (o vacío)" class="input-field transition-colors"
+                 :class="erroresValidacion.editUsrPassword ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200' : ''">
+          <p x-show="erroresValidacion.editUsrPassword" x-text="erroresValidacion.editUsrPassword" class="text-[11px] text-rose-600 font-medium mt-1"></p>
+        </div>
+        <div>
+          <label for="edit-usr-rol" class="font-semibold block mb-1">Rol:</label>
+          <select id="edit-usr-rol" x-model="usuarioEditando.rol" class="select-field">
+            <option value="operador">Operador</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="flex items-center space-x-2 pt-1">
+          <input id="edit-usr-activo" type="checkbox" x-model="usuarioEditando.activo" class="rounded border-slate-300 text-blue-600">
+          <label for="edit-usr-activo" class="font-semibold">Usuario Activo</label>
+        </div>
+        <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+          <button type="button" @click="modalEditarUsuario = false" class="btn-ghost btn-sm">Cancelar</button>
+          <button type="submit" :disabled="!editarUsuarioValido || _loading"
+                  class="btn-primary btn-sm flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+            <svg x-show="!_loading" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+            <svg x-show="_loading" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+            <span x-text="_loading ? 'Guardando...' : 'Guardar'">Guardar</span>
+          </button>
+        </div>
       </form>
     </div>
   </div>
 
+  <!-- Modal: Confirmar Cambio a Modo Kiosko Digital -->
+  <div x-show="modalConfirmarKiosko" x-cloak class="modal-backdrop">
+    <div class="modal-box space-y-4 max-w-md">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center">
+            <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+          </div>
+          <h3 class="text-base font-bold text-slate-900">¿Cambiar a Modo Kiosko Digital?</h3>
+        </div>
+        <button type="button" @click="modalConfirmarKiosko = false" title="Cerrar modal" aria-label="Cerrar modal" class="text-slate-400 hover:text-slate-600 cursor-pointer">
+          <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+
+      <div class="text-xs text-slate-600 space-y-3">
+        <p class="font-medium text-slate-800">
+          Al activar esta modalidad, la atención en ventanillas pasará a despachar la cola digital:
+        </p>
+        <div class="bg-amber-50/70 border border-amber-200/90 rounded-xl p-3 space-y-2">
+          <div class="flex items-start gap-2">
+            <svg class="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
+            <span class="text-slate-700"><strong>Pausa de Vouchers Físicos:</strong> Mientras el Kiosko esté activo, el sistema no consumirá los números del lote físico de papel.</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <svg class="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
+            <span class="text-slate-700"><strong>Turnos en Línea:</strong> Los estudiantes o el personal de recepción generarán tickets desde la tablet o smartphone (<code class="font-mono text-slate-800">/kiosko.html</code>).</span>
+          </div>
+        </div>
+        <p class="text-[11px] text-slate-500">
+          En el siguiente paso podrá configurar el límite diario de turnos, la modalidad y la impresora de tickets antes de activar el servicio.
+        </p>
+      </div>
+
+      <div class="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+        <button type="button" @click="modalConfirmarKiosko = false" class="btn-ghost btn-sm">Cancelar</button>
+        <button type="button" @click="confirmarYConfigurarKiosko()" class="btn-primary-cobalt px-3.5 py-1.5 text-xs flex items-center gap-1.5">
+          <span>Continuar a Configuración</span>
+          <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" /></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Configuración y Parámetros del Kiosko Digital -->
+  <div x-show="modalConfigKiosko" x-cloak class="modal-backdrop">
+    <div class="modal-box space-y-4 max-w-lg">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center">
+            <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 8.25h3m-3 3.75h3m-6-3.75H6.375a2.25 2.25 0 00-2.25 2.25v4.5a2.25 2.25 0 002.25 2.25h.75" /></svg>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-900" x-text="kioskoConfigEditMode ? 'Ajustar Parámetros de Kiosko' : 'Configurar y Activar Kiosko Digital'"></h3>
+            <p class="text-[11px] text-slate-400">Defina las reglas de emisión y dispositivos de impresión</p>
+          </div>
+        </div>
+        <button type="button" @click="modalConfigKiosko = false" title="Cerrar modal" aria-label="Cerrar modal" class="text-slate-400 hover:text-slate-600 cursor-pointer">
+          <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+
+      <form @submit.prevent="guardarYActivarKioskoSubmit()" class="space-y-4 text-xs">
+        <!-- 1. Límite diario -->
+        <div>
+          <label for="cfg-modal-kiosko-tope" class="font-semibold block mb-1 text-slate-700">Límite de turnos por día:</label>
+          <input id="cfg-modal-kiosko-tope" type="number" x-model.number="kioskoForm.tope_diario" min="0" required class="input-field font-mono-num text-sm">
+          <p class="text-[11px] text-slate-400 mt-1">Ingrese <strong class="text-slate-700 font-mono-num">0</strong> para admitir turnos ilimitados durante la jornada.</p>
+        </div>
+
+        <!-- 2. Modalidad de uso -->
+        <div>
+          <label class="font-semibold block mb-1.5 text-slate-700">Modalidad de Uso:</label>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <label class="border rounded-xl p-3 flex items-start gap-2.5 cursor-pointer transition-all"
+                   :class="kioskoForm.modo_uso === 'empleado' ? 'border-blue-500 bg-blue-50/40 text-blue-900' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'">
+              <input type="radio" name="kioskoFormModo" value="empleado" x-model="kioskoForm.modo_uso" class="mt-0.5 text-blue-600">
+              <div>
+                <span class="font-bold text-xs block">Módulo de Recepción (Emisión Asistida)</span>
+                <span class="text-[11px] text-slate-500 block mt-0.5">Operado por personal desde tablet o smartphone.</span>
+              </div>
+            </label>
+            <label class="border rounded-xl p-3 flex items-start gap-2.5 cursor-pointer transition-all"
+                   :class="kioskoForm.modo_uso === 'estudiante' ? 'border-blue-500 bg-blue-50/40 text-blue-900' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'">
+              <input type="radio" name="kioskoFormModo" value="estudiante" x-model="kioskoForm.modo_uso" class="mt-0.5 text-blue-600">
+              <div>
+                <span class="font-bold text-xs block">Autoservicio Estudiantil</span>
+                <span class="text-[11px] text-slate-500 block mt-0.5">Estudiantes escanean QR y generan su propio ticket.</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- 3. Impresora LAN ESC/POS -->
+        <div class="border border-slate-200 rounded-xl p-3.5 bg-slate-50/60 space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="font-bold text-slate-800 block">Impresora de Tickets (LAN ESC/POS)</span>
+              <span class="text-[11px] text-slate-500 block">Impresión física automática de tickets térmicos</span>
+            </div>
+            <div class="switch-track" :class="kioskoForm.impresora_activa ? 'active' : ''" @click="kioskoForm.impresora_activa = !kioskoForm.impresora_activa" role="switch" aria-checked="false" :aria-checked="kioskoForm.impresora_activa ? 'true' : 'false'" aria-label="Activar o desactivar impresora de tickets" title="Activar o desactivar impresora de tickets" tabindex="0">
+              <div class="switch-thumb"></div>
+            </div>
+          </div>
+
+          <div x-show="kioskoForm.impresora_activa" x-transition class="space-y-2 pt-1 border-t border-slate-200/80">
+            <div class="grid grid-cols-3 gap-2">
+              <div class="col-span-2">
+                <label for="cfg-modal-imp-ip" class="font-semibold block mb-1 text-slate-700 text-[11px]">Dirección IP LAN:</label>
+                <input id="cfg-modal-imp-ip" type="text" x-model="kioskoForm.impresora_ip" placeholder="192.168.1.200" class="input-field font-mono-num text-xs">
+              </div>
+              <div>
+                <label for="cfg-modal-imp-puerto" class="font-semibold block mb-1 text-slate-700 text-[11px]">Puerto TCP:</label>
+                <input id="cfg-modal-imp-puerto" type="number" x-model.number="kioskoForm.impresora_puerto" min="1" max="65535" placeholder="9100" class="input-field font-mono-num text-xs">
+              </div>
+            </div>
+            <p class="text-[10px] text-slate-400">Protocolo RAW TCP (estándar puerto 9100 para impresoras térmicas ESC/POS).</p>
+          </div>
+
+          <div x-show="!kioskoForm.impresora_activa" class="text-[11px] text-slate-500">
+            <span>Impresión directa inactiva: El voucher se descarga digitalmente en el smartphone del usuario con QR de seguimiento.</span>
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+          <button type="button" @click="modalConfigKiosko = false" class="btn-ghost btn-sm">Cancelar</button>
+          <button type="submit" title="Guardar configuración de Kiosko" aria-label="Guardar configuración de Kiosko" class="btn-primary-cobalt px-4 py-1.5 text-xs flex items-center gap-1.5 cursor-pointer">
+            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+            <span x-text="kioskoConfigEditMode ? 'Guardar Parámetros' : 'Guardar y Activar Kiosko'">Guardar</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── MODAL DE CONFIRMACIÓN REUTILIZABLE (reemplaza confirm() nativo) ── -->
+  <div x-show="_confirmModal.visible"
+       x-cloak
+       class="modal-backdrop"
+       @keydown.escape.window="_confirmModal.visible = false"
+       role="dialog"
+       aria-modal="true"
+       :aria-label="_confirmModal.titulo">
+    <div class="modal-box max-w-sm" @click.stop>
+      <!-- Icono contextual: alerta/aviso o peligro -->
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+             :class="_confirmModal.tipo === 'aviso' ? 'bg-amber-50 border border-amber-200 text-amber-600' : 'bg-rose-50 border border-rose-200 text-rose-600'">
+          <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
+        </div>
+        <div>
+          <h3 class="font-bold text-sm text-slate-900" x-text="_confirmModal.titulo"></h3>
+          <p class="text-xs text-slate-500 mt-0.5" x-text="_confirmModal.mensaje"></p>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">
+        <button type="button" @click="_confirmModal.visible = false" class="btn-ghost btn-sm">Cancelar</button>
+        <button type="button"
+                @click="_confirmModal.accion && _confirmModal.accion(); _confirmModal.visible = false"
+                :class="_confirmModal.botonClase || 'btn-danger btn-sm'"
+                title="Confirmar"
+                aria-label="Confirmar"
+                x-text="_confirmModal.botonTexto || 'Confirmar'">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Módulo primero: registra el listener alpine:init antes de que Alpine arranque -->
   <script type="module" src="/js/pages/admin.js"></script>
-  <!-- Alpine local — version fijada, sin CDN (INC-3) -->
+  <!-- Alpine con defer: carga tras el HTML, dispara alpine:init y encuentra adminPanel ya registrado -->
   <script defer src="/vendor/alpine-3.13.3.min.js"></script>
 </body>
 </html>

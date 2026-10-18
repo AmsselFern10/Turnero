@@ -8,25 +8,26 @@
   <link rel="stylesheet" href="/css/base.css">
   <link rel="stylesheet" href="/css/components.css">
   <link rel="stylesheet" href="/css/animations.css">
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/css/tailwind.css">
+  <link rel="icon" href="data:,">
 </head>
 
 <body x-data="panelMesaView()" x-cloak
-  class="screen-fixed flex flex-col justify-between bg-app antialiased text-slate-800 select-none">
+  class="min-h-screen w-full flex flex-col justify-between bg-app antialiased text-slate-800 select-none overflow-x-hidden overflow-y-auto scroll-subtle">
 
   <!-- ── 1. ENCABEZADO INSTITUCIONAL COMPACTO (h-14) ── -->
-  <header class="app-header h-14 px-6 flex items-center justify-between z-40">
-    <div class="flex items-center space-x-3.5">
-      <div class="badge-mesa">
+  <header class="app-header h-14 px-4 sm:px-6 flex items-center justify-between z-40 sticky top-0 bg-white/95 backdrop-blur-sm flex-shrink-0">
+    <div class="flex items-center space-x-2.5 sm:space-x-3.5 min-w-0">
+      <div class="badge-mesa flex-shrink-0">
         <span x-text="'MESA ' + (mesa.numero || '-')"></span>
       </div>
-      <div class="flex flex-col">
-        <span class="text-xs font-bold text-slate-900 leading-tight" x-text="operador.nombre_completo"></span>
-        <span class="text-[11px] text-slate-500 font-normal leading-tight"
+      <div class="flex flex-col min-w-0">
+        <span class="text-xs font-bold text-slate-900 leading-tight truncate" x-text="operador.nombre_completo"></span>
+        <span class="text-[11px] text-slate-500 font-normal leading-tight truncate"
           x-text="mesa.nombre || 'Ventanilla de Atención'"></span>
       </div>
-      <span class="text-slate-300">|</span>
-      <div class="pill text-[11px]" :class="wsConnected ? 'pill-success' : 'pill-warning'">
+      <span class="text-slate-300 hidden sm:inline">|</span>
+      <div class="pill text-[11px] flex-shrink-0" :class="wsConnected ? 'pill-success' : 'pill-warning'">
         <span class="w-1.5 h-1.5 rounded-full"
           :class="wsConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'"></span>
         <span x-text="wsConnected ? 'En línea' : 'Reconectando'"></span>
@@ -34,12 +35,12 @@
     </div>
 
     <!-- Reloj y Acciones de Ventanilla -->
-    <div class="flex items-center space-x-3">
-      <div class="text-right hidden sm:block pr-2">
+    <div class="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
+      <div class="text-right hidden md:block pr-2">
         <div class="font-mono-num text-sm font-bold text-slate-800 tracking-tight" x-text="relojHora">--:--:--</div>
         <div class="text-[10px] text-slate-400 font-medium" x-text="relojFecha"></div>
       </div>
-      <span class="text-slate-200 hidden sm:inline">|</span>
+      <span class="text-slate-200 hidden md:inline">|</span>
       <button type="button" @click="mesaPausada ? reanudarMesa() : pausarMesa()" title="Pausar o reanudar mesa"
         aria-label="Pausar o reanudar mesa" class="btn-ghost btn-sm"
         :class="mesaPausada ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : ''">
@@ -49,7 +50,7 @@
           <path x-show="mesaPausada" stroke-linecap="round" stroke-linejoin="round"
             d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
         </svg>
-        <span x-text="mesaPausada ? 'Reanudar' : 'Pausar Mesa'">Pausar Mesa</span>
+        <span class="hidden sm:inline" x-text="mesaPausada ? 'Reanudar' : 'Pausar Mesa'">Pausar Mesa</span>
       </button>
       <button type="button" @click="logout()" title="Cerrar sesión" aria-label="Cerrar sesión"
         class="btn-ghost btn-sm text-slate-500 hover:text-rose-700 hover:bg-rose-50">
@@ -61,21 +62,21 @@
     </div>
   </header>
 
-  <!-- ── 2. CANVAS CENTRAL (2 COLUMNAS ERGONÓMICAS — BOCETO IMAGEN 2) ── -->
-  <main class="flex-1 w-full max-w-7xl mx-auto p-6 flex flex-col md:flex-row gap-6 overflow-hidden">
+  <!-- ── 2. CANVAS CENTRAL (2 COLUMNAS ERGONÓMICAS — ADAPTABLES Y SCROLLEABLES) ── -->
+  <main class="flex-1 w-full max-w-7xl mx-auto p-3 sm:p-5 lg:p-6 flex flex-col lg:flex-row gap-4 sm:gap-6 min-h-0">
 
     <!-- COLUMNA HERO (~65% Ancho): TURNO ACTUAL Y ACCIÓN DOMINANTE -->
-    <section class="card-hero flex-1 md:w-[65%] flex flex-col justify-between p-7 transition-all duration-300 relative"
+    <section class="card-hero flex-1 lg:w-[65%] flex flex-col justify-between p-4 sm:p-6 lg:p-7 transition-all duration-300 relative min-h-fit"
       :class="{
                'ring-4 ring-blue-500/30 border-blue-500 bg-blue-50/10 animate-pulse-call': feedbackEstado === 'llamando',
                'ring-4 ring-amber-500/30 border-amber-500 bg-amber-50/15 animate-pulse-call': feedbackEstado === 'rellamando',
                'border-slate-300 bg-white': feedbackEstado === 'idle' || feedbackEstado === 'ausente'
              }">
 
-      <!-- Barra Superior de Estado y Cronómetro (Boceto Imagen 2 + Stitch) -->
-      <div class="flex items-center justify-between pb-4 border-b border-slate-100">
+      <!-- Barra Superior de Estado y Cronómetro -->
+      <div class="flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-100 flex-wrap gap-2">
         <div
-          class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold tracking-wide transition-all"
+          class="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 rounded-full text-xs font-bold tracking-wide transition-all"
           :class="{
                'bg-blue-50 border border-blue-200 text-blue-700': feedbackEstado === 'llamando',
                'bg-amber-50 border border-amber-200 text-amber-700': feedbackEstado === 'rellamando',
@@ -112,35 +113,31 @@
             <span class="w-2 h-2 rounded-full bg-slate-400"></span>
           </template>
 
-          <span x-text="
-            feedbackEstado === 'llamando' ? 'LLAMANDO ALUMNO...' :
-            feedbackEstado === 'rellamando' ? 'RE-LLAMANDO (2º AVISO)' :
-            (turnoActual ? 'TURNO ACTUAL • EN ATENCIÓN' : 'VENTANILLA LIBRE (DISPONIBLE)')
-          "></span>
+          <span x-text="estadoVentanillaTexto"></span>
         </div>
 
         <div
-          class="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500">
+          class="flex items-center space-x-1.5 sm:space-x-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500">
           <svg class="w-4 h-4 text-slate-400 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span class="font-mono-num font-bold text-slate-800 text-base" x-text="cronometro">00:00</span>
+          <span class="font-mono-num font-bold text-slate-800 text-sm sm:text-base" x-text="cronometro">00:00</span>
           <span class="hidden sm:inline">en ventanilla</span>
         </div>
       </div>
 
-      <!-- Turno Gigante Central (Sin '#' tal como en el boceto Imagen 2) -->
-      <div class="flex-1 flex flex-col items-center justify-center py-6 text-center">
+      <!-- Turno Gigante Central -->
+      <div class="flex-1 flex flex-col items-center justify-center py-4 sm:py-6 text-center my-auto min-h-[160px] sm:min-h-[200px]">
         <template x-if="turnoActual">
           <div class="animate-glow-cobalt flex flex-col items-center">
             <div
-              class="font-mono-num text-[110px] sm:text-[136px] lg:text-[148px] font-black text-slate-900 leading-none tracking-tight"
+              class="font-mono-num text-7xl sm:text-8xl md:text-9xl lg:text-[120px] xl:text-[136px] font-black text-slate-900 leading-none tracking-tight select-all"
               x-text="String(turnoActual.numero).padStart(3, '0')"></div>
-            <p class="text-xs font-medium text-slate-500 mt-3">Sonando en la TV pública • Esperando que el alumno tome
+            <p class="text-xs font-medium text-slate-500 mt-2 sm:mt-3">Sonando en la TV pública • Esperando que el alumno tome
               asiento</p>
 
             <div
-              class="mt-4 inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-600">
+              class="mt-3 sm:mt-4 inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs text-slate-600">
               <svg class="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" fill="none" stroke="currentColor"
                 viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
@@ -154,7 +151,7 @@
         <template x-if="!turnoActual">
           <div class="flex flex-col items-center space-y-2">
             <div
-              class="font-mono-num text-[110px] sm:text-[136px] font-bold text-slate-300 leading-none tracking-tight">
+              class="font-mono-num text-7xl sm:text-8xl md:text-9xl lg:text-[120px] font-bold text-slate-300 leading-none tracking-tight">
               ---</div>
             <p class="text-xs font-medium text-slate-400">Presione el botón para despachar al siguiente alumno</p>
             <div
@@ -170,12 +167,12 @@
         </template>
       </div>
 
-      <!-- Barra de Acciones del Operador (Igual a la Imagen 1 como pidió el usuario) -->
-      <div class="space-y-3 pt-4 border-t border-slate-100">
+      <!-- Barra de Acciones del Operador -->
+      <div class="space-y-2.5 sm:space-y-3 pt-3 sm:pt-4 border-t border-slate-100">
         <button type="button" @click="llamarSiguiente()" :disabled="loadingAction || mesaPausada"
           title="Llamar al siguiente voucher del lote (Espacio o Enter)" aria-label="Llamar siguiente turno"
-          class="btn-call flex items-center justify-center space-x-3">
-          <svg class="w-6 h-6 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          class="btn-call flex items-center justify-center space-x-2 sm:space-x-3 h-13 sm:h-14 lg:h-16 text-base sm:text-lg">
+          <svg class="w-5 h-5 sm:w-6 sm:h-6 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" />
           </svg>
           <span x-text="loadingAction ? 'Llamando...' : 'LLAMAR SIGUIENTE'">LLAMAR SIGUIENTE</span>
@@ -184,57 +181,84 @@
             / Enter</span>
         </button>
 
-        <div class="grid grid-cols-2 gap-3" x-show="turnoActual !== null">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3" x-show="turnoActual !== null">
           <button type="button" @click="cancelarTurno()" :disabled="loadingAction" title="Marcar como ausente (N / Esc)"
             aria-label="No se presentó" class="btn-danger h-11 w-full text-xs">
             <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
-            <span>No se presentó</span>
+            <span class="truncate">No se presentó</span>
             <span
-              class="text-[10px] font-mono-num bg-rose-200/60 px-1.5 py-0.5 rounded text-rose-800 hidden sm:inline">N</span>
+              class="text-[10px] font-mono-num bg-rose-200/60 px-1.5 py-0.5 rounded text-rose-800 hidden lg:inline">N</span>
           </button>
           <button type="button" @click="rellamarTurno()" :disabled="loadingAction" title="Re-anunciar en TV (R)"
             aria-label="Re-llamar turno"
-            class="btn-ghost h-11 w-full text-xs text-[#1D4ED8] border-blue-200 bg-blue-50/50 hover:bg-blue-100">
+            class="btn-accent h-11 w-full text-xs">
             <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round"
                 d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.757 3.63 8.25 4.51 8.25H6.75z" />
             </svg>
-            <span>Re-llamar a TV</span>
+            <span class="truncate">Re-llamar a TV</span>
             <span
-              class="text-[10px] font-mono-num bg-blue-200/60 px-1.5 py-0.5 rounded text-blue-800 hidden sm:inline">R</span>
+              class="text-[10px] font-mono-num bg-blue-200/60 px-1.5 py-0.5 rounded text-blue-800 hidden lg:inline">R</span>
+          </button>
+          <button type="button" @click="abrirFlujoRezagados()" :disabled="loadingAction || mesaPausada"
+            title="Atender a un estudiante que llegó después de haber sido cancelado"
+            aria-label="Atender rezagado"
+            class="btn-ghost h-11 w-full text-xs text-slate-700 border-slate-300 hover:bg-slate-50 relative">
+            <svg class="w-4 h-4 text-slate-500 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+            <span class="truncate">Rezagado</span>
+            <span class="pill text-[10px] py-0 px-1.5 font-mono-num font-bold ml-1"
+              :class="totalRezagados > 0 ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-slate-100 text-slate-400 border border-slate-200'"
+              x-text="totalRezagados">0</span>
+          </button>
+        </div>
+
+        <div x-show="turnoActual === null">
+          <button type="button" @click="abrirFlujoRezagados()" :disabled="loadingAction || mesaPausada"
+            title="Atender a un estudiante rezagado que llegó después"
+            aria-label="Atender rezagado"
+            class="btn-ghost h-11 w-full text-xs text-slate-700 border-slate-300 hover:bg-slate-50 flex items-center justify-center space-x-2">
+            <svg class="w-4 h-4 text-slate-500 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+            <span>Atender turno rezagado</span>
+            <span class="pill text-[10px] py-0 px-1.5 font-mono-num font-bold ml-1.5"
+              :class="totalRezagados > 0 ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-slate-100 text-slate-400 border border-slate-200'"
+              x-text="rezagadosBadgeText">Sin rezagados</span>
           </button>
         </div>
       </div>
     </section>
 
-    <!-- COLUMNA LATERAL (~35% Ancho): PRÓXIMO TURNO DISPONIBLE Y LLAMADO EMITIDO (Boceto Imagen 2) -->
-    <aside class="w-full md:w-[35%] card p-6 flex flex-col justify-between">
+    <!-- COLUMNA LATERAL (~35% Ancho): PRÓXIMO TURNO DISPONIBLE Y LLAMADO EMITIDO -->
+    <aside class="w-full lg:w-[35%] card p-4 sm:p-5 lg:p-6 flex flex-col justify-between gap-4 min-h-fit">
       <div>
         <span class="text-xs font-bold uppercase tracking-wider text-slate-500">PRÓXIMO TURNO DISPONIBLE</span>
       </div>
 
       <!-- Tarjeta Interior Centrada con el Turno Siguiente -->
       <div
-        class="rounded-2xl border border-slate-200 bg-slate-50/60 p-7 flex flex-col items-center justify-center text-center my-auto">
+        class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5 lg:p-6 flex flex-col items-center justify-center text-center my-auto">
         <span class="text-xs font-bold uppercase tracking-wider text-slate-400">TURNO SIGUIENTE</span>
-        <div class="font-mono-num font-black tracking-tight my-3"
-          :class="proximoNumero ? 'text-7xl lg:text-8xl text-slate-900' : 'text-2xl sm:text-3xl text-rose-600 font-bold'"
-          x-text="proximoNumero ? String(proximoNumero).padStart(3, '0') : (vouchersRestantes === 0 || !loteActivo ? 'Lote agotado' : '---')"></div>
+        <div class="font-mono-num font-black tracking-tight my-2 sm:my-3"
+          :class="proximoNumeroClass"
+          x-text="proximoNumeroDisplay"></div>
         <p class="text-xs text-slate-500 max-w-xs leading-relaxed"
-          x-text="proximoNumero ? 'Se llamará automáticamente a tu mesa al presionar \"Llamar Siguiente\".' : 'No hay vouchers disponibles en el lote actual. Notifique al admin.'">
+          x-text="proximoNumeroMensaje">
         </p>
 
         <div
-          class="mt-4 pt-3 border-t border-slate-200/80 w-full flex items-center justify-between text-[11px] text-slate-400">
-          <span x-text="loteActivo ? ('Lote ' + loteActivo.numero_lote) : 'Sin lote activo'"></span>
-          <span x-text="vouchersRestantes + ' vouchers restantes'"></span>
+          class="mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-slate-200/80 w-full flex items-center justify-between text-[11px] text-slate-400">
+          <span x-text="origenLoteDisplay"></span>
+          <span x-text="cantidadRestanteDisplay"></span>
         </div>
       </div>
 
-      <!-- Callout Inferior de Confirmación / Estado del Llamado (Stitch Dynamic Feedback) -->
-      <div class="rounded-xl border p-4 flex items-start gap-3 transition-all duration-300 text-xs" :class="{
+      <!-- Callout Inferior de Confirmación / Estado del Llamado -->
+      <div class="rounded-xl border p-3.5 sm:p-4 flex items-start gap-3 transition-all duration-300 text-xs" :class="{
              'bg-emerald-50/80 border-emerald-200 text-emerald-800': feedbackEstado === 'llamando' || (feedbackEstado === 'idle' && turnoActual),
              'bg-amber-50/80 border-amber-200 text-amber-800': feedbackEstado === 'rellamando',
              'bg-rose-50/80 border-rose-200 text-rose-800': feedbackEstado === 'ausente',
@@ -298,9 +322,9 @@
 
   </main>
 
-  <!-- ── 3. BARRA HORIZONTAL DE ATAJOS OPERATIVOS (Boceto Imagen 2) ── -->
-  <footer class="app-footer h-11 px-6 flex items-center justify-between text-xs select-none">
-    <div class="flex items-center space-x-4 overflow-x-auto py-1">
+  <!-- ── 3. BARRA HORIZONTAL DE ATAJOS OPERATIVOS ── -->
+  <footer class="app-footer h-auto min-h-11 py-2 px-4 sm:px-6 flex flex-wrap items-center justify-between gap-2 text-xs select-none flex-shrink-0">
+    <div class="flex items-center space-x-3 sm:space-x-4 overflow-x-auto py-1 max-w-full scroll-subtle">
       <span class="font-bold text-slate-700 flex items-center gap-1.5 whitespace-nowrap">
         <svg class="w-3.5 h-3.5 text-slate-500 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round"
@@ -309,38 +333,33 @@
         <span>Atajos de Teclado Operativo:</span>
       </span>
       <span class="flex items-center gap-1.5 whitespace-nowrap">
-        <kbd
-          class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">Espacio</kbd>
+        <kbd class="kbd-shortcut">Espacio</kbd>
         <span class="text-slate-400">/</span>
-        <kbd
-          class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">Enter</kbd>
+        <kbd class="kbd-shortcut">Enter</kbd>
         <span class="text-slate-600">Llamar Siguiente</span>
       </span>
       <span class="flex items-center gap-1.5 whitespace-nowrap">
-        <kbd
-          class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">R</kbd>
+        <kbd class="kbd-shortcut">R</kbd>
         <span class="text-slate-600">Re-llamar Turno</span>
       </span>
       <span class="flex items-center gap-1.5 whitespace-nowrap">
-        <kbd
-          class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">Esc</kbd>
+        <kbd class="kbd-shortcut">Esc</kbd>
         <span class="text-slate-400">/</span>
-        <kbd
-          class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">N</kbd>
+        <kbd class="kbd-shortcut">N</kbd>
         <span class="text-slate-600">No Presentado</span>
       </span>
       <span class="flex items-center gap-1.5 whitespace-nowrap">
-        <kbd
-          class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-mono-num text-[11px] text-slate-800 font-semibold shadow-2xs">P</kbd>
+        <kbd class="kbd-shortcut">P</kbd>
         <span class="text-slate-600">Pausar Mesa</span>
       </span>
     </div>
 
-    <div class="hidden lg:flex items-center space-x-2 text-slate-500 whitespace-nowrap">
+    <div class="hidden xl:flex items-center space-x-2 text-slate-500 whitespace-nowrap">
       <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
       <span class="text-[11px]">Sincronizado con Nodo Central de Admisiones</span>
     </div>
   </footer>
+
 
   <!-- ── 4. OVERLAY DE CORTESÍA: MESA EN PAUSA ── -->
   <div x-show="mesaPausada" x-cloak class="modal-backdrop">
@@ -375,9 +394,248 @@
     </div>
   </div>
 
-  <!-- Scripts al final del body -->
-  <script type="module" src="/js/pages/panel_mesa.js?v=3.0"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+  <!-- ── OVERLAY: MESA INACTIVADA POR ADMIN ── -->
+  <div x-show="mesaInactivada" x-cloak class="modal-backdrop modal-backdrop--alert">
+    <div class="modal-box text-center space-y-4 max-w-sm border-2 border-rose-200">
+      <div class="w-12 h-12 mx-auto rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+        <svg class="w-6 h-6 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+        </svg>
+      </div>
+      <div>
+        <h3 class="text-base font-bold text-slate-900">Mesa inactivada</h3>
+        <p class="text-xs text-slate-500 mt-1 leading-relaxed">
+          El administrador inactivó esta mesa. Su sesión de mesa ha sido liberada.
+          Será redirigido a la selección de mesa en unos segundos.
+        </p>
+      </div>
+      <button type="button" @click="salirMesaInactivada()"
+              title="Ir a selección de mesa ahora" aria-label="Ir a selección de mesa ahora"
+              class="btn-primary w-full h-11 text-xs">
+        <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+        </svg>
+        <span>Ir a selección de mesa ahora</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── 5. MODAL: RESOLVER TURNO ACTIVO AL SALIR (CAMBIAR MESA O CERRAR SESIÓN) ── -->
+  <div x-show="modalSalida" x-cloak class="modal-backdrop modal-backdrop--top">
+    <div class="modal-box space-y-4 max-w-sm" @click.stop>
+      <!-- Header -->
+      <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+        <div class="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center flex-shrink-0">
+          <svg class="w-4.5 h-4.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
+        </div>
+        <div>
+          <h3 class="text-sm font-bold text-slate-900">Cerrar Sesión</h3>
+          <p class="text-[11px] text-slate-500 mt-0.5">Turno en atención sin finalizar</p>
+        </div>
+      </div>
+
+      <!-- Cuerpo -->
+      <div class="text-xs text-slate-700 space-y-3">
+        <p>
+          El Turno
+          <span class="font-mono-num font-bold text-blue-700 text-sm" x-text="turnoActual ? '#' + String(turnoActual.numero).padStart(3, '0') : ''"></span>
+          está actualmente <strong>en atención</strong>.
+        </p>
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-800">
+          <p class="font-semibold text-[11px] uppercase tracking-wide mb-1">Antes de salir, indique el resultado:</p>
+          <p>¿El estudiante ya fue atendido o no se presentó a ventanilla?</p>
+        </div>
+      </div>
+
+      <!-- Acciones de resolución -->
+      <div class="space-y-2 pt-2 border-t border-slate-100">
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" @click="resolverSalida('atendido')" :disabled="_salidaPending"
+            class="btn-primary btn-sm flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 border-emerald-600 text-white cursor-pointer"
+            title="Marcar turno como atendido y salir">
+            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+            </svg>
+            <span x-text="_salidaPending ? 'Procesando...' : 'Fue Atendido'">Fue Atendido</span>
+          </button>
+          <button type="button" @click="resolverSalida('cancelado')" :disabled="_salidaPending"
+            class="btn-primary btn-sm flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 border-rose-600 text-white cursor-pointer"
+            title="Marcar que no se presentó y salir">
+            <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            <span x-text="_salidaPending ? 'Procesando...' : 'No se presentó'">No se presentó</span>
+          </button>
+        </div>
+        <button type="button" @click="cancelarSalida()" :disabled="_salidaPending"
+          class="btn-ghost btn-sm w-full text-center text-slate-600 cursor-pointer">
+          Cancelar — Seguir atendiendo
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 6. MODAL: CONFIRMAR CAMBIO DE TURNO ACTIVO POR REZAGADO ── -->
+  <div x-show="modalConfirmarRezagadoConTurno" x-cloak class="modal-backdrop modal-backdrop--top">
+    <div class="modal-box space-y-4 max-w-sm" @click.stop>
+      <!-- Header -->
+      <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+        <div class="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center flex-shrink-0">
+          <svg class="w-4.5 h-4.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
+        </div>
+        <div>
+          <h3 class="text-sm font-bold text-slate-900">Turno en Atención Activo</h3>
+          <p class="text-[11px] text-slate-500 mt-0.5">Se requiere confirmación antes de continuar</p>
+        </div>
+      </div>
+
+      <!-- Cuerpo -->
+      <div class="text-xs text-slate-700 space-y-3">
+        <p>
+          El Turno
+          <span class="font-mono-num font-bold text-blue-700 text-sm" x-text="turnoActual ? '#' + String(turnoActual.numero).padStart(3, '0') : ''"></span>
+          está actualmente <strong>en atención</strong> en esta ventanilla.
+        </p>
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-blue-900 space-y-1">
+          <p class="font-semibold text-[11px] uppercase tracking-wide">¿Ya atendiste a este estudiante?</p>
+          <p>Al continuar hacia los rezagados, este turno quedará marcado como <strong>Atendido</strong> y la ventanilla llamará al turno rezagado que elijas.</p>
+        </div>
+      </div>
+
+      <!-- Acciones -->
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+        <button type="button" @click="modalConfirmarRezagadoConTurno = false" class="btn-ghost btn-sm">
+          Cancelar — Seguir atendiendo
+        </button>
+        <button type="button" @click="confirmarContinuarARezagados()"
+          class="btn-primary btn-sm flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+          </svg>
+          <span>Sí, ya atendí — Elegir rezagado</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 7. MODAL: SELECCIÓN Y LLAMADO DE TURNO REZAGADO ── -->
+  <div x-show="modalRezagados" x-cloak class="modal-backdrop modal-backdrop--top">
+    <div class="modal-box space-y-4 max-w-lg w-full" @click.stop>
+      <!-- Header -->
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center flex-shrink-0">
+            <svg class="w-4.5 h-4.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900">Atender Turno Rezagado</h3>
+            <p class="text-[11px] text-slate-500 mt-0.5">Turnos no presentados o cancelados de la jornada de hoy</p>
+          </div>
+        </div>
+        <button type="button" @click="cerrarModalRezagados()" title="Cerrar modal de turnos rezagados" aria-label="Cerrar modal de turnos rezagados" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer">
+          <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Aviso de error o turno ya atendido si aplica -->
+      <div x-show="errorRezagado" x-cloak class="rounded-xl p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2">
+        <svg class="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+        </svg>
+        <span class="flex-1 font-medium" x-text="errorRezagado"></span>
+      </div>
+
+      <!-- Aviso sin conexión -->
+      <div x-show="!wsConnected" x-cloak class="rounded-xl p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-start gap-2">
+        <svg class="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+        </svg>
+        <span>Sin conexión con el servidor. No se puede confirmar la atención hasta restablecer la red.</span>
+      </div>
+
+      <!-- Buscador rápido si hay más de 4 -->
+      <div x-show="listaRezagados.length > 4" class="relative">
+        <input type="text" x-model="filtroRezagados" placeholder="Buscar por número..."
+          class="input-field text-xs pl-8 pr-3 py-1.5 w-full">
+        <svg class="w-4 h-4 text-slate-400 absolute left-2.5 top-2 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+        </svg>
+      </div>
+
+      <!-- Lista de turnos con scroll limitado -->
+      <div class="max-h-60 overflow-y-auto space-y-2 pr-1">
+        <template x-for="r in rezagadosFiltrados" :key="r.id">
+          <div @click="seleccionarRezagado(r)"
+            class="p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between"
+            :class="rezagadoSeleccionado && rezagadoSeleccionado.id === r.id
+              ? 'border-blue-500 bg-blue-50/60 ring-2 ring-blue-500/20'
+              : 'border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300'">
+            <div class="flex items-center space-x-3">
+              <div class="font-mono-num font-black text-xl text-slate-900"
+                x-text="String(r.numero).padStart(3, '0')"></div>
+              <div class="flex flex-col">
+                <span class="text-xs font-semibold text-slate-800"
+                  x-text="r.mesa_numero ? ('Cancelado en Mesa ' + r.mesa_numero) : 'Cancelado en ventanilla'"></span>
+                <span class="text-[11px] text-slate-500 font-normal"
+                  x-text="formatearTiempoCancelado(r.finalizado_en || r.llamado_en)"></span>
+              </div>
+            </div>
+            <div class="flex items-center space-x-2">
+              <span class="pill text-[10px] py-0.5 px-2"
+                :class="r.origen === 'kiosko_web' ? 'pill-info' : 'bg-slate-100 text-slate-600 border border-slate-200'"
+                x-text="r.origen === 'kiosko_web' ? 'Kiosko Web' : 'Voucher Papel'"></span>
+              <div class="w-4 h-4 rounded-full border flex items-center justify-center"
+                :class="rezagadoSeleccionado && rezagadoSeleccionado.id === r.id ? 'border-blue-600 bg-blue-600' : 'border-slate-300'">
+                <div x-show="rezagadoSeleccionado && rezagadoSeleccionado.id === r.id" class="w-1.5 h-1.5 bg-white rounded-full"></div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="rezagadosFiltrados.length === 0">
+          <div class="text-center py-6 text-slate-400 space-y-1">
+            <svg class="w-8 h-8 mx-auto text-slate-300 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p class="text-xs font-medium">No se encontraron turnos rezagados pendientes</p>
+          </div>
+        </template>
+      </div>
+
+      <!-- Acciones del Modal -->
+      <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+        <span class="text-[11px] text-slate-500" x-text="rezagadoSeleccionado ? ('Turno #' + String(rezagadoSeleccionado.numero).padStart(3, '0') + ' seleccionado') : 'Seleccione un turno de la lista'"></span>
+        <div class="flex items-center space-x-2">
+          <button type="button" @click="cerrarModalRezagados()" class="btn-ghost btn-sm">Cancelar</button>
+          <button type="button" @click="confirmarAtenderRezagado()"
+            :disabled="!rezagadoSeleccionado || loadingRezagado || !wsConnected"
+            title="Llamar este turno rezagado a tu ventanilla"
+            class="btn-primary btn-sm flex items-center space-x-1.5">
+            <svg x-show="!loadingRezagado" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" />
+            </svg>
+            <svg x-show="loadingRezagado" class="animate-spin w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            <span x-text="loadingRezagado ? 'Llamando...' : 'Confirmar y Atender'">Confirmar y Atender</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/js/pages/panel_mesa.js"></script>
+  <!-- Alpine con defer: carga tras el HTML, dispara alpine:init y encuentra panelMesa ya registrado -->
+  <script defer src="/vendor/alpine-3.13.3.min.js"></script>
 </body>
 
 </html>

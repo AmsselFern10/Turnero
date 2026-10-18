@@ -1,15 +1,13 @@
 'use strict'
 
 /**
- * TEST 13 — Consistencia de audit_log.accion
+ * Consistencia de audit_log.accion
  *
- * Verifica que TODOS los valores en AUDIT_ACCIONES coincidan con el CHECK
- * constraint real de PostgreSQL. Falla si el codigo usa una accion que la BD
- * rechazaria (como el caso original de 'OPERADOR_AUTO_ASIGNADO').
+ * Verifica que todos los valores en AUDIT_ACCIONES coincidan con la restriccion
+ * CHECK real de PostgreSQL en la base de datos.
  *
- * Requiere: BD accesible (se lee el CHECK via pg_get_constraintdef).
- * Ejecutar: node tests/audit-acciones.test.js
- * O via npm: npm test (si esta configurado en package.json)
+ * Requiere: Base de datos accesible.
+ * Ejecucion: node tests/audit-acciones.test.js
  */
 
 const { Client } = require('pg')
@@ -19,8 +17,9 @@ const { AUDIT_ACCIONES, AUDIT_ACCIONES_SET } = require('../src/modules/audit-acc
 
 async function main () {
   const client = new Client({
+    connectionString: process.env.DATABASE_URL || undefined,
     host:     process.env.DB_HOST     || 'localhost',
-    port:     parseInt(process.env.DB_PORT || '5432'),
+    port:     parseInt(process.env.DB_PORT_EXPOSED || process.env.DB_PORT || '5432'),
     database: process.env.DB_NAME     || 'turnero',
     user:     process.env.DB_USER     || 'turnero_app',
     password: process.env.DB_PASSWORD || ''
@@ -28,8 +27,8 @@ async function main () {
 
   await client.connect()
 
-  console.log('TEST 13 — Consistencia de audit_log.accion')
-  console.log('===========================================\n')
+  console.log('Verificacion de consistencia de audit_log.accion')
+  console.log('===============================================\n')
 
   // 1. Obtener el CHECK real de PostgreSQL
   const { rows } = await client.query(`

@@ -9,8 +9,12 @@
   "scripts": {
     "dev": "nodemon --watch src src/server.js",
     "start": "node src/server.js",
+    "migrate": "node scripts/recrear_desde_cero.js",
     "seed": "node scripts/seed.js",
-    "lint": "eslint src --ext .js"
+    "reset": "node scripts/reset.js",
+    "lint": "eslint src --ext .js",
+    "build:css": "tailwindcss -i ./src/public/css/tailwind-input.css -o ./src/public/css/tailwind.css --minify",
+    "watch:css": "tailwindcss -i ./src/public/css/tailwind-input.css -o ./src/public/css/tailwind.css --watch"
   },
   "dependencies": {
     "@fastify/cookie": "^9.3.1",
@@ -21,8 +25,12 @@
     "@fastify/static": "^7.0.4",
     "@fastify/under-pressure": "^8.5.2",
     "@fastify/websocket": "^10.0.1",
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "bcrypt": "^5.1.1",
     "dotenv": "^16.4.5",
+    "escpos": "^3.0.0-alpha.6",
+    "escpos-network": "^3.0.0-alpha.5",
     "fastify": "^4.28.1",
     "fastify-plugin": "^4.5.1",
     "ioredis": "^5.3.2",
@@ -33,6 +41,7 @@
   },
   "devDependencies": {
     "eslint": "^8.57.0",
-    "nodemon": "^3.1.4"
+    "nodemon": "^3.1.4",
+    "tailwindcss": "^3.4.19"
   }
 }

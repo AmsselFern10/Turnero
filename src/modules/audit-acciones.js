@@ -14,19 +14,22 @@
  */
 const AUDIT_ACCIONES = {
   // ── Turno ──────────────────────────────────────────────────────────────────
-  TURNO_GENERADO:       'TURNO_GENERADO',
-  TURNO_LLAMADO:        'TURNO_LLAMADO',
-  ATENCION_FINALIZADA:  'ATENCION_FINALIZADA',
-  TURNO_CANCELADO:      'TURNO_CANCELADO',
+  TURNO_GENERADO:         'TURNO_GENERADO',
+  TURNO_LLAMADO:          'TURNO_LLAMADO',
+  TURNO_RELLAMADO:        'TURNO_RELLAMADO',
+  TURNO_REZAGADO:         'TURNO_REZAGADO',
+  ATENCION_FINALIZADA:    'ATENCION_FINALIZADA',
+  TURNO_CANCELADO:        'TURNO_CANCELADO',
 
   // ── Lote ───────────────────────────────────────────────────────────────────
-  LOTE_CREADO:          'LOTE_CREADO',
-  LOTE_ACTIVADO:        'LOTE_ACTIVADO',
-  LOTE_PAUSADO:         'LOTE_PAUSADO',
-  LOTE_AGOTADO:         'LOTE_AGOTADO',
-  LOTE_EXTENDIDO:       'LOTE_EXTENDIDO',
-  LOTE_CERRADO:         'LOTE_CERRADO',
-  LOTE_NUEVO_DESDE_UNO: 'LOTE_NUEVO_DESDE_UNO',
+  LOTE_CREADO:            'LOTE_CREADO',
+  LOTE_ACTIVADO:          'LOTE_ACTIVADO',
+  LOTE_PAUSADO:           'LOTE_PAUSADO',
+  LOTE_AGOTADO:           'LOTE_AGOTADO',
+  LOTE_EXTENDIDO:         'LOTE_EXTENDIDO',
+  LOTE_CERRADO:           'LOTE_CERRADO',
+  LOTE_NUEVO_DESDE_UNO:   'LOTE_NUEVO_DESDE_UNO',
+  LOTE_CONTADOR_AJUSTADO: 'LOTE_CONTADOR_AJUSTADO',
 
   // ── Mesa / Operador ────────────────────────────────────────────────────────
   MESA_ACTIVADA:        'MESA_ACTIVADA',

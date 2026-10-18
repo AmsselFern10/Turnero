@@ -1,16 +1,17 @@
 /**
  * ==============================================================================
- * LOGIN.JS — Controlador de Acceso y Seleccion Dinamica de Mesas
- * Sistema Turnero de Matriculas 2026 (v2.1)
+ * LOGIN.JS — Controlador de Acceso y Selección Dinámica de Mesas
+ * Sistema Turnero de Matrículas 2026 (v2.1)
  *
  * Flujo:
- *   - Caso A: rol 'admin'/'admin' -> step 'admin_choice' (ir a admin o ventanilla)
- *   - Caso B: Usuario con mesa_asignada -> modal 'mesa_asignada' (INC-3)
+ *   - Caso A: rol 'admin' -> step 'admin_choice' (ir a admin o ventanilla)
+ *   - Caso B: Usuario con mesa_asignada -> modal 'mesa_asignada'
  *   - Caso C: Sin mesa -> step 'mesas_grid' + WS tv:global en vivo
  *
  * Tiempo real en mesas_grid:
  *   - 'mesas_disponibles_actualizadas': actualiza la grilla al instante.
- *   - 'operador_asignado_por_admin': si coincide el userId, redirige automaticamente.
+ *   - 'operador_asignado_por_admin': si coincide el userId, redirige automáticamente.
+ *   - 'config_actualizada': sincroniza visibilidad y modo de kiosko web.
  *
  * Roles permitidos para operar mesa: operador, admin.
  * ==============================================================================
@@ -18,6 +19,7 @@
 
 import { api } from '../api.js';
 import { showToast } from '../utils.js';
+import { TurneroWSClient } from '../ws-client.js';
 
 export function loginView() {
   return {
@@ -33,11 +35,37 @@ export function loginView() {
     currentUser: null,
     mesas: [],
     mesaPreAsignada: null,
+    kioskoActivo: false,
+    kioskoModoUso: 'empleado',
     _ws: null,
-    _wsReconnectTimer: null,
-    _wsIntentos: 0,
+
+    get kioskoHref() {
+      return this.kioskoModoUso === 'empleado' ? '/kiosko.html?modo=tablet' : '/kiosko.html';
+    },
+
+    get kioskoLabelHeader() {
+      return this.kioskoModoUso === 'empleado' ? 'Módulo de Recepción' : 'Abrir Kiosko';
+    },
+
+    get kioskoLabelCard() {
+      return this.kioskoModoUso === 'empleado'
+        ? 'Ir a Módulo de Recepción (Emisión Asistida)'
+        : 'Ir a Kiosko Digital (Autoservicio)';
+    },
+
+    get noHayMesasDisponibles() {
+      return !this.loadingMesas && this.mesas.length === 0 && !this.errorMessage;
+    },
+
+    formatearNombreMesa(mesa) {
+      if (!mesa?.nombre) return 'Sitio de atención';
+      return mesa.nombre.replace(/^Mesa \d+ — /, '');
+    },
 
     async init() {
+      this.verificarKioskoActivo();
+      this._conectarWSMesas();
+
       const existingToken = api.getToken();
       if (!existingToken) return;
       try {
@@ -50,66 +78,73 @@ export function loginView() {
       }
     },
 
+    async verificarKioskoActivo() {
+      try {
+        const res = await api.get('/kiosko/estado');
+        if (res && typeof res.activo === 'boolean') {
+          this.kioskoActivo = res.activo;
+          this.kioskoModoUso = res.modo_uso || 'empleado';
+        }
+      } catch (_) {
+        this.kioskoActivo = false;
+        this.kioskoModoUso = 'empleado';
+      }
+    },
+
     destroy() {
       this._cerrarWS();
     },
 
     _decidirPasoPostLogin(usuario) {
-      if (usuario.rol === 'admin') {
-        this.step = 'admin_choice';
-        return;
-      }
+      // Admin con mesa asignada: mostrar aviso con opciones (Mesa o Panel Admin)
       if (usuario.mesa_asignada) {
         this.mesaPreAsignada = usuario.mesa_asignada;
         this.step = 'mesa_asignada';
         return;
       }
+      // Admin sin mesa: pantalla de elección estándar
+      if (usuario.rol === 'admin') {
+        this.step = 'admin_choice';
+        return;
+      }
+      // Operador sin mesa: ir a la grilla
       this.step = 'mesas_grid';
       this.cargarMesas();
       this._conectarWSMesas();
     },
 
     _conectarWSMesas() {
-      if (this._ws && (
-        this._ws.readyState === WebSocket.OPEN ||
-        this._ws.readyState === WebSocket.CONNECTING
-      )) return;
-      const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-      const url = `${protocol}://${location.host}/ws?canal=tv%3Aglobal`;
-      try { this._ws = new WebSocket(url); } catch (_) { return; }
+      if (this._ws) return;
 
-      this._ws.onopen = () => { this._wsIntentos = 0; };
+      this._ws = new TurneroWSClient({ canal: 'tv:global' });
 
-      this._ws.onmessage = (event) => {
-        let msg;
-        try { msg = JSON.parse(event.data); } catch (_) { return; }
-        const { tipo, payload } = msg;
-        if (tipo === 'mesas_disponibles_actualizadas') {
-          this._actualizarMesaEnGrid(payload);
+      this._ws.on('mesas_disponibles_actualizadas', (payload) => {
+        this._actualizarMesaEnGrid(payload);
+      });
+
+      this._ws.on('operador_asignado_por_admin', (payload) => {
+        if (this.currentUser && Number(payload.operador_id) === Number(this.currentUser.id)) {
+          this._redirigirConMesaAsignada(payload.mesa);
         }
-        if (tipo === 'operador_asignado_por_admin') {
-          if (this.currentUser && Number(payload.operador_id) === Number(this.currentUser.id)) {
-            this._redirigirConMesaAsignada(payload.mesa);
-          }
-        }
-      };
+      });
 
-      this._ws.onclose = () => {
-        this._ws = null;
-        if (this.step === 'mesas_grid') {
-          const delay = Math.min(1000 * Math.pow(2, this._wsIntentos) + Math.random() * 500, 30000);
-          this._wsIntentos = Math.min(this._wsIntentos + 1, 6);
-          this._wsReconnectTimer = setTimeout(() => this._conectarWSMesas(), delay);
+      this._ws.on('config_actualizada', (payload) => {
+        if (payload?.clave === 'kiosko_web_activo') {
+          this.kioskoActivo = payload.valor === 'true';
         }
-      };
+        if (payload?.clave === 'kiosko_modo_uso') {
+          this.kioskoModoUso = payload.valor || 'empleado';
+        }
+      });
 
-      this._ws.onerror = () => { try { this._ws.close(); } catch (_) {} };
+      this._ws.connect();
     },
 
     _cerrarWS() {
-      clearTimeout(this._wsReconnectTimer);
-      this._wsReconnectTimer = null;
-      if (this._ws) { try { this._ws.close(); } catch (_) {} this._ws = null; }
+      if (this._ws) {
+        this._ws.disconnect();
+        this._ws = null;
+      }
     },
 
     _actualizarMesaEnGrid({ mesa, accion } = {}) {
@@ -128,7 +163,7 @@ export function loginView() {
       api.setSession(null, { ...this.currentUser, mesa_asignada: mesa });
       sessionStorage.setItem('turnero_mesa', JSON.stringify(mesa));
       this.step = 'redirecting';
-      this.redirectText = `El administrador te asigno la Mesa ${mesa.numero} — Iniciando consola...`;
+      this.redirectText = `El administrador te asignó la Mesa ${mesa.numero} — Iniciando consola...`;
       showToast({ message: `Mesa ${mesa.numero} asignada por el administrador`, type: 'success', duration: 3000 });
       setTimeout(() => { window.location.href = '/panel_mesa.html'; }, 1200);
     },
@@ -136,7 +171,10 @@ export function loginView() {
     async handleLogin() {
       this.errorMessage = '';
       const usr = this.username.trim();
-      if (!usr || !this.password) { this.errorMessage = 'Complete todos los campos para continuar.'; return; }
+      if (!usr || !this.password) {
+        this.errorMessage = 'Complete todos los campos para continuar.';
+        return;
+      }
       if (this.loading) return;
       this.loading = true;
       try {
@@ -147,14 +185,14 @@ export function loginView() {
         this._decidirPasoPostLogin(usuario);
       } catch (err) {
         const codigo = err.codigo || 'error_interno';
-        if (codigo === 'credenciales_invalidas' || err.status === 401) {
-          this.errorMessage = 'Usuario o contrasena incorrectos.';
+        if (codigo === 'credenciales_invalidas' || err.status === 401 || err.message?.includes('Credenciales')) {
+          this.errorMessage = 'Usuario o contraseña incorrectos.';
         } else if (codigo === 'servidor_ocupado' || err.status === 429 || err.status === 503) {
           this.errorMessage = err.mensaje || 'Demasiados intentos. Intente en unos minutos.';
         } else if (!navigator.onLine || err.name === 'TypeError') {
-          this.errorMessage = 'Sin conexion con el servidor. Verifique su red.';
+          this.errorMessage = 'Sin conexión con el servidor. Verifique su red.';
         } else {
-          this.errorMessage = err.mensaje || 'No se pudo iniciar sesion. Intente de nuevo.';
+          this.errorMessage = err.mensaje || 'No se pudo iniciar sesión. Intente de nuevo.';
         }
       } finally {
         this.loading = false;
@@ -170,7 +208,7 @@ export function loginView() {
         this.mesas = res.mesas || [];
       } catch (err) {
         this.errorMessage = (!navigator.onLine || err.name === 'TypeError')
-          ? 'Sin conexion con el servidor. Verifique su red.'
+          ? 'Sin conexión con el servidor. Verifique su red.'
           : 'No se pudo cargar la lista de mesas. Intente nuevamente.';
       } finally {
         this.loadingMesas = false;
@@ -196,7 +234,7 @@ export function loginView() {
           showToast({ message: 'Esta mesa acaba de ser tomada por otro operador.', type: 'warning', duration: 4000 });
           await this.cargarMesas();
         } else if (codigo === 'mesa_inactiva') {
-          showToast({ message: 'Esta mesa ya no esta activa.', type: 'warning', duration: 4000 });
+          showToast({ message: 'Esta mesa ya no está activa.', type: 'warning', duration: 4000 });
           await this.cargarMesas();
         } else if (codigo === 'mesa_no_encontrada') {
           showToast({ message: 'La mesa ya no existe.', type: 'warning', duration: 4000 });
@@ -206,7 +244,7 @@ export function loginView() {
           this._cerrarWS();
           this.step = 'mesa_asignada';
         } else if (!navigator.onLine || err.name === 'TypeError') {
-          this.errorMessage = 'Sin conexion con el servidor. Verifique su red.';
+          this.errorMessage = 'Sin conexión con el servidor. Verifique su red.';
         } else {
           this.errorMessage = err.mensaje || 'No se pudo tomar la mesa. Intente de nuevo.';
         }
@@ -228,36 +266,44 @@ export function loginView() {
       setTimeout(() => { window.location.href = '/panel_mesa.html'; }, 350);
     },
 
-    async liberarMesa() {
-      this.loading = true;
-      try {
-        await api.post('/auth/liberar-mesa');
-        this.mesaPreAsignada = null;
-        sessionStorage.removeItem('turnero_mesa');
-        const usuario = api.getUser();
-        if (usuario) { usuario.mesa_asignada = null; api.setSession(null, usuario); }
-        this.step = 'mesas_grid';
-        await this.cargarMesas();
-        this._conectarWSMesas();
-      } catch (err) {
-        showToast({ message: 'No se pudo liberar la mesa. Intente de nuevo.', type: 'danger' });
-      } finally {
-        this.loading = false;
-      }
+    irAdmin() {
+      window.location.href = '/admin.html';
     },
 
-    irAdmin() { window.location.href = '/admin.html'; },
-
     async irOperarMesa() {
+      if (this.mesaPreAsignada || this.currentUser?.mesa_asignada) {
+        this.mesaPreAsignada = this.mesaPreAsignada || this.currentUser?.mesa_asignada;
+        this.step = 'mesa_asignada';
+        return;
+      }
+      try {
+        const res = await api.get('/auth/me');
+        if (res?.usuario?.mesa_asignada) {
+          this.currentUser = res.usuario;
+          this.mesaPreAsignada = res.usuario.mesa_asignada;
+          this.step = 'mesa_asignada';
+          return;
+        }
+      } catch (_) {}
+
       this.step = 'mesas_grid';
       await this.cargarMesas();
       this._conectarWSMesas();
     },
 
+    volverAdminChoice() {
+      this._cerrarWS();
+      this.step = 'admin_choice';
+    },
+
     async volverLogin() {
       this.loading = true;
       this._cerrarWS();
-      try { await api.logout(false); } catch (_) { api.clearSession(false); } finally {
+      try {
+        await api.logout(false);
+      } catch (_) {
+        api.clearSession(false);
+      } finally {
         this.loading = false;
         this.step = 'login';
         this.password = '';
@@ -270,13 +316,13 @@ export function loginView() {
 }
 
 function registerWithAlpine() {
-  if (window.Alpine) window.Alpine.data('loginView', loginView);
+  if (typeof window !== 'undefined' && window.Alpine) {
+    window.Alpine.data('loginView', loginView);
+  }
 }
 
-if (window.Alpine) {
+if (typeof window !== 'undefined' && window.Alpine) {
   registerWithAlpine();
-} else {
+} else if (typeof document !== 'undefined') {
   document.addEventListener('alpine:init', registerWithAlpine);
 }
-
-

@@ -1,0 +1,5 @@
+# Preservar LF en scripts bash y configuraciones Linux
+*.sh text eol=lf
+*.sql text
+Dockerfile text eol=lf
+.dockerignore text eol=lf

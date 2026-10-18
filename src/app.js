@@ -74,13 +74,22 @@ async function buildApp (opts = {}) {
     prefix: '/',
     setHeaders: (res, filePath) => {
       if (filePath.endsWith('.html')) {
+        // HTML: nunca cachear — siempre la versión más reciente
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
         res.setHeader('Pragma', 'no-cache')
         res.setHeader('Expires', '0')
-      } else if (filePath.includes('/vendor/') || filePath.includes('/assets/fonts/') || filePath.includes('/css/')) {
+      } else if (filePath.includes('/vendor/') || filePath.includes('/assets/fonts/')) {
+        // Vendor y fuentes: inmutables — versión fijada en el nombre de archivo
         res.setHeader('Cache-Control', 'public, max-age=604800, immutable')
-      } else {
+      } else if (filePath.includes('/css/')) {
+        // CSS precompilado: cachear 1 hora
         res.setHeader('Cache-Control', 'public, max-age=3600')
+      } else {
+        // JS de aplicación (api.js, ws-client.js, utils.js, pages/*.js):
+        // NO cachear — cambian durante el desarrollo y en deploys
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+        res.setHeader('Pragma', 'no-cache')
+        res.setHeader('Expires', '0')
       }
     }
   })
@@ -95,6 +104,7 @@ async function buildApp (opts = {}) {
   await app.register(require('./modules/lotes/routes'),  { prefix: '/lotes' })
   await app.register(require('./modules/turnos/routes'), { prefix: '/turnos' })
   await app.register(require('./modules/admin/routes'),  { prefix: '/admin' })
+  await app.register(require('./modules/kiosko/routes'), { prefix: '/kiosko' })
 
   // Health check con DB + Redis + RAM (exento de under-pressure)
   app.get('/health', { config: { underPressure: false } }, async (request, reply) => {

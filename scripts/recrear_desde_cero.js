@@ -1,79 +1,79 @@
-'use strict';
-require('dotenv').config({ path: '.env' });
 const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
 
+const envPath = fs.existsSync(path.resolve(__dirname, '../.env'))
+  ? path.resolve(__dirname, '../.env')
+  : path.resolve(__dirname, '../.env.development');
+
+if (fs.existsSync(envPath)) {
+  require('dotenv').config({ path: envPath });
+}
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
+  connectionString: process.env.DATABASE_URL ||
+    `postgresql://${process.env.DB_USER || 'postgres'}:${encodeURIComponent(process.env.DB_PASSWORD || 'turnero')}@${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT_EXPOSED || process.env.PGBOUNCER_PORT_EXPOSED || 5432}/${process.env.DB_NAME || 'turnero'}`
 });
 
 async function recrearDesdeCero() {
-  console.log('🔄 ========================================================');
-  console.log('🔄 RECONSTRUCCIÓN COMPLETA DE BASE DE DATOS DESDE CERO');
-  console.log('🔄 ========================================================\n');
+  console.log('========================================================');
+  console.log(' RECONSTRUCCION COMPLETA DE BASE DE DATOS DESDE CERO');
+  console.log('========================================================\n');
 
   const client = await pool.connect();
   try {
     // 1. Limpieza absoluta del schema public
-    console.log('1️⃣  Eliminando schema public completo (tablas, funciones, triggers, secuencias)...');
+    console.log('[1/3] Eliminando schema public completo (tablas, funciones, triggers, secuencias)...');
     await client.query(`
       DROP SCHEMA IF EXISTS public CASCADE;
       CREATE SCHEMA public;
       GRANT ALL ON SCHEMA public TO postgres;
       GRANT ALL ON SCHEMA public TO public;
     `);
-    console.log('   ✓ Schema public reseteado a limpio.');
+    console.log('   [OK] Schema public reseteado a limpio.');
 
-    // 2. Ejecutar Migración 001
-    console.log('\n2️⃣  Ejecutando migrations/001_initial.sql...');
-    const sql001 = fs.readFileSync(path.join(__dirname, '../migrations/001_initial.sql'), 'utf8');
-    await client.query(sql001);
-    console.log('   ✓ Migración 001_initial.sql aplicada con éxito.');
+    // 2. Ejecutar todas las migraciones SQL en orden correlativo (001..007)
+    console.log('\n[2/3] Ejecutando migraciones SQL en orden...');
+    const migrationsDir = path.join(__dirname, '../migrations');
+    const sqlFiles = fs.readdirSync(migrationsDir)
+      .filter(f => f.endsWith('.sql'))
+      .sort();
 
-    // 3. Ejecutar Migración 002
-    console.log('\n3️⃣  Ejecutando migrations/002_fix_audit_log_y_mesas.sql...');
-    const sql002 = fs.readFileSync(path.join(__dirname, '../migrations/002_fix_audit_log_y_mesas.sql'), 'utf8');
-    await client.query(sql002);
-    console.log('   ✓ Migración 002_fix_audit_log_y_mesas.sql aplicada con éxito.');
+    for (const file of sqlFiles) {
+      console.log(`   -> Aplicando ${file}...`);
+      const sqlContent = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
+      await client.query(sqlContent);
+      console.log(`   [OK] ${file} aplicada con exito.`);
+    }
 
-    // 4. Ejecutar Migración 003
-    console.log('\n4️⃣  Ejecutando migrations/003_correcciones_auditoria.sql...');
-    const sql003 = fs.readFileSync(path.join(__dirname, '../migrations/003_correcciones_auditoria.sql'), 'utf8');
-    await client.query(sql003);
-    console.log('   ✓ Migración 003_correcciones_auditoria.sql aplicada con éxito.');
+    // 3. Verificar objetos en el catalogo de PostgreSQL
+    console.log('\n[3/3] Verificando catalogo de PostgreSQL...');
+    const { rows: tablas } = await client.query(`
+      SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;
+    `);
+    console.log(`   [OK] Tablas creadas (${tablas.length}): ${tablas.map(t => t.tablename).join(', ')}`);
 
-    // 5. Verificar que no haya índices duplicados en el catálogo de PostgreSQL
-    console.log('\n5️⃣  Verificando que no haya índices ni constraints duplicados...');
     const { rows: indices } = await client.query(`
-      SELECT tablename, indexname, indexdef
+      SELECT tablename, indexname
       FROM pg_indexes
       WHERE schemaname = 'public'
       ORDER BY tablename, indexname;
     `);
+    console.log(`   [OK] Total de indices verificados: ${indices.length}`);
 
-    console.log(`   ✓ Total de índices creados en el catálogo: ${indices.length}`);
-    for (const idx of indices) {
-      console.log(`     - [${idx.tablename}] ${idx.indexname}`);
-    }
-
-    // 6. Verificar constraints de CHECK
     const { rows: checks } = await client.query(`
-      SELECT conname, relname, pg_get_constraintdef(c.oid) as def
+      SELECT conname, relname
       FROM pg_constraint c
       JOIN pg_class r ON c.conrelid = r.oid
       WHERE c.contype = 'c'
       ORDER BY relname, conname;
     `);
-    console.log(`\n   ✓ Total de constraints CHECK verificados: ${checks.length}`);
-    for (const chk of checks) {
-      console.log(`     - [${chk.relname}] ${chk.conname}`);
-    }
+    console.log(`   [OK] Total de constraints CHECK verificados: ${checks.length}`);
 
-    console.log('\n✅ Todas las migraciones se aplicaron limpiamente sin conflictos.');
+    console.log('\n[DONE] Base de datos reconstruida limpiamente desde la migracion consolidada.');
 
   } catch (err) {
-    console.error('\n❌ ERROR durante la reconstrucción:', err);
+    console.error('\n[FAIL] ERROR durante la reconstruccion:', err.message);
     process.exit(1);
   } finally {
     client.release();
