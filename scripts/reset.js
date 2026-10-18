@@ -6,7 +6,7 @@
  * Accion:
  * - Vacia completamente todas las tablas operativas: turnos, lotes, mesas, audit_log y usuarios.
  * - Reinicia secuencias numericas.
- * - Crea UNICAMENTE el usuario administrador: admin / Admin2026!
+ * - Crea UNICAMENTE el usuario administrador: admin / soporte
  * - Deja 0 mesas, 0 lotes y 0 operadores.
  * - Limpia llaves en Redis si esta disponible.
  * - Cero emojis en salida.
@@ -38,7 +38,7 @@ async function resetearSistema() {
   const client = await pool.connect()
 
   try {
-    const adminHash = await bcrypt.hash('Admin2026!', COST)
+    const adminHash = await bcrypt.hash('soporte', COST)
 
     await client.query('BEGIN')
 
@@ -64,12 +64,17 @@ async function resetearSistema() {
     const configuraciones = [
       ['kiosko_web_activo', 'false', 'Habilita URL/QR publica para generar turno desde celular o por empleado.'],
       ['modo_generacion_turnos', 'voucher_fisico', 'Modo activo: voucher_fisico | kiosko_web'],
+      ['kiosko_modo_uso', 'empleado', 'Modalidad de emisión del kiosko: estudiante (autoservicio libre) o empleado (asistido en recepción).'],
       ['alerta_vouchers_restantes', '20', 'Alertar al admin cuando queden N vouchers en el lote.'],
       ['mostrar_estimado_espera', 'true', 'Mostrar estimado de espera en TV cuando hay turnos en espera.'],
       ['zona_horaria', 'America/Tegucigalpa', 'Zona horaria del sistema para calculo de fecha y cambio de dia.'],
       ['kiosko_tope_diario', '0', 'Tope maximo de turnos diarios por kiosko (0 = ilimitado).'],
       ['kiosko_url_base', '', 'URL base publica para seguimiento QR (vacio = autodeteccion LAN).'],
+      ['kiosko_impresion_automatica', 'false', 'Envío directo del comprobante a la impresora ESC/POS al generar un turno en modo tablet (true/false).'],
       ['voz_anuncio_activa', 'true', 'Habilita el anuncio de voz sintetica en pantallas de TV.'],
+      ['tv_escala_turnos', '100', 'Escala porcentual para el tamaño de los números de turno en pantalla TV (75 a 140, defecto: 100).'],
+      ['tv_escala_principal', '100', 'Escala porcentual del número de turno principal y banner de mesa en TV (75 a 140, defecto: 100).'],
+      ['tv_escala_secundaria', '100', 'Escala porcentual de las tarjetas del historial de turnos anteriores en TV (75 a 140, defecto: 100).'],
       ['impresora_ip', '', 'IP de la impresora de tickets en la LAN (vacio = impresion desactivada).'],
       ['impresora_puerto', '9100', 'Puerto TCP de la impresora ESC/POS (estandar: 9100).'],
       ['impresora_activa', 'false', 'Habilita la impresion directa ESC/POS desde el servidor.']
@@ -112,7 +117,7 @@ async function resetearSistema() {
     console.log('\n[DONE] Reseteo finalizado.')
     console.log('----------------------------------------------------')
     console.log('Estado actual del sistema:')
-    console.log('  Usuarios:    1 usuario (admin / Admin2026!)')
+    console.log('  Usuarios:    1 usuario (admin / soporte)')
     console.log('  Operadores:  0')
     console.log('  Mesas:       0')
     console.log('  Lotes:       0')

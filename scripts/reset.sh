@@ -4,7 +4,7 @@
 #
 # Borra todos los turnos, lotes, mesas y operadores, dejando UNICAMENTE:
 #   Usuario: admin
-#   Contraseña: Admin2026!
+#   Contraseña: soporte
 #
 # Uso:
 #   bash scripts/reset.sh
@@ -27,7 +27,7 @@ echo "  - Todos los operadores registrados"
 echo "  - Todos los logs de auditoria"
 echo ""
 echo "Se mantendra UNICAMENTE:"
-echo "  - 1 usuario administrador: admin / Admin2026!"
+echo "  - 1 usuario administrador: admin / soporte"
 echo "===================================================="
 
 CONFIRMED=false

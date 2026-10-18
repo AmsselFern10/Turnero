@@ -115,6 +115,7 @@ async function seed() {
     const configuraciones = [
       ['kiosko_web_activo', 'false', 'Habilita URL/QR publica para generar turno desde celular o por empleado.'],
       ['modo_generacion_turnos', 'voucher_fisico', 'Modo activo: voucher_fisico | kiosko_web'],
+      ['kiosko_modo_uso', 'empleado', 'Modalidad de emisión del kiosko: estudiante (autoservicio libre) o empleado (asistido en recepción).'],
       ['alerta_vouchers_restantes', '20', 'Alertar al admin cuando queden N vouchers en el lote.'],
       ['mostrar_estimado_espera', 'true', 'Mostrar estimado de espera en TV cuando hay turnos en espera.'],
       ['zona_horaria', 'America/Tegucigalpa', 'Zona horaria del sistema para calculo de fecha y cambio de dia.'],

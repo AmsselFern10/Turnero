@@ -3,7 +3,7 @@
 #
 # Borra todos los turnos, lotes, mesas y operadores, dejando UNICAMENTE:
 #   Usuario: admin
-#   Contrasena: Admin2026!
+#   Contrasena: soporte
 #
 # Uso:
 #   powershell -ExecutionPolicy Bypass -File scripts\reset.ps1
@@ -29,7 +29,7 @@ Write-Host "  - Todos los operadores registrados"
 Write-Host "  - Todos los logs de auditoria"
 Write-Host ""
 Write-Host "Se mantendra UNICAMENTE:"
-Write-Host "  - 1 usuario administrador: admin / Admin2026!"
+Write-Host "  - 1 usuario administrador: admin / soporte"
 Write-Host "===================================================="
 
 if (-not $Force) {
