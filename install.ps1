@@ -79,7 +79,7 @@ try {
 # ── 2. Seleccion de Modo de Instalacion ────────────────────────────────────────
 $hasDocker = $false
 try {
-    $dockerVer = & docker info 2>$null
+    $null = & docker info 2>$null
     if ($LASTEXITCODE -eq 0) { $hasDocker = $true }
 } catch {
     $hasDocker = $false

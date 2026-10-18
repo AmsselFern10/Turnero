@@ -15,8 +15,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectDir = Split-Path -Parent $ScriptDir
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 Write-Host "===================================================="
 Write-Host " ADVERTENCIA: RESETEO TOTAL DEL SISTEMA TURNERO 2026"
