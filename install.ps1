@@ -94,9 +94,17 @@ if ($hasDocker) {
     }
 
     Write-Host "[INFO] Esperando inicializacion de PostgreSQL en contenedor..."
+    $dbUser = "postgres"
+    $dbName = "turnero"
+    if (Test-Path $envFile) {
+        Get-Content $envFile | ForEach-Object {
+            if ($_ -match '^\s*DB_USER\s*=\s*(.+)$') { $dbUser = $Matches[1].Trim().Trim('"').Trim("'") }
+            if ($_ -match '^\s*DB_NAME\s*=\s*(.+)$') { $dbName = $Matches[1].Trim().Trim('"').Trim("'") }
+        }
+    }
     $retries = 30
     while ($retries -gt 0) {
-        & docker exec turnero-db pg_isready -U postgres -d turnero 2>$null | Out-Null
+        & docker exec turnero-db pg_isready -U $dbUser -d $dbName 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) { break }
         Start-Sleep -Seconds 2
         $retries--
