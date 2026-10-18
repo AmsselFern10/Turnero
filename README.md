@@ -266,14 +266,23 @@ Con esto, cada vez que el equipo se encienda, Docker arrancara solo — y como e
 
 ### Paso 4 — Iniciar el sistema
 
-La primera vez, abre una terminal en la carpeta del proyecto y ejecuta:
+Tienes dos formas de hacerlo:
 
+#### Si usas el instalador automático (Recomendado):
+En PowerShell ejecuta:
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+> **Nota:** ¡Listo! Si ejecutas este comando, **no tienes que hacer nada más**. El script crea el `.env` de forma segura (omitiéndolo si ya existe), compila, levanta Docker y ejecuta el `seed` por ti.
+
+#### Si prefieres hacerlo de forma manual:
+Abre PowerShell o CMD en la carpeta del proyecto y ejecuta:
 ```bash
-docker compose up -d
-node scripts/seed.js     # Solo la primera vez — crea el usuario admin
+docker compose up -d --build
+docker compose exec app node scripts/seed.js   # Solo la primera vez — crea el usuario admin
 ```
 
-De ahi en adelante, el sistema arranca solo al encender el equipo.
+De ahí en adelante, el sistema arranca solo al encender el equipo.
 
 ### Paso 5 — Conectar los demas dispositivos
 
