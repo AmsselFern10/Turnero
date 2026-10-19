@@ -757,17 +757,17 @@
             <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 8.25h3m-3 3.75h3m-6-3.75H6.375a2.25 2.25 0 00-2.25 2.25v4.5a2.25 2.25 0 002.25 2.25h.75" /></svg>
             <span>Kiosko Digital</span>
           </button>
-          <button type="button" @click="subTabConfig = 'fondo'"
-                  class="px-3.5 py-1.5 rounded-xl font-semibold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5"
-                  :class="subTabConfig === 'fondo' ? 'bg-blue-50 text-blue-700 border border-blue-300' : 'text-slate-600 hover:bg-slate-100 border border-transparent'">
-            <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" /></svg>
-            <span>Fondo de Pantalla</span>
-          </button>
           <button type="button" @click="subTabConfig = 'impresora'"
                   class="px-3.5 py-1.5 rounded-xl font-semibold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5"
                   :class="subTabConfig === 'impresora' ? 'bg-blue-50 text-blue-700 border border-blue-300' : 'text-slate-600 hover:bg-slate-100 border border-transparent'">
             <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24-1.03-.48-2.06-.72-3.09a3 3 0 012.91-3.68h6.18a3 3 0 012.91 3.68c-.24 1.03-.48 2.06-.72 3.09M6.72 13.829H3.75a2.25 2.25 0 00-2.25 2.25v3.75a2.25 2.25 0 002.25 2.25h16.5a2.25 2.25 0 002.25-2.25v-3.75a2.25 2.25 0 00-2.25-2.25h-2.97M6.72 13.829a3.75 3.75 0 017.5 0m-7.5 0h7.5m-9 7.5v-3a1.5 1.5 0 011.5-1.5h7.5a1.5 1.5 0 011.5 1.5v3" /></svg>
             <span>Impresora LAN</span>
+          </button>
+          <button type="button" @click="subTabConfig = 'fondo'"
+                  class="px-3.5 py-1.5 rounded-xl font-semibold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5"
+                  :class="subTabConfig === 'fondo' ? 'bg-blue-50 text-blue-700 border border-blue-300' : 'text-slate-600 hover:bg-slate-100 border border-transparent'">
+            <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" /></svg>
+            <span>Fondo de Pantalla</span>
           </button>
           <button type="button" @click="subTabConfig = 'sistema'"
                   class="px-3.5 py-1.5 rounded-xl font-semibold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5"
@@ -1039,101 +1039,7 @@
         </div>
       </div>
 
-      <!-- ── BLOQUE 3: FONDO DE PANTALLA INSTITUCIONAL ── -->
-      <div x-show="subTabConfig === 'todos' || subTabConfig === 'fondo'" class="card p-5 space-y-4 rounded-2xl border border-[#CBD5E1] bg-white shadow-xs">
-        <!-- Cabecera de Tarjeta -->
-        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div class="flex items-center gap-2.5">
-            <div class="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center flex-shrink-0">
-              <svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" /></svg>
-            </div>
-            <div>
-              <h3 class="font-bold text-xs uppercase text-slate-800 tracking-wide">Fondo de Pantalla Institucional</h3>
-              <p class="text-xs text-slate-400">Imagen base para Kiosko, TV, Ventanillas y Login (las tarjetas mantienen su color blanco)</p>
-            </div>
-          </div>
-          <!-- Switch Maestro de Fondo (In-vivo) -->
-          <div class="flex items-center gap-2.5 flex-shrink-0">
-            <span class="text-xs font-semibold" :class="config.fondo_imagen_activa ? 'text-emerald-700' : 'text-slate-500'"
-                  x-text="config.fondo_imagen_activa ? 'Fondo Activo' : 'Fondo Inactivo'"></span>
-            <div class="switch-track" :class="[config.fondo_imagen_activa ? 'active' : '', _togglingFondo ? 'opacity-60 pointer-events-none' : '']"
-                 @click="toggleFondoActivo()"
-                 role="switch" aria-checked="false" :aria-checked="config.fondo_imagen_activa ? 'true' : 'false'"
-                 tabindex="0" title="Activar o desactivar imagen de fondo (en vivo)">
-              <div class="switch-thumb"></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="space-y-4 text-xs">
-          <!-- Subordinación: Explicación breve cuando está inactivo -->
-          <p x-show="!config.fondo_imagen_activa" class="text-[11px] text-slate-500 py-2">
-            El fondo personalizado está inactivo. Las pantallas muestran el fondo gris institucional (#EEF2F6).
-          </p>
-
-          <!-- Controles subordinados: Visibles cuando fondo_imagen_activa es true -->
-          <div x-show="config.fondo_imagen_activa" x-cloak class="space-y-4">
-            <!-- Acción de Subir archivo local (In-vivo: sube y guarda de inmediato) -->
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-1">
-              <div class="space-y-0.5">
-                <span class="font-semibold text-slate-900">Buscar en Archivos Locales (Subir al Servidor)</span>
-                <p class="text-[11px] text-slate-500">Selecciona una imagen de tu equipo (JPG, PNG, WebP). Se guarda de inmediato en el servidor y funciona sin internet.</p>
-                <div x-show="archivoFondoSeleccionado" x-cloak class="flex items-center gap-2 text-emerald-700 font-medium text-[11px] pt-1">
-                  <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                  <span x-text="'Imagen cargada: ' + archivoFondoSeleccionado?.nombre"></span>
-                </div>
-              </div>
-              <div>
-                <input type="file" id="input-archivo-fondo" class="hidden" accept="image/png,image/jpeg,image/webp,image/svg+xml" aria-label="Seleccionar archivo de imagen de fondo" @change="seleccionarArchivoFondo($event)">
-                <button type="button" @click="document.getElementById('input-archivo-fondo').click()"
-                        :disabled="_subiendoFondo || !wsConnected"
-                        class="btn-primary btn-sm flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-xs disabled:opacity-60">
-                  <svg x-show="!_subiendoFondo" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
-                  <svg x-show="_subiendoFondo" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
-                  <span x-text="_subiendoFondo ? 'Subiendo...' : 'Examinar...'">Examinar...</span>
-                </button>
-              </div>
-            </div>
-
-            <div class="border-t border-slate-100"></div>
-
-            <!-- Campo URL manual (Guarda con botón si se edita a mano) -->
-            <div>
-              <label for="cfg-fondo-imagen-url" class="font-semibold block mb-1 text-slate-700">O ingresa una URL / Ruta del Servidor:</label>
-              <input id="cfg-fondo-imagen-url" type="text" x-model.trim="config.fondo_imagen_url"
-                     @input="validarFondoUrl()"
-                     placeholder="https://ejemplo.com/fondo.jpg o /assets/uploads/fondo.png"
-                     class="input-field font-mono-num text-[11px] transition-colors bg-white"
-                     :class="erroresValidacion.cfgFondoUrl ? 'border-rose-400 focus:border-rose-500' : ''">
-              <p x-show="erroresValidacion.cfgFondoUrl" x-text="erroresValidacion.cfgFondoUrl" class="text-[11px] text-rose-600 font-medium mt-1"></p>
-              <p x-show="!erroresValidacion.cfgFondoUrl" class="text-[11px] text-slate-400 mt-1">Acepta URLs directas (https://), rutas locales (/assets/...) o data:image.</p>
-            </div>
-
-            <!-- Vista previa limpia sin recuadros anidados pesados -->
-            <div x-show="config.fondo_imagen_url && config.fondo_imagen_url.trim().length > 0" x-cloak class="space-y-1.5">
-              <span class="font-semibold text-slate-700 text-[11px]">Vista Previa:</span>
-              <div class="w-full h-28 rounded-xl border border-slate-200 overflow-hidden relative bg-slate-100">
-                <img :src="config.fondo_imagen_url" alt="Previsualización de fondo" class="w-full h-full object-cover" @error="$el.style.display='none'" @load="$el.style.display='block'">
-              </div>
-            </div>
-
-            <!-- Pie de tarjeta: 1 botón guardar para URL manual -->
-            <div class="flex items-center justify-between pt-3 border-t border-slate-100">
-              <span class="text-[11px]" :class="fondoHasChanges ? 'text-amber-700 font-medium' : 'text-slate-400'"
-                    x-text="fondoHasChanges ? 'Hay cambios pendientes en la URL del fondo.' : 'Fondo sincronizado.'"></span>
-              <button type="button" @click="guardarFondoParams()"
-                      :disabled="!fondoHasChanges || erroresValidacion.cfgFondoUrl || _guardandoSeccion.fondo || !wsConnected"
-                      class="btn-ghost btn-sm flex items-center gap-1.5 text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 cursor-pointer font-semibold rounded-xl px-4 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                <svg x-show="!_guardandoSeccion.fondo" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                <svg x-show="_guardandoSeccion.fondo" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
-                <span x-text="_guardandoSeccion.fondo ? 'Guardando URL...' : 'Guardar URL de Fondo'">Guardar URL de Fondo</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── BLOQUE 4: IMPRESORA TÉRMICA LAN ── -->
+      <!-- ── BLOQUE 3: IMPRESORA TÉRMICA LAN (ESC/POS) ── -->
       <div x-show="subTabConfig === 'todos' || subTabConfig === 'impresora'" class="card p-5 space-y-4 rounded-2xl border border-[#CBD5E1] bg-white shadow-xs">
         <!-- Cabecera de Tarjeta -->
         <div class="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -1232,6 +1138,100 @@
                   <span x-text="_guardandoSeccion.impresora ? 'Guardando...' : 'Guardar Conexión'">Guardar Conexión</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── BLOQUE 4: FONDO DE PANTALLA INSTITUCIONAL ── -->
+      <div x-show="subTabConfig === 'todos' || subTabConfig === 'fondo'" class="card p-5 space-y-4 rounded-2xl border border-[#CBD5E1] bg-white shadow-xs">
+        <!-- Cabecera de Tarjeta -->
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center flex-shrink-0">
+              <svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" /></svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-xs uppercase text-slate-800 tracking-wide">Fondo de Pantalla Institucional</h3>
+              <p class="text-xs text-slate-400">Imagen base para Kiosko, TV, Ventanillas y Login (las tarjetas mantienen su color blanco)</p>
+            </div>
+          </div>
+          <!-- Switch Maestro de Fondo (In-vivo) -->
+          <div class="flex items-center gap-2.5 flex-shrink-0">
+            <span class="text-xs font-semibold" :class="config.fondo_imagen_activa ? 'text-emerald-700' : 'text-slate-500'"
+                  x-text="config.fondo_imagen_activa ? 'Fondo Activo' : 'Fondo Inactivo'"></span>
+            <div class="switch-track" :class="[config.fondo_imagen_activa ? 'active' : '', _togglingFondo ? 'opacity-60 pointer-events-none' : '']"
+                 @click="toggleFondoActivo()"
+                 role="switch" aria-checked="false" :aria-checked="config.fondo_imagen_activa ? 'true' : 'false'"
+                 tabindex="0" title="Activar o desactivar imagen de fondo (en vivo)">
+              <div class="switch-thumb"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-4 text-xs">
+          <!-- Subordinación: Explicación breve cuando está inactivo -->
+          <p x-show="!config.fondo_imagen_activa" class="text-[11px] text-slate-500 py-2">
+            El fondo personalizado está inactivo. Las pantallas muestran el fondo gris institucional (#EEF2F6).
+          </p>
+
+          <!-- Controles subordinados: Visibles cuando fondo_imagen_activa es true -->
+          <div x-show="config.fondo_imagen_activa" x-cloak class="space-y-4">
+            <!-- Acción de Subir archivo local (In-vivo: sube y guarda de inmediato) -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-1">
+              <div class="space-y-0.5">
+                <span class="font-semibold text-slate-900">Buscar en Archivos Locales (Subir al Servidor)</span>
+                <p class="text-[11px] text-slate-500">Selecciona una imagen de tu equipo (JPG, PNG, WebP). Se guarda de inmediato en el servidor y funciona sin internet.</p>
+                <div x-show="archivoFondoSeleccionado" x-cloak class="flex items-center gap-2 text-emerald-700 font-medium text-[11px] pt-1">
+                  <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                  <span x-text="'Imagen cargada: ' + archivoFondoSeleccionado?.nombre"></span>
+                </div>
+              </div>
+              <div>
+                <input type="file" id="input-archivo-fondo" class="hidden" accept="image/png,image/jpeg,image/webp,image/svg+xml" aria-label="Seleccionar archivo de imagen de fondo" @change="seleccionarArchivoFondo($event)">
+                <button type="button" @click="document.getElementById('input-archivo-fondo').click()"
+                        :disabled="_subiendoFondo || !wsConnected"
+                        class="btn-primary btn-sm flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-xs disabled:opacity-60">
+                  <svg x-show="!_subiendoFondo" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
+                  <svg x-show="_subiendoFondo" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                  <span x-text="_subiendoFondo ? 'Subiendo...' : 'Examinar...'">Examinar...</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="border-t border-slate-100"></div>
+
+            <!-- Campo URL manual (Guarda con botón si se edita a mano) -->
+            <div>
+              <label for="cfg-fondo-imagen-url" class="font-semibold block mb-1 text-slate-700">O ingresa una URL / Ruta del Servidor:</label>
+              <input id="cfg-fondo-imagen-url" type="text" x-model.trim="config.fondo_imagen_url"
+                     @input="validarFondoUrl()"
+                     placeholder="https://ejemplo.com/fondo.jpg o /assets/uploads/fondo.png"
+                     class="input-field font-mono-num text-[11px] transition-colors bg-white"
+                     :class="erroresValidacion.cfgFondoUrl ? 'border-rose-400 focus:border-rose-500' : ''">
+              <p x-show="erroresValidacion.cfgFondoUrl" x-text="erroresValidacion.cfgFondoUrl" class="text-[11px] text-rose-600 font-medium mt-1"></p>
+              <p x-show="!erroresValidacion.cfgFondoUrl" class="text-[11px] text-slate-400 mt-1">Acepta URLs directas (https://), rutas locales (/assets/...) o data:image.</p>
+            </div>
+
+            <!-- Vista previa limpia sin recuadros anidados pesados -->
+            <div x-show="config.fondo_imagen_url && config.fondo_imagen_url.trim().length > 0" x-cloak class="space-y-1.5">
+              <span class="font-semibold text-slate-700 text-[11px]">Vista Previa:</span>
+              <div class="w-full h-28 rounded-xl border border-slate-200 overflow-hidden relative bg-slate-100">
+                <img :src="config.fondo_imagen_url" alt="Previsualización de fondo" class="w-full h-full object-cover" @error="$el.style.display='none'" @load="$el.style.display='block'">
+              </div>
+            </div>
+
+            <!-- Pie de tarjeta: 1 botón guardar para URL manual -->
+            <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+              <span class="text-[11px]" :class="fondoHasChanges ? 'text-amber-700 font-medium' : 'text-slate-400'"
+                    x-text="fondoHasChanges ? 'Hay cambios pendientes en la URL del fondo.' : 'Fondo sincronizado.'"></span>
+              <button type="button" @click="guardarFondoParams()"
+                      :disabled="!fondoHasChanges || erroresValidacion.cfgFondoUrl || _guardandoSeccion.fondo || !wsConnected"
+                      class="btn-ghost btn-sm flex items-center gap-1.5 text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 cursor-pointer font-semibold rounded-xl px-4 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                <svg x-show="!_guardandoSeccion.fondo" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                <svg x-show="_guardandoSeccion.fondo" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                <span x-text="_guardandoSeccion.fondo ? 'Guardando URL...' : 'Guardar URL de Fondo'">Guardar URL de Fondo</span>
+              </button>
             </div>
           </div>
         </div>
