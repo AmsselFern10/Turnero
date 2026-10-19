@@ -97,6 +97,16 @@ export function loginView() {
     },
 
     _decidirPasoPostLogin(usuario) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const forzarSeleccion = urlParams.get('seleccionar_mesa') === '1' || urlParams.get('seleccionar_mesa') === 'true';
+
+      if (forzarSeleccion) {
+        this.step = 'mesas_grid';
+        this.cargarMesas();
+        this._conectarWSMesas();
+        return;
+      }
+
       // Admin con mesa asignada: mostrar aviso con opciones (Mesa o Panel Admin)
       if (usuario.mesa_asignada) {
         this.mesaPreAsignada = usuario.mesa_asignada;

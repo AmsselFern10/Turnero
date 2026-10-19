@@ -51,6 +51,7 @@ export function adminView() {
   return {
     tab: 'monitoreo',
     relojHora: '--:--:--',
+    currentUser: null,
     _clockTimer: null,
     _pollTimer:  null,
 
@@ -802,6 +803,7 @@ export function adminView() {
           api.clearSession(true);
           return;
         }
+        this.currentUser = usuario;
       } catch (_) {
         api.clearSession(true);
         return;
@@ -883,6 +885,10 @@ export function adminView() {
         ...m,
         tiempo_promedio_min: m.tiempo_promedio_seg ? +(m.tiempo_promedio_seg / 60).toFixed(1) : 0
       }));
+      if (this.currentUser) {
+        const mesaMio = this.mesas.find(m => Number(m.operador_id) === Number(this.currentUser.id));
+        this.currentUser.mesa_asignada = mesaMio ? { id: mesaMio.id, numero: mesaMio.numero, nombre: mesaMio.nombre, estado: mesaMio.estado } : null;
+      }
     },
 
     async cargarLotes() {
@@ -2512,8 +2518,32 @@ export function adminView() {
     },
 
     // =========================================================================
-    // SESION
+    // SESION Y NAVEGACION
     // =========================================================================
+
+    async irAPanelMesa() {
+      try {
+        const res = await api.get('/auth/me');
+        const usuario = res?.usuario || this.currentUser;
+        if (usuario?.mesa_asignada) {
+          this.currentUser = usuario;
+          sessionStorage.setItem('turnero_mesa', JSON.stringify(usuario.mesa_asignada));
+          sessionStorage.setItem('turnero_user', JSON.stringify(usuario));
+          window.location.href = '/panel_mesa.html';
+        } else {
+          sessionStorage.removeItem('turnero_mesa');
+          window.location.href = '/index.html?seleccionar_mesa=1';
+        }
+      } catch (_) {
+        if (this.currentUser?.mesa_asignada) {
+          sessionStorage.setItem('turnero_mesa', JSON.stringify(this.currentUser.mesa_asignada));
+          window.location.href = '/panel_mesa.html';
+        } else {
+          sessionStorage.removeItem('turnero_mesa');
+          window.location.href = '/index.html?seleccionar_mesa=1';
+        }
+      }
+    },
 
     async logout() {
       if (this.ws) { this.ws.disconnect(); this.ws = null; }
