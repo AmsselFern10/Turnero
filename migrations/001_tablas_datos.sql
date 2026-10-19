@@ -217,10 +217,8 @@ COMMENT ON TABLE audit_log IS 'Trazabilidad inmutable del sistema. Solo-INSERT. 
 -- ---------------------------------------------------------------------------
 -- 4. CONFIGURACION INICIAL DEL SISTEMA
 -- ---------------------------------------------------------------------------
--- Descripciones: version final corregida.
--- kiosko_url_base  = URL local LAN (no publica).
--- kiosko_url_publica = URL publica Internet/ngrok.
--- kiosko_modo_uso  = clave faltante en migraciones anteriores, insertada aqui.
+-- kiosko_url_base  = URL local LAN.
+-- kiosko_url_publica = URL publica opcional (vacio = red local LAN).
 -- ---------------------------------------------------------------------------
 INSERT INTO configuracion (clave, valor, descripcion) VALUES
     ('alerta_vouchers_restantes',  '20',
@@ -253,8 +251,8 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
      'Escala porcentual de turnos anteriores y banner de mesa en TV (75-140).'),
     ('kiosko_impresion_automatica','false',
      'Imprimir comprobante automaticamente al generar turno en modo tablet.'),
-    ('kiosko_url_publica',         'afternoon-bucket-hesitate.ngrok-free.app',
-     'URL publica (Internet / datos moviles) para acceso de participantes al kiosko y seguimiento QR.'),
+    ('kiosko_url_publica',         '',
+     'URL publica opcional para acceso de participantes al kiosko y seguimiento QR (vacio = red local LAN).'),
     ('kiosko_modo_uso',            'asistido',
      'Modalidad del kiosko: asistido (tablet con operador) / estudiante (autoservicio movil).'),
     ('fondo_imagen_url',           '',

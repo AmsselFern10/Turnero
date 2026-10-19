@@ -336,7 +336,7 @@ async function generarTurno (fastify, { ip, idempotencyKey, deviceId, esTablet, 
         [idempotencyKey]
       )
       if (dup) {
-        return armarRespuestaTurno(fastify, dup, reqHost, reqProtocol, (cfg.kiosko_url_publica || '').trim() || (cfg.kiosko_url_base || '').trim())
+        return armarRespuestaTurno(fastify, dup, reqHost, reqProtocol, (cfg.kiosko_url_base || '').trim() || (cfg.kiosko_url_publica || '').trim())
       }
     }
     throw err
@@ -345,7 +345,7 @@ async function generarTurno (fastify, { ip, idempotencyKey, deviceId, esTablet, 
   // Invalidar caché de estado del kiosko
   _estadoCache = null
 
-  return armarRespuestaTurno(fastify, turnoCreado, reqHost, reqProtocol, (cfg.kiosko_url_publica || '').trim() || (cfg.kiosko_url_base || '').trim())
+  return armarRespuestaTurno(fastify, turnoCreado, reqHost, reqProtocol, (cfg.kiosko_url_base || '').trim() || (cfg.kiosko_url_publica || '').trim())
 }
 
 // Caché en memoria para métricas globales de atención (mesas activas y tiempo promedio)
@@ -414,7 +414,7 @@ async function armarRespuestaTurno (fastify, turno, reqHost, reqProtocol, baseUr
   } else {
     const cfgMap = {}
     for (const r of resUrlBase.rows) cfgMap[r.clave] = r.valor
-    urlBase = (cfgMap.kiosko_url_publica || '').trim() || (cfgMap.kiosko_url_base || '').trim()
+    urlBase = (cfgMap.kiosko_url_base || '').trim() || (cfgMap.kiosko_url_publica || '').trim()
   }
 
   const trackingUrl = resolverUrlSeguimiento(urlBase, reqHost, reqProtocol, turno.token_consulta)

@@ -167,7 +167,7 @@ El Kiosko Digital opera bajo dos modalidades exclusivas configurables desde **Ad
 
 #### 1. Modalidad Asistida (Consola de Recepción / Tablet de Portería)
 Diseñada para que un empleado o guardia en la entrada emita turnos para los estudiantes:
-1. **Acceso directo:** Al abrir el enlace `/kiosko.html` (local o ngrok), la tablet se identifica como consola de emisión con un botón prominente: **"ASIGNAR SIGUIENTE TURNO"**.
+1. **Acceso directo:** Al abrir el enlace `/kiosko.html` en la red local LAN, la tablet se identifica como consola de emisión con un botón prominente: **"ASIGNAR SIGUIENTE TURNO"**.
 2. **Emisión en 1 solo clic:** Un toque asigna el siguiente voucher correlativo sin fricciones.
 3. **Comprobante en pantalla durante 15 segundos:** Muestra el número asignado en tipografía gigante (ej. `#047`), código QR de seguimiento para el estudiante y una cuenta regresiva visual (`Vuelve a inicio en 15s`).
 4. **Impresión térmica automática ESC/POS:** Si hay una impresora de red activa y configurada (`impresora_activa = true`), el comprobante físico se imprime de inmediato sin tocar nada más. Si la impresora está inactiva o apagada, la pantalla no se traba: muestra un aviso informativo y permite imprimir con el cuadro nativo del navegador como respaldo.
@@ -176,7 +176,7 @@ Diseñada para que un empleado o guardia en la entrada emita turnos para los est
 
 #### 2. Modalidad Estudiante (Autoservicio Móvil con Cartel QR)
 Diseñada para que cada estudiante use su propio teléfono inteligente:
-1. **Escaneo del Cartel QR:** El estudiante apunta la cámara de su celular al código QR exhibido en carteles impresos en el recinto (o ingresa al enlace público de ngrok).
+1. **Escaneo del Cartel QR:** El estudiante apunta la cámara de su celular al código QR exhibido en carteles impresos en el recinto (o ingresa a la dirección web de la red local).
 2. **Toma de turno:** Presiona el botón táctil **"TOMAR MI TURNO"** desde su navegador móvil.
 3. **Seguimiento en vivo (Push WebSocket):** Su pantalla pasa automáticamente a la vista de seguimiento personal sin recargar la página.
 4. **Información continua:** Observa cuántas personas están antes que él (*"3 personas antes de ti"*), su posición exacta en cola y el tiempo estimado de espera.
@@ -305,29 +305,13 @@ Reemplazando `192.168.1.50` por la IP fija de tu servidor:
 
 ---
 
-## Acceso remoto seguro y servicio Ngrok permanente
+## Acceso en Red Local (LAN / Wi-Fi Campus)
 
-Para que los estudiantes puedan tomar y seguir su turno desde sus teléfonos usando datos móviles 4G/5G (sin estar conectados a la red Wi-Fi universitaria), el sistema integra un túnel seguro con dominio SSL reservado mediante **ngrok**.
+El sistema está diseñado para operar con máxima velocidad y autonomía en la red local institucional:
 
-### 1. Instalación de Ngrok como Servicio Nativo de Windows (Auto-arranque)
-Para que el túnel esté **siempre activo**, arranque automáticamente cuando la computadora se encienda y se recupere solo ante caídas de internet sin ventanas de consola abiertas:
-
-1. Ubica el archivo en la raíz del proyecto:
-   ```text
-   instalar_servicio_ngrok.bat
-   ```
-2. Haz **clic derecho** sobre él y elige **"Ejecutar como administrador"**.
-3. El script registrará e iniciará el servicio nativo de Windows:
-   ```cmd
-   ngrok service install --config "%~dp0ngrok.yml"
-   ngrok service start
-   ```
-   *El servicio queda registrado en `services.msc` con inicio automático (`Automatic`). Aunque se cierre la consola, se reinicie la app o se reinicie la PC, el enlace público permanece 100% disponible.*
-
-### 2. Aviso de bienvenida gratuito de Ngrok (Visit Site)
-En cuentas gratuitas de ngrok (`*.ngrok-free.dev`), la primera vez que un celular abre el enlace se muestra una pantalla preventiva de bienvenida (*"You are about to visit..."*):
-- **Ocurre solo una vez por teléfono:** El alumno pulsa el botón azul **"Visit Site"** una sola vez. Safari/Chrome guardará una cookie en ese celular y nunca más la volverá a mostrar.
-- **Sincronización API transparente:** El cliente frontend `api.js` del sistema envía automáticamente la cabecera `ngrok-skip-browser-warning: true` en todas las consultas en segundo plano y WebSockets, garantizando que el seguimiento en vivo funcione de inmediato sin interrupciones.
+- **Acceso desde cualquier dispositivo:** Conecta cualquier computadora, tablet o smartphone a la misma red Wi-Fi o cableada del campus e ingresa directamente usando la IP del servidor (ej. `http://192.168.1.100:3000`).
+- **Cartel QR para Estudiantes:** El cartel generado en **Admin → Configuración** apunta directamente a la dirección LAN del kiosko, permitiendo que cualquier alumno conectado a la red universitaria tome su turno al instante.
+- **Sin dependencias externas:** Todo el sistema funciona con 0% de internet; las fuentes, estilos y scripts están completamente autoalojados.
 
 ---
 
@@ -376,7 +360,6 @@ src/
 | **Pool de conexiones** | pgBouncer | Límite estricto de conexiones reales para evitar saturación de RAM |
 | **Caché y mensajería** | Redis 7 | Caché en RAM < 1ms y difusión Pub/Sub entre instancias |
 | **Frontend** | HTML5 Semántico + Tailwind CSS 3 + Alpine.js v3 | Interfaz reactiva ultraligera (< 40KB) sin build steps pesados |
-| **Acceso Remoto / Túnel** | **ngrok** (Servicio Nativo Windows) | Enlace seguro SSL con auto-arranque para celulares y tablets remotas |
 | **Contenedores** | Docker Compose | Despliegue reproducible con un solo comando en cualquier OS |
 
 ---

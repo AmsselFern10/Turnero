@@ -33,7 +33,7 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
   ('tv_escala_principal',         '100',                                    'Escala porcentual del numero de turno principal en pantalla TV (75-140).'),
   ('tv_escala_secundaria',        '100',                                    'Escala porcentual de turnos anteriores y banner de mesa en TV (75-140).'),
   ('kiosko_impresion_automatica', 'false',                                  'Imprimir comprobante automaticamente al generar turno en modo tablet.'),
-  ('kiosko_url_publica',          'https://afternoon-bucket-hesitate.ngrok-free.app', 'URL publica (Internet / datos moviles) para acceso de participantes al kiosko y seguimiento QR.'),
+  ('kiosko_url_publica',          '',                                       'URL publica opcional para acceso de participantes al kiosko (vacio = red local LAN).'),
   ('kiosko_modo_uso',             'asistido',                               'Modalidad del kiosko: asistido (tablet con operador) / estudiante (autoservicio movil).'),
   ('fondo_imagen_url',            '',                                       'URL o ruta de la imagen institucional de fondo para las pantallas del sistema.'),
   ('fondo_imagen_activa',         'false',                                  'Activar la imagen de fondo institucional en las pantallas del sistema.')

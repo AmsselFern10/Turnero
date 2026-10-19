@@ -119,7 +119,7 @@ export function kioskoView () {
      * Inicialización del Kiosko
      */
     async init () {
-      // 1. Detectar modo tablet desde la URL (?modo=tablet) o autorización guardada en el dispositivo (Opción 1)
+      // 1. Detectar modo tablet exclusivamente si la URL indica ?modo=tablet
       const urlParams = new URLSearchParams(window.location.search);
       const modoParam = urlParams.get('modo');
       if (modoParam === 'tablet') {
@@ -128,17 +128,12 @@ export function kioskoView () {
           localStorage.setItem('turnero_modo_tablet', '1');
           localStorage.removeItem('turnero_mi_turno'); // El módulo de portón no retiene turnos de estudiante
         } catch (_) {}
-      } else if (modoParam === 'estudiante') {
+      } else {
+        // Enlace sin ?modo=tablet o con ?modo=estudiante -> Modo autoservicio / estudiante
         this.esTablet = false;
         try {
           localStorage.removeItem('turnero_modo_tablet');
         } catch (_) {}
-      } else {
-        try {
-          this.esTablet = localStorage.getItem('turnero_modo_tablet') === '1';
-        } catch (_) {
-          this.esTablet = false;
-        }
       }
 
       // 2. Obtener o generar identificador persistente del dispositivo móvil

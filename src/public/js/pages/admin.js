@@ -346,7 +346,7 @@ export function adminView() {
     },
 
     get urlTabletPorton() {
-      const base = (this.config?.kiosko_url_publica || this.config?.kiosko_url_base || '').trim();
+      const base = (this.config?.kiosko_url_base || this.config?.kiosko_url_publica || '').trim();
       if (base) {
         const urlLimpia = base.replace(/\/+$/, '');
         const sinKiosko = urlLimpia.endsWith('/kiosko.html') ? urlLimpia : `${urlLimpia}/kiosko.html`;
@@ -356,15 +356,13 @@ export function adminView() {
     },
 
     get urlEstudianteQR() {
-      const base = (this.config?.kiosko_url_publica || this.config?.kiosko_url_base || '').trim();
+      const base = (this.config?.kiosko_url_base || this.config?.kiosko_url_publica || '').trim();
       if (base) {
         const urlLimpia = base.replace(/\/+$/, '');
-        if (urlLimpia.endsWith('/kiosko.html')) {
-          return urlLimpia;
-        }
-        return `${urlLimpia}/kiosko.html`;
+        const sinKiosko = urlLimpia.endsWith('/kiosko.html') ? urlLimpia : `${urlLimpia}/kiosko.html`;
+        return `${sinKiosko}?modo=estudiante`;
       }
-      return typeof window !== 'undefined' ? `${window.location.origin}/kiosko.html` : '/kiosko.html';
+      return typeof window !== 'undefined' ? `${window.location.origin}/kiosko.html?modo=estudiante` : '/kiosko.html?modo=estudiante';
     },
 
     copiarAlPortapapeles(texto, label = 'Enlace') {

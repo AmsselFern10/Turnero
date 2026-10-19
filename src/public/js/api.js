@@ -134,7 +134,6 @@ class ApiClient {
       credentials: 'include',
       headers: {
         'Accept': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
         ...(options.headers || {})
       },
       ...options

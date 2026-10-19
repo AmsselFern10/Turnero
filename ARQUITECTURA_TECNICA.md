@@ -52,11 +52,11 @@ El sistema está estructurado en tres capas claramente delimitadas: **Capa de Cl
 │   └──────────┬──────────┘   └──────────┬──────────┘   └──────────────┬──────────────┘   │
 │              │                         │                             │                  │
 │   ┌──────────┴──────────┐   ┌──────────┴──────────┐   ┌──────────────┴──────────────┐   │
-│   │  Tablet de Portón   │   │  Celular Estudiante │   │    Túnel Remoto Seguro      │   │
-│   │  (Kiosko Asistido)  │   │ (Autoservicio Móvil)│   │  (ngrok SSL Auto-arranque)  │   │
+│   │  Tablet de Portón   │   │  Celular Estudiante │   │    Impresora Térmica LAN    │   │
+│   │  (Kiosko Asistido)  │   │ (Autoservicio Móvil)│   │   (Tickets ESC/POS :9100)   │   │
 │   └──────────┬──────────┘   └──────────┬──────────┘   └──────────────┬──────────────┘   │
 └──────────────┼─────────────────────────┼─────────────────────────────┼──────────────────┘
-               │ HTTP REST (JSON)        │ WebSocket Push (< 10ms)     │ SSL HTTPS / WSS
+               │ HTTP REST (JSON)        │ WebSocket Push (< 10ms)     │ Sockets TCP RAW
                ▼                         ▼                             ▼
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
 │                       CAPA DE SERVIDOR Y LÓGICA (NODE.JS + FASTIFY)                     │
@@ -162,17 +162,7 @@ Cada tecnología fue elegida de forma deliberada por sus capacidades específica
 
 ---
 
-### 7. ngrok (Túnel Seguro SSL como Servicio Nativo)
-* **¿Qué es?**  
-  Plataforma de conectividad que crea un túnel seguro y encriptado (HTTPS/WSS) desde un dominio público hacia un puerto local de la computadora.
-* **¿Para qué sirve en este sistema?**  
-  Permite que los estudiantes tomen y sigan sus turnos desde su celular usando datos móviles (4G/5G) fuera del Wi-Fi del campus, y permite conectar tablets de portón remotas.
-* **¿Por qué se eligió?**  
-  No requiere contratar IP pública fija, abrir puertos en el router del campus ni lidiar con cortafuegos institucionales. Se configuró como **Servicio Nativo de Windows (`instalar_servicio_ngrok.bat`)**, lo que garantiza que inicie solo al prender la PC, corra en segundo plano sin consolas abiertas y se reconecte automáticamente ante caídas de internet.
-
----
-
-### 8. Impresión Térmica Directa ESC/POS vía TCP
+### 7. Impresión Térmica Directa ESC/POS vía TCP
 * **¿Qué es?**  
   Estándar industrial de comunicación binaria para impresoras térmicas de tickets (Epson, Xprinter, Rongta, etc.) a través de sockets TCP de red (puerto 9100).
 * **¿Para qué sirve en este sistema?**  
@@ -190,8 +180,7 @@ El proyecto está diseñado bajo una arquitectura modular limpia y desacoplada, 
 Turnero/
 ├── docker-compose.yml         ──► Orquestación: db (Postgres), redis, pgbouncer y app
 ├── Dockerfile                 ──► Imagen optimizada de Node.js 20 LTS
-├── ngrok.yml                  ──► Configuración del túnel seguro con dominio reservado
-├── instalar_servicio_ngrok.bat──► Script de instalación de ngrok como servicio Windows
+├── iniciar_sistema.bat        ──► Script de inicio rápido del sistema (Docker / PM2 / Node)
 ├── migrations/                ──► Migraciones SQL versionadas (tablas, funciones, triggers)
 │
 ├── src/
@@ -300,16 +289,7 @@ El sistema cuenta con **7 módulos backend principales** complementados por el s
   * Seguridad anti-IDOR: Impide que un operador escuche canales de otras ventanillas comparando el token JWT con la mesa solicitada.
   * Latido simétrico: Envía *ping* cada 30 segundos y cierra conexiones inactivas tras 60 segundos para evitar fugas de memoria.
 
----
 
-### Módulo Complementario: Servicio de Túnel Remoto Ngrok
-* **Responsabilidad:** Conectar de forma segura los dispositivos móviles externos a la red del campus.
-* **Componentes clave:**
-  * Ejecuta como **Servicio Nativo de Windows (`services.msc`)** con inicio automático al encender la PC.
-  * Provee cifrado SSL (HTTPS/WSS) para que los navegadores móviles autoricen el uso de WebSockets, vibración y audio en segundo plano.
-  * Integra cabecera automática `ngrok-skip-browser-warning: true` en las peticiones para una navegación fluida.
-
----
 
 ## 6. Flujos Operativos de Trabajo
 
@@ -410,7 +390,7 @@ A continuación se presentan los diagramas visuales de los tres flujos de trabaj
 └────────────────────────────────────┬──────────────────────────────────────┘
                                      │
                                      │ 1. Escanea Cartel QR impreso con la cámara
-                                     │    (Ingresa por Wi-Fi o datos móviles con ngrok)
+                                     │    (Ingresa mediante la red Wi-Fi / LAN del campus)
                                      ▼
                       ┌─────────────────────────────┐
                       │   Pantalla Kiosko Móvil     │
@@ -705,7 +685,7 @@ MODALIDAD VOUCHER FÍSICO:
 | **Pérdida de estado al reconectar pantallas** | Solicitud de Snapshot consolidado en memoria RAM | `hub.js` en backend Fastify |
 | **Turnos que se pisan en la pantalla TV** | Cola FIFO secuencial con tiempo mínimo de exposición | `tv.js` en pantalla pública |
 | **Pantalla muda sin salida a internet** | Generador de tonos institucional con Web Audio API | `utils.js` (Web Audio API nativa) |
-| **Acceso desde celulares sin Wi-Fi del campus** | Túnel seguro SSL permanente con servicio de Windows | `ngrok service install` |
+| **Operación 100% autónoma en red local** | Todo el sistema (fuentes, CSS, scripts, audio) autoalojado | Servidor Fastify en LAN (`http://<ip>:3000`) |
 | **Impresión rápida de tickets en recepción** | Protocolo RAW ESC/POS directo por socket TCP | `printer.js` hacia puerto 9100 |
 | **Auditoría y reportes a prueba de manipulación**| Permisos revocados de UPDATE/DELETE en `audit_log` | Schema de base de datos relacional |
 

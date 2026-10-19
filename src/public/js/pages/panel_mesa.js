@@ -240,7 +240,7 @@ export function panelMesaView() {
           const numFormatted = String(this.turnoActual.numero).padStart(3, '0');
           this.feedbackData = {
             titulo: 'LLAMADO EMITIDO CON ÉXITO',
-            detalle: `Turno ${numFormatted} convocado a Mesa ${this.mesa.numero || '-'} • Sonando en pantalla TV`
+            detalle: `Turno ${numFormatted} convocado a Mesa ${this.mesa.numero || '-'}`
           };
         } else {
           this.detenerCronometro();
@@ -267,7 +267,7 @@ export function panelMesaView() {
       const numFormatted = turno ? String(turno.numero).padStart(3, '0') : '--';
       this.feedbackData = {
         titulo: 'LLAMADO EMITIDO CON ÉXITO',
-        detalle: `Turno ${numFormatted} convocado a Mesa ${this.mesa.numero || '-'} • Sonando en pantalla TV (hace un momento)`
+        detalle: `Turno ${numFormatted} convocado a Mesa ${this.mesa.numero || '-'}`
       };
 
       this.feedbackTimer = setTimeout(() => {
@@ -282,7 +282,7 @@ export function panelMesaView() {
       const numFormatted = turno ? String(turno.numero).padStart(3, '0') : '--';
       this.feedbackData = {
         titulo: 'RE-LLAMADO EMITIDO (2º AVISO)',
-        detalle: `Turno ${numFormatted} re-convocado a Mesa ${this.mesa.numero || '-'} • Sonando en pantalla TV (hace un momento)`
+        detalle: `Turno ${numFormatted} convocado a Mesa ${this.mesa.numero || '-'}`
       };
 
       this.feedbackTimer = setTimeout(() => {
@@ -310,7 +310,7 @@ export function panelMesaView() {
         const numFormatted = String(this.turnoActual.numero).padStart(3, '0');
         this.feedbackData = {
           titulo: 'LLAMADO EMITIDO CON ÉXITO',
-          detalle: `Turno ${numFormatted} convocado a Mesa ${this.mesa.numero || '-'} • Sonando en pantalla TV`
+          detalle: `Turno ${numFormatted} convocado a Mesa ${this.mesa.numero || '-'}`
         };
       } else {
         this.feedbackData = {
