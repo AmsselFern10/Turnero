@@ -51,7 +51,18 @@ async function run() {
 
   // ── FASE 0: PREPARACIÓN DE 10 MESAS Y 10 OPERADORES ──────────────────────
   console.log('0. Preparando base de datos: 10 mesas y 10 operadores...')
-  await pool.query(`UPDATE lotes_voucher SET estado = 'activo', numero_hasta = 5000 WHERE id = 1`)
+  // Pausar cualquier lote activo existente para evitar conflicto de constraint única
+  await pool.query(`UPDATE lotes_voucher SET estado = 'pausado' WHERE estado = 'activo'`)
+  // Upsert del lote de prueba como activo.
+  // NO tocamos ultimo_numero_llamado en el UPDATE para no violar el trigger anti-regresion.
+  // Ponemos numero_hasta muy alto para que el test siempre tenga vouchers disponibles.
+  await pool.query(`
+    INSERT INTO lotes_voucher (id, numero_lote, numero_desde, numero_hasta, ultimo_numero_llamado, estado)
+    VALUES (1, 1, 1, 99999, 0, 'activo')
+    ON CONFLICT (id) DO UPDATE
+      SET estado = 'activo',
+          numero_hasta = 99999
+  `)
 
   // Asegurar que existan 10 operadores (op1 .. op10)
   const passwordHash = await bcrypt.hash('Operador2026!', 10)

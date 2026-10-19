@@ -374,6 +374,52 @@ export function adminView() {
       return this.cfgAlertaValida && !!(this.config?.zona_horaria || '').trim();
     },
 
+    get kioskoHasChanges() {
+      if (!this._configSnapshot) return false;
+      const modoActual = this.config?.kiosko_modo_uso || 'asistido';
+      const modoSnap = this._configSnapshot?.kiosko_modo_uso || 'asistido';
+      const topeActual = Number(this.config?.kiosko_tope_diario) || 0;
+      const topeSnap = Number(this._configSnapshot?.kiosko_tope_diario) || 0;
+      const urlBaseActual = (this.config?.kiosko_url_base || '').trim();
+      const urlBaseSnap = (this._configSnapshot?.kiosko_url_base || '').trim();
+      const urlPubActual = (this.config?.kiosko_url_publica || '').trim();
+      const urlPubSnap = (this._configSnapshot?.kiosko_url_publica || '').trim();
+
+      return (
+        modoActual !== modoSnap ||
+        topeActual !== topeSnap ||
+        urlBaseActual !== urlBaseSnap ||
+        urlPubActual !== urlPubSnap
+      );
+    },
+
+    get impresoraHasChanges() {
+      if (!this._configSnapshot) return false;
+      const ipActual = (this.config?.impresora_ip || '').trim();
+      const ipSnap = (this._configSnapshot?.impresora_ip || '').trim();
+      const puertoActual = Number(this.config?.impresora_puerto) || 9100;
+      const puertoSnap = Number(this._configSnapshot?.impresora_puerto) || 9100;
+
+      return ipActual !== ipSnap || puertoActual !== puertoSnap;
+    },
+
+    get fondoHasChanges() {
+      if (!this._configSnapshot) return false;
+      const urlActual = (this.config?.fondo_imagen_url || '').trim();
+      const urlSnap = (this._configSnapshot?.fondo_imagen_url || '').trim();
+      return urlActual !== urlSnap;
+    },
+
+    get sistemaHasChanges() {
+      if (!this._configSnapshot) return false;
+      const alertaActual = Number(this.config?.alerta_vouchers_restantes) || 20;
+      const alertaSnap = Number(this._configSnapshot?.alerta_vouchers_restantes) || 20;
+      const zonaActual = (this.config?.zona_horaria || '').trim();
+      const zonaSnap = (this._configSnapshot?.zona_horaria || '').trim();
+
+      return alertaActual !== alertaSnap || zonaActual !== zonaSnap;
+    },
+
     // =========================================================================
     // MÉTODOS DE VALIDACIÓN INDIVIDUAL (MENSAJES EN ESPAÑOL DEBAJO DEL CAMPO)
     // =========================================================================
@@ -878,6 +924,7 @@ export function adminView() {
         this.config.impresora_ip              = c.impresora_ip     || '';
         this.config.impresora_puerto          = parseInt(c.impresora_puerto || '9100', 10) || 9100;
         this.config.impresora_activa          = c.impresora_activa === 'true' || c.impresora_activa === true;
+        this.config.kiosko_impresion_automatica = c.kiosko_impresion_automatica === 'true' || c.kiosko_impresion_automatica === true;
         const escalaBase = parseInt(c.tv_escala_turnos || '100', 10) || 100;
         this.config.tv_escala_principal       = parseInt(c.tv_escala_principal || String(escalaBase), 10) || 100;
         this.config.tv_escala_secundaria      = parseInt(c.tv_escala_secundaria || String(escalaBase), 10) || 100;
@@ -886,6 +933,7 @@ export function adminView() {
         this.config.fondo_imagen_url          = c.fondo_imagen_url || '';
         this.config.fondo_imagen_activa       = c.fondo_imagen_activa === 'true' || c.fondo_imagen_activa === true;
       }
+      this.validarFondoUrl();
       this._configSnapshot = { ...this.config };
     },
 
@@ -1605,6 +1653,9 @@ export function adminView() {
 
       try {
         await api.patch(`/admin/configuracion/${clave}`, { valor: String(nuevoValor) });
+        if (this._configSnapshot) {
+          this._configSnapshot[clave] = nuevoValor;
+        }
         this.notificar({
           tipo: 'success',
           titulo: 'Ajuste actualizado',
@@ -2034,6 +2085,8 @@ export function adminView() {
               this._configSnapshot.fondo_imagen_url = res.url;
               this._configSnapshot.fondo_imagen_activa = true;
             }
+            this.erroresValidacion.cfgFondoUrl = '';
+            this.validarFondoUrl();
             const tamanoKB = Math.round(file.size / 1024);
             const tamanoTexto = tamanoKB > 1024 ? `${(tamanoKB / 1024).toFixed(1)} MB` : `${tamanoKB} KB`;
             this.archivoFondoSeleccionado = {
