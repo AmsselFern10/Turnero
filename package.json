@@ -12,6 +12,8 @@
     "migrate": "node scripts/recrear_desde_cero.js",
     "seed": "node scripts/seed.js",
     "reset": "node scripts/reset.js",
+    "test": "node tests/offline-docker-audit.test.js",
+    "test:suite": "node scripts/run_tests.js",
     "lint": "eslint src --ext .js",
     "build:css": "tailwindcss -i ./src/public/css/tailwind-input.css -o ./src/public/css/tailwind.css --minify",
     "watch:css": "tailwindcss -i ./src/public/css/tailwind-input.css -o ./src/public/css/tailwind.css --watch"

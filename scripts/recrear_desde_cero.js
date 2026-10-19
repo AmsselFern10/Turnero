@@ -20,14 +20,24 @@ async function recrearDesdeCero() {
   console.log(' RECONSTRUCCION COMPLETA DE BASE DE DATOS DESDE CERO');
   console.log('========================================================\n');
 
-  const client = await pool.connect();
+  let client;
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    try {
+      client = await pool.connect();
+      break;
+    } catch (err) {
+      if (attempt === 10) throw err;
+      console.log(`[INFO] Esperando conexion con PostgreSQL / pgBouncer (intento ${attempt}/10)...`);
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  }
+
   try {
     // 1. Limpieza absoluta del schema public
     console.log('[1/3] Eliminando schema public completo (tablas, funciones, triggers, secuencias)...');
     await client.query(`
       DROP SCHEMA IF EXISTS public CASCADE;
       CREATE SCHEMA public;
-      GRANT ALL ON SCHEMA public TO postgres;
       GRANT ALL ON SCHEMA public TO public;
     `);
     console.log('   [OK] Schema public reseteado a limpio.');

@@ -145,12 +145,15 @@ else
   node scripts/seed.js
 
   echo "[INFO] Iniciando servidor Turnero en segundo plano..."
-  # Si pm2 esta disponible, usarlo; de lo contrario nohup
+  # Si pm2 esta disponible, usarlo para persistencia y auto-reinicio ante fallos
   if command -v pm2 >/dev/null 2>&1; then
     pm2 start src/server.js --name turnero-app || pm2 restart turnero-app
+    pm2 save || true
+    echo "[OK] Aplicacion gestionada con PM2 y guardada para recuperacion automatica."
   else
     nohup node src/server.js > turnero.log 2>&1 &
     sleep 2
+    echo "[OK] Servidor iniciado con nohup en segundo plano (PID: $!)."
   fi
 fi
 
@@ -189,11 +192,13 @@ echo "  - Panel de Administrador:        http://${LAN_IP}:3000/admin.html"
 echo "  - Autoservicio Kiosko Web:       http://${LAN_IP}:3000/kiosko.html"
 echo ""
 echo "Credenciales Iniciales:"
-echo "  - Administrador: usuario: admin  | contrasena: Admin2026!"
-echo "  - Operadores:    op1 a op5       | contrasena: Operador2026!"
+echo "  - Administrador 1: usuario: admin  | contrasena: soporte"
+echo "  - Administrador 2: usuario: admin2 | contrasena: soporte"
+echo "  - Operadores:      op1 a op5       | contrasena: Operador2026!"
 echo ""
 echo "Recursos Configurados:"
 echo "  - 10 Mesas registradas (Mesa 1 a Mesa 10)"
-echo "  - 2 Lotes creados: Lote 1 (1-250 activo), Lote 2 (251-350 preparado)"
-echo "  - Kiosko web: desactivado por defecto (configurable desde admin)"
+echo "  - 1 Lote creado: Lote 1 (1 a 500 vouchers, activo)"
+echo "  - Modo operativo: Asistido con soporte a impresion ESC/POS"
+echo "  - Resiliencia: Contenedores con 'restart: unless-stopped' / PM2"
 echo "===================================================================="

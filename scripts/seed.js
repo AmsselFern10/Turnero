@@ -1,18 +1,16 @@
 'use strict'
 
 /**
- * Script de Seed — Turnero de Matriculas 2026 (v2.1)
+ * Script de Seed - Turnero de Matriculas 2026 (v2.1)
  *
  * Limpia la base de datos y genera el estado base operativo:
- * - 1 Administrador: admin / Admin2026!
+ * - 2 Administradores:
+ *     * admin  / admin
+ *     * admin2 / soporte
  * - 5 Operadores: op1 a op5 / Operador2026!
- * - 10 Mesas: Mesa 1 a Mesa 10 (sin descripcion adicional)
- * - 2 Lotes de Vouchers:
- *     * Lote 1: 1 a 250 (estado: activo)
- *     * Lote 2: 251 a 350 (100 vouchers, estado: preparado)
- * - Configuracion del sistema: kiosko_web_activo = false, modo_generacion_turnos = voucher_fisico
- *
- * Cero emojis en salida para compatibilidad total de terminales institucionales.
+ * - 10 Mesas: Mesa 1 a Mesa 10 (estado: inactiva)
+ * - 1 Lote de Vouchers: 1 a 500 (estado: activo)
+ * - Configuracion del sistema (19 claves, kiosko desactivado, modo voucher_fisico)
  */
 
 const fs = require('fs')
@@ -20,7 +18,6 @@ const path = require('path')
 const bcrypt = require('bcrypt')
 const { Pool } = require('pg')
 
-// Cargar .env o .env.development
 const envPath = fs.existsSync(path.resolve(__dirname, '../.env'))
   ? path.resolve(__dirname, '../.env')
   : path.resolve(__dirname, '../.env.development')
@@ -38,19 +35,27 @@ const COST = parseInt(process.env.BCRYPT_COST || '12', 10)
 
 async function seed() {
   console.log('[INFO] Iniciando seed del sistema Turnero 2026...')
-  console.log(`[INFO] Parametro bcrypt cost: ${COST}`)
-
-  const client = await pool.connect()
+  let client
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    try {
+      client = await pool.connect()
+      break
+    } catch (err) {
+      if (attempt === 10) throw err
+      console.log(`[INFO] Esperando conexion con base de datos para seed (intento ${attempt}/10)...`)
+      await new Promise(r => setTimeout(r, 1500))
+    }
+  }
 
   try {
-    // 1. Hashear contraseñas
     console.log('[INFO] Generando credenciales y hashes bcrypt...')
-    const adminHash = await bcrypt.hash('Admin2026!', COST)
+    const adminHash    = await bcrypt.hash('soporte',        COST)
+    const admin2Hash   = await bcrypt.hash('soporte',       COST)
     const operadorHash = await bcrypt.hash('Operador2026!', COST)
 
     await client.query('BEGIN')
 
-    // 2. Limpieza total con reseteo de secuencias
+    // 1. Limpieza total
     await client.query(`
       TRUNCATE turnos, lotes_voucher, audit_log, mesas, usuarios, kiosko_contador_diario
       RESTART IDENTITY CASCADE
@@ -58,7 +63,7 @@ async function seed() {
     await client.query('ALTER SEQUENCE IF EXISTS seq_numero_lote RESTART WITH 1')
     console.log('[OK] Tablas truncadas y secuencias reiniciadas a 1.')
 
-    // 3. Insertar 1 Admin
+    // 2. Insertar 2 Administradores
     const resAdmin = await client.query(`
       INSERT INTO usuarios (username, nombre_completo, password_hash, rol, activo)
       VALUES ($1, $2, $3, $4, true)
@@ -66,16 +71,21 @@ async function seed() {
     `, ['admin', 'Administrador del Sistema', adminHash, 'admin'])
     const adminId = resAdmin.rows[0].id
 
-    // 4. Insertar 5 Operadores
+    await client.query(`
+      INSERT INTO usuarios (username, nombre_completo, password_hash, rol, activo)
+      VALUES ($1, $2, $3, $4, true)
+    `, ['admin2', 'Administrador de Soporte', admin2Hash, 'admin'])
+
+    // 3. Insertar 5 Operadores
     for (let i = 1; i <= 5; i++) {
       await client.query(`
         INSERT INTO usuarios (username, nombre_completo, password_hash, rol, activo)
         VALUES ($1, $2, $3, $4, true)
       `, [`op${i}`, `Operador ${i}`, operadorHash, 'operador'])
     }
-    console.log('[OK] 1 Administrador y 5 Operadores insertados.')
+    console.log('[OK] 2 Administradores y 5 Operadores insertados.')
 
-    // 5. Insertar 10 Mesas (sin descripcion, solo Mesa y numero)
+    // 4. Insertar 10 Mesas
     for (let i = 1; i <= 10; i++) {
       await client.query(`
         INSERT INTO mesas (numero, nombre, estado, operador_id)
@@ -84,51 +94,34 @@ async function seed() {
     }
     console.log('[OK] 10 Mesas creadas (Mesa 1 a Mesa 10, estado inactiva).')
 
-    // 6. Insertar 2 Lotes de Vouchers
-    // Lote 1: 1 a 250 (activo)
+    // 5. Insertar 1 Lote de 500 Vouchers (activo)
     await client.query(`
-      INSERT INTO lotes_voucher (
-        numero_desde,
-        numero_hasta,
-        ultimo_numero_llamado,
-        estado,
-        fecha_activacion,
-        creado_por
-      )
-      VALUES (1, 250, 0, 'activo', NOW(), $1)
+      INSERT INTO lotes_voucher (numero_desde, numero_hasta, ultimo_numero_llamado, estado, fecha_activacion, creado_por)
+      VALUES (1, 500, 0, 'activo', NOW(), $1)
     `, [adminId])
+    console.log('[OK] 1 Lote creado: Lote 1 (1-500, activo).')
 
-    // Lote 2: 251 a 350 (100 vouchers, preparado)
-    await client.query(`
-      INSERT INTO lotes_voucher (
-        numero_desde,
-        numero_hasta,
-        ultimo_numero_llamado,
-        estado,
-        creado_por
-      )
-      VALUES (251, 350, 250, 'preparado', $1)
-    `, [adminId])
-    console.log('[OK] 2 Lotes creados: Lote 1 (1-250, activo) y Lote 2 (251-350, preparado).')
-
-    // 7. Configuracion del sistema
+    // 6. Configuracion del sistema (19 claves - sincronizado con 001_tablas_datos.sql)
     const configuraciones = [
-      ['kiosko_web_activo', 'false', 'Habilita URL/QR publica para generar turno desde celular o por empleado.'],
-      ['modo_generacion_turnos', 'voucher_fisico', 'Modo activo: voucher_fisico | kiosko_web'],
-      ['kiosko_modo_uso', 'empleado', 'Modalidad de emisión del kiosko: estudiante (autoservicio libre) o empleado (asistido en recepción).'],
-      ['alerta_vouchers_restantes', '20', 'Alertar al admin cuando queden N vouchers en el lote.'],
-      ['mostrar_estimado_espera', 'true', 'Mostrar estimado de espera en TV cuando hay turnos en espera.'],
-      ['zona_horaria', 'America/Tegucigalpa', 'Zona horaria del sistema para calculo de fecha y cambio de dia.'],
-      ['kiosko_tope_diario', '0', 'Tope maximo de turnos diarios por kiosko (0 = ilimitado).'],
-      ['kiosko_url_base', '', 'URL base publica para seguimiento QR (vacio = autodeteccion LAN).'],
-      ['voz_anuncio_activa', 'true', 'Habilita el anuncio de voz sintetica en pantallas de TV.'],
-      ['impresora_ip', '', 'IP de la impresora de tickets en la LAN (vacio = impresion desactivada).'],
-      ['impresora_puerto', '9100', 'Puerto TCP de la impresora ESC/POS (estandar: 9100).'],
-      ['impresora_activa', 'false', 'Habilita la impresion directa ESC/POS desde el servidor.'],
-      ['tv_escala_turnos', '100', 'Escala porcentual para el tamaño de los números de turno en pantalla TV (75 a 140, defecto: 100).'],
-      ['tv_escala_principal', '100', 'Escala porcentual del número de turno principal y banner de mesa en TV (75 a 140, defecto: 100).'],
-      ['tv_escala_secundaria', '100', 'Escala porcentual de las tarjetas del historial de turnos anteriores en TV (75 a 140, defecto: 100).'],
-      ['kiosko_impresion_automatica', 'false', 'Envío directo del comprobante a la impresora ESC/POS al generar un turno en modo tablet (true/false).']
+      ['alerta_vouchers_restantes',   '20',                                    'Umbral de vouchers restantes en el lote activo para emitir alerta al administrador (1 a 500).'],
+      ['modo_generacion_turnos',      'voucher_fisico',                         'Modo operativo activo del sistema: voucher_fisico (papel) o kiosko_web (digital).'],
+      ['kiosko_web_activo',           'false',                                  'Habilitar toma de turnos en autoservicio o tablet (Kiosko Web).'],
+      ['mostrar_estimado_espera',     'true',                                   'Mostrar u ocultar la estimacion de tiempo de espera en la pantalla publica de TV.'],
+      ['zona_horaria',                'America/Tegucigalpa',                    'Zona horaria oficial del sistema para registro de marcas de tiempo y cortes diarios.'],
+      ['kiosko_tope_diario',          '0',                                      'Limite maximo de turnos diarios emitidos por Kiosko Web (0 = sin limite).'],
+      ['kiosko_url_base',             '',                                       'URL local (LAN) del kiosko para acceso desde la red interna y codigo QR (vacio = autodeteccion).'],
+      ['voz_anuncio_activa',          'true',                                   'Reproducir anuncio por voz sintetica en la pantalla publica al llamar cada turno.'],
+      ['impresora_ip',                '',                                       'Direccion IP de la impresora termica ESC/POS en la red local.'],
+      ['impresora_puerto',            '9100',                                   'Puerto TCP de la impresora termica ESC/POS (estandar: 9100).'],
+      ['impresora_activa',            'false',                                  'Habilitar la impresion fisica directa de tickets desde el servidor via LAN.'],
+      ['tv_escala_turnos',            '100',                                    'Escala porcentual para el tamano de los numeros de turno en pantalla TV, compatibilidad (75-140).'],
+      ['tv_escala_principal',         '100',                                    'Escala porcentual del numero de turno principal en pantalla TV (75-140).'],
+      ['tv_escala_secundaria',        '100',                                    'Escala porcentual de turnos anteriores y banner de mesa en TV (75-140).'],
+      ['kiosko_impresion_automatica', 'false',                                  'Imprimir comprobante automaticamente al generar turno en modo tablet.'],
+      ['kiosko_url_publica',          'https://afternoon-bucket-hesitate.ngrok-free.app', 'URL publica (Internet / datos moviles) para acceso de participantes al kiosko y seguimiento QR.'],
+      ['kiosko_modo_uso',             'asistido',                               'Modalidad del kiosko: asistido (tablet con operador) / estudiante (autoservicio movil).'],
+      ['fondo_imagen_url',            '',                                       'URL o ruta de la imagen institucional de fondo para las pantallas del sistema.'],
+      ['fondo_imagen_activa',         'false',                                  'Activar la imagen de fondo institucional en las pantallas del sistema.']
     ]
 
     for (const [clave, valor, descripcion] of configuraciones) {
@@ -136,22 +129,23 @@ async function seed() {
         INSERT INTO configuracion (clave, valor, descripcion, actualizado_en)
         VALUES ($1, $2, $3, NOW())
         ON CONFLICT (clave) DO UPDATE
-          SET valor = EXCLUDED.valor,
-              descripcion = EXCLUDED.descripcion,
+          SET valor          = EXCLUDED.valor,
+              descripcion    = EXCLUDED.descripcion,
               actualizado_en = NOW()
       `, [clave, valor, descripcion])
     }
-    console.log('[OK] Parametros de configuracion actualizados (kiosko desactivado, modo voucher fisico).')
+    console.log('[OK] 19 parametros de configuracion actualizados.')
 
     await client.query('COMMIT')
 
     console.log('\n[DONE] Seed completado exitosamente.')
     console.log('----------------------------------------------------')
     console.log('Credenciales configuradas:')
-    console.log('  Admin:       usuario: admin   | contrasena: Admin2026!')
-    console.log('  Operadores:  op1 a op5        | contrasena: Operador2026!')
+    console.log('  Admin 1:    usuario: admin  | contrasena: soporte')
+    console.log('  Admin 2:    usuario: admin2 | contrasena: soporte')
+    console.log('  Operadores: op1 a op5       | contrasena: Operador2026!')
     console.log('Mesas:         10 mesas listas (Mesa 1 a Mesa 10)')
-    console.log('Lotes:         Lote 1 (1-250 activo), Lote 2 (251-350 preparado)')
+    console.log('Lotes:         Lote 1 (1-500, activo)')
     console.log('Configuracion: Kiosko desactivado | Modo voucher fisico')
     console.log('----------------------------------------------------')
   } catch (err) {

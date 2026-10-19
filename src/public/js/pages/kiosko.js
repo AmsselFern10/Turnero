@@ -60,6 +60,7 @@ export function kioskoView () {
       estado: 'esperando', // 'esperando' | 'en_atencion' | 'atendido' | 'cancelado'
       posicion: 0,
       mesa: null,
+      mesa_numero: null,
       llamado_en: null
     },
 
@@ -118,9 +119,27 @@ export function kioskoView () {
      * Inicialización del Kiosko
      */
     async init () {
-      // 1. Detectar modo tablet desde la URL (?modo=tablet)
+      // 1. Detectar modo tablet desde la URL (?modo=tablet) o autorización guardada en el dispositivo (Opción 1)
       const urlParams = new URLSearchParams(window.location.search);
-      this.esTablet = urlParams.get('modo') === 'tablet';
+      const modoParam = urlParams.get('modo');
+      if (modoParam === 'tablet') {
+        this.esTablet = true;
+        try {
+          localStorage.setItem('turnero_modo_tablet', '1');
+          localStorage.removeItem('turnero_mi_turno'); // El módulo de portón no retiene turnos de estudiante
+        } catch (_) {}
+      } else if (modoParam === 'estudiante') {
+        this.esTablet = false;
+        try {
+          localStorage.removeItem('turnero_modo_tablet');
+        } catch (_) {}
+      } else {
+        try {
+          this.esTablet = localStorage.getItem('turnero_modo_tablet') === '1';
+        } catch (_) {
+          this.esTablet = false;
+        }
+      }
 
       // 2. Obtener o generar identificador persistente del dispositivo móvil
       this.inicializarDeviceId();
@@ -266,8 +285,6 @@ export function kioskoView () {
           this.errorMessage = 'El servicio digital de turnos no está activo actualmente. Solicite su voucher físico.';
         } else if (this.topeAlcanzado) {
           this.errorMessage = 'Se ha alcanzado el límite diario de turnos para el día de hoy.';
-        } else if (!this.esTablet && esModoAsistido) {
-          this.errorMessage = 'La emisión de turnos desde el celular no está habilitada. Por favor solicite su turno en el módulo de atención asistida.';
         } else {
           this.errorMessage = '';
         }
@@ -341,24 +358,24 @@ export function kioskoView () {
           llamado_en: null
         };
 
-        // Si es smartphone, guardar en localStorage para persistencia ante recarga
+        // Si es smartphone, guardar en localStorage para persistencia y pasar directo a seguimiento
         if (!this.esTablet) {
           this.guardarTurnoLocal(this.ticketData);
-        }
+          this.mostrarToast(`Turno ${this.formatTicket(data.numero)} asignado exitosamente`);
+          this.step = 'seguimiento';
+          await this.iniciarSeguimiento(data.token);
+        } else {
+          // Modo tablet pública en portón: pantalla de voucher con auto-reset de 8s
+          this.step = 'ticket';
+          this.mostrarToast(`Turno ${this.formatTicket(data.numero)} asignado exitosamente`);
 
-        // Cambiar a pantalla de ticket / voucher
-        this.step = 'ticket';
-        this.mostrarToast(`Turno ${this.formatTicket(data.numero)} asignado exitosamente`);
+          // Renderizar el código QR vectorial (200px)
+          this.$nextTick(() => {
+            this.generarCodigoQR(this.ticketData.tracking_url);
+          });
 
-        // Renderizar el código QR vectorial (200px)
-        this.$nextTick(() => {
-          this.generarCodigoQR(this.ticketData.tracking_url);
-        });
-
-        // Tablet: reset rápido de 8s con cuenta regresiva. Celular: 45s sin countdown.
-        if (this.esTablet) {
-          this.iniciarAutoReset(8);
-          this.iniciarCuentaRegresiva(8);
+          this.iniciarAutoReset(15);
+          this.iniciarCuentaRegresiva(15);
 
           // Manejo del estado de impresión automática
           if (data.impresion) {
@@ -372,8 +389,6 @@ export function kioskoView () {
           } else {
             this.avisoImpresion = '';
           }
-        } else {
-          this.iniciarAutoReset(45);
         }
 
       } catch (err) {
@@ -594,10 +609,11 @@ export function kioskoView () {
 
     /**
      * Inicia o reinicia el retorno automático.
-     * Tablet: 8s. Celular/presencial: 45s.
+     * Solo activo en Tablet pública (15s). Desactivado en smartphones personales.
      */
     iniciarAutoReset (segundos) {
-      const seg = segundos ?? (this.esTablet ? 8 : 45);
+      if (!this.esTablet) return; // NUNCA auto-reset en teléfonos de estudiantes
+      const seg = segundos ?? 15;
       if (this.autoResetTimer) clearTimeout(this.autoResetTimer);
       this.autoResetTimer = setTimeout(() => {
         this.volverABienvenida();
@@ -621,10 +637,47 @@ export function kioskoView () {
     },
 
     reiniciarAutoReset () {
-      if (this.step === 'ticket') {
-        const seg = this.esTablet ? 8 : 45;
+      if (this.esTablet && this.step === 'ticket') {
+        const seg = 15;
         this.iniciarAutoReset(seg);
-        if (this.esTablet) this.iniciarCuentaRegresiva(seg);
+        this.iniciarCuentaRegresiva(seg);
+      }
+    },
+
+    /**
+     * Envía manualmente el ticket actual a la impresora LAN
+     */
+    async imprimirTicket () {
+      if (this.isPrinting || !this.ticketData.numero) return;
+      this.isPrinting = true;
+      this.reiniciarAutoReset(); // Reiniciar auto-reset de 15s al interactuar
+      try {
+        const res = await api.post('/kiosko/imprimir', {
+          numero: this.ticketData.numero,
+          formato: this.formatTicket(this.ticketData.numero),
+          modulo: 'Módulo de Matrículas',
+          tracking_url: this.ticketData.tracking_url
+        });
+        if (res.ok) {
+          this.avisoImpresion = 'Comprobante enviado a la impresora.';
+          this.mostrarToast(`Voucher ${this.formatTicket(this.ticketData.numero)} impreso exitosamente`);
+        } else {
+          this.avisoImpresion = `Aviso: ${res.mensaje || 'Impresora no disponible.'}`;
+          this.mostrarToast(res.mensaje || 'Impresora inactiva');
+        }
+      } catch (err) {
+        console.warn('[Kiosko] Error al imprimir comprobante:', err);
+        const mensajeError = err.mensaje || err.message || 'La impresora no está disponible en este momento.';
+        this.avisoImpresion = `Aviso: ${mensajeError} (El turno ${this.formatTicket(this.ticketData.numero)} sigue registrado en pantalla).`;
+        this.mostrarToast('Impresora inactiva o no disponible');
+        // Fallback accesible si no hay impresora térmica en red LAN: abrir impresión de navegador
+        if (typeof window !== 'undefined' && window.print) {
+          setTimeout(() => {
+            window.print();
+          }, 300);
+        }
+      } finally {
+        this.isPrinting = false;
       }
     },
 
@@ -685,8 +738,33 @@ export function kioskoView () {
         }
       });
 
+      this.ws.on('turno_rellamado', (payload) => {
+        if (!payload) return;
+        const miNumero = this.seguimientoData.numero || this.ticketData.numero;
+        if (miNumero && Number(payload.numero) === Number(miNumero)) {
+          if (!payload.origen || payload.origen === 'kiosko_web') {
+            const nombreMesa = payload.mesa_numero ? `Mesa ${payload.mesa_numero}` : (payload.mesa_nombre || 'Ventanilla');
+            this.seguimientoData.mesa = nombreMesa;
+            this.seguimientoData.mesa_numero = payload.mesa_numero || null;
+            this.seguimientoData.estado = 'en_atencion';
+            this.emitirAlertaLlamado(nombreMesa);
+            if (this.ticketData.token) {
+              this.sincronizarSeguimiento(this.ticketData.token);
+            }
+          }
+        }
+      });
+
       this.ws.on('tu_turno_llamado', (payload) => {
         if (payload && (this.step === 'seguimiento' || this.step === 'ticket')) {
+          const nombreMesa = payload.mesa_numero ? `Mesa ${payload.mesa_numero}` : (payload.mesa_nombre || 'Ventanilla');
+          if (payload.mesa_numero) {
+            this.seguimientoData.mesa_numero = payload.mesa_numero;
+            this.seguimientoData.mesa = nombreMesa;
+          }
+          if (payload.es_rellamado) {
+            this.emitirAlertaLlamado(nombreMesa);
+          }
           if (this.ticketData.token) {
             this.sincronizarSeguimiento(this.ticketData.token);
           }
@@ -771,6 +849,16 @@ export function kioskoView () {
      * Modo Smartphone: Inicia seguimiento personal y bloquea pantalla apagada
      */
     async iniciarSeguimiento (token) {
+      if (this.autoResetTimer) {
+        clearTimeout(this.autoResetTimer);
+        this.autoResetTimer = null;
+      }
+      if (this.cuentaRegresivaTimer) {
+        clearInterval(this.cuentaRegresivaTimer);
+        this.cuentaRegresivaTimer = null;
+      }
+      this.cuentaRegresiva = 0;
+
       this.ticketData.token = token;
       this.errorMessage = '';
       this.mostrarBotonReintentar = false;
@@ -836,13 +924,29 @@ export function kioskoView () {
         const fechaTurnoStr = res.fecha_turno ? new Date(res.fecha_turno).toISOString().slice(0, 10) : null;
         const esDiaAnterior = Boolean(fechaTurnoStr && fechaTurnoStr !== hoyStr);
 
-        if (res.estado === 'cancelado' || esDiaAnterior) {
+        if (esDiaAnterior) {
           if (this._syncPeriodicoTimer) {
             clearTimeout(this._syncPeriodicoTimer);
             this._syncPeriodicoTimer = null;
           }
           this.liberarTurnoSeguimiento();
-          this.errorMessage = 'Su turno anterior ha caducado o fue cancelado por el operador. Puede solicitar un nuevo turno.';
+          this.errorMessage = 'Su turno de un día anterior ha caducado. Puede solicitar un nuevo turno hoy.';
+          return;
+        }
+
+        if (res.estado === 'cancelado') {
+          if (this._syncPeriodicoTimer) {
+            clearTimeout(this._syncPeriodicoTimer);
+            this._syncPeriodicoTimer = null;
+          }
+          this.seguimientoData = {
+            numero: res.numero,
+            estado: 'cancelado',
+            posicion: 0,
+            mesa: res.mesa_numero ? `Mesa ${res.mesa_numero}` : (res.mesa || null),
+            mesa_numero: res.mesa_numero || null,
+            llamado_en: res.llamado_en || null
+          };
           return;
         }
 
@@ -855,7 +959,8 @@ export function kioskoView () {
             numero: res.numero,
             estado: 'atendido',
             posicion: 0,
-            mesa: res.mesa || null,
+            mesa: res.mesa_numero ? `Mesa ${res.mesa_numero}` : (res.mesa || null),
+            mesa_numero: res.mesa_numero || null,
             llamado_en: res.llamado_en || null
           };
           return;
@@ -866,12 +971,13 @@ export function kioskoView () {
             clearTimeout(this._syncPeriodicoTimer);
             this._syncPeriodicoTimer = null;
           }
-          const nombreMesa = res.mesa || (res.mesa_numero ? `Mesa ${res.mesa_numero}` : 'Ventanilla');
+          const nombreMesa = res.mesa_numero ? `Mesa ${res.mesa_numero}` : (res.mesa || 'Ventanilla');
           this.seguimientoData = {
             numero: res.numero,
             estado: 'en_atencion',
             posicion: 0,
             mesa: nombreMesa,
+            mesa_numero: res.mesa_numero || null,
             llamado_en: res.llamado_en || null
           };
 
@@ -884,12 +990,14 @@ export function kioskoView () {
         }
 
         if (res.estado === 'esperando') {
+          this._yaAlertadoLlamado = false;
           this.seguimientoData = {
             numero: res.numero,
             estado: 'esperando',
             posicion: res.posicion ?? 0,
             tiempo_estimado_min: res.tiempo_estimado_min ?? 0,
             mesa: null,
+            mesa_numero: null,
             llamado_en: null
           };
         }

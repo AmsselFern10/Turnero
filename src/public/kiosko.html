@@ -11,7 +11,7 @@
   <link rel="icon" href="data:,">
 </head>
 <body class="min-h-full flex flex-col justify-between bg-app text-slate-800 antialiased font-sans select-none"
-      x-data="kioskoView" x-cloak>
+      x-data="kioskoView">
 
   <!-- ── 1. HEADER INSTITUCIONAL COMPACTO ── -->
   <header class="w-full max-w-4xl mx-auto px-6 py-4 flex items-center justify-between flex-shrink-0">
@@ -30,7 +30,18 @@
 
     <div class="flex items-center gap-2">
       <template x-if="esTablet">
-        <span class="pill pill-primary text-[11px] font-bold">Modo Tablet</span>
+        <div class="flex items-center gap-2">
+          <span class="pill pill-primary text-[11px] font-bold">Modo Asistido</span>
+          <a href="/index.html"
+             class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-700 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+             title="Regresar a pantalla de inicio / login"
+             aria-label="Regresar a Login">
+            <svg class="w-3.5 h-3.5 stroke-[2] text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+            </svg>
+            <span>Salir a Login</span>
+          </a>
+        </div>
       </template>
       <div class="pill" :class="wsConectado ? 'pill-success' : 'pill-warning'">
         <span class="w-2 h-2 rounded-full" :class="wsConectado ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'"></span>
@@ -60,22 +71,30 @@
 
       <!-- ESTADO 1: BIENVENIDA / SOLICITAR TURNO TÁCTIL -->
       <section x-show="step === 'welcome'" class="space-y-6">
-        <div class="pill pill-primary uppercase">
-          <span x-text="esTablet ? 'Atención Asistida' : 'Emisión de Turnos'"></span>
+        <div class="pill uppercase" :class="esTablet ? 'pill-primary' : 'pill-neutral'">
+          <span x-text="esTablet ? 'Atención Asistida • Portón' : (kioskoModoUso === 'asistido' ? 'Modalidad Asistida' : 'Emisión de Turnos')"></span>
         </div>
 
         <div class="space-y-2">
-          <h2 class="text-2xl font-bold tracking-tight text-slate-900">Bienvenido al Proceso de Matrícula</h2>
-          <p class="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
-            Presiona el botón para tomar tu turno correlativo y asignarte a la fila oficial de atención de hoy.
+          <h2 class="text-2xl font-bold tracking-tight text-slate-900"
+              x-text="esTablet ? 'Módulo de Asignación de Turnos' : 'Bienvenido al Proceso de Matrícula'"></h2>
+          <p class="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto"
+             x-text="esTablet ? 'Presione el botón para asignar el siguiente turno oficial y emitir el comprobante.' : (kioskoModoUso === 'asistido' ? 'El proceso se atiende de forma presencial asistida en portería.' : 'Presiona el botón para tomar tu turno correlativo y asignarte a la fila oficial de hoy.')">
           </p>
         </div>
 
-        <!-- AVISO DE MODALIDAD ASISTIDA ACTIVA CUANDO ENTRA DESDE EL CELULAR -->
+        <!-- AVISO INFORMATIVO PARA ESTUDIANTES CUANDO EL SISTEMA ESTÁ EN MODALIDAD ASISTIDA -->
         <template x-if="!esTablet && (kioskoModoUso === 'asistido' || kioskoModoUso === 'empleado')">
-          <div class="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs text-left">
-            <span class="font-bold block">Modalidad Asistida Activa</span>
-            <span class="text-[11px] text-blue-700 mt-1 block">La toma de turnos desde el celular no está habilitada. Por favor solicite su turno en el módulo de atención asistida.</span>
+          <div class="p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs text-left space-y-1.5">
+            <div class="flex items-center gap-2 font-bold text-blue-900">
+              <svg class="w-4 h-4 text-blue-600 flex-shrink-0 stroke-[2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+              </svg>
+              <span>Atención Asistida en Portería</span>
+            </div>
+            <p class="text-[11px] text-blue-800 leading-relaxed">
+              La entrega de turnos físicos se realiza en el módulo de recepción o portería. Por favor acérquese al personal encargado para recibir su comprobante y escanear su turno.
+            </p>
           </div>
         </template>
 
@@ -87,26 +106,37 @@
           </div>
         </template>
 
-        <button @click="generarTurno()" :disabled="isGenerating || !kioskoActivo || topeAlcanzado || (!esTablet && (kioskoModoUso === 'asistido' || kioskoModoUso === 'empleado'))" type="button"
-                title="Tomar mi turno" aria-label="Tomar mi turno"
-                class="btn-call flex items-center justify-center space-x-2.5">
-          <template x-if="!isGenerating">
-            <div class="flex items-center space-x-2.5">
-              <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 010 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 010-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375z" />
-              </svg>
-              <span>TOMAR MI TURNO</span>
-            </div>
-          </template>
-          <template x-if="isGenerating">
-            <div class="flex items-center space-x-2">
-              <svg class="w-5 h-5 animate-spin stroke-[2]" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"></path>
-              </svg>
-              <span>ASIGNANDO TURNO...</span>
-            </div>
-          </template>
-        </button>
+        <!-- BOTÓN DE ACCIÓN HABILITADO PARA TABLET O PARA ESTUDIANTES EN AUTOSERVICIO -->
+        <template x-if="esTablet || kioskoModoUso === 'estudiante'">
+          <button @click="generarTurno()" :disabled="isGenerating || !kioskoActivo || topeAlcanzado" type="button"
+                  :title="esTablet ? 'Asignar siguiente turno' : 'Tomar mi turno'"
+                  :aria-label="esTablet ? 'Asignar siguiente turno' : 'Tomar mi turno'"
+                  class="btn-call flex items-center justify-center space-x-2.5">
+            <template x-if="!isGenerating">
+              <div class="flex items-center space-x-2.5">
+                <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 010 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 010-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375z" />
+                </svg>
+                <span x-text="esTablet ? 'ASIGNAR TURNO' : 'TOMAR MI TURNO'"></span>
+              </div>
+            </template>
+            <template x-if="isGenerating">
+              <div class="flex items-center space-x-2">
+                <svg class="w-5 h-5 animate-spin stroke-[2]" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"></path>
+                </svg>
+                <span>ASIGNANDO TURNO...</span>
+              </div>
+            </template>
+          </button>
+        </template>
+
+        <!-- SI NO ES TABLET Y ESTÁ EN MODO ASISTIDO: INDICADOR CLARO SIN BOTÓN FALSO -->
+        <template x-if="!esTablet && (kioskoModoUso === 'asistido' || kioskoModoUso === 'empleado')">
+          <div class="p-3 text-center rounded-xl bg-slate-100 border border-slate-200 text-slate-500 font-medium text-xs">
+            Turnos disponibles exclusivamente en portería
+          </div>
+        </template>
 
         <p class="text-[11px] text-slate-400">Tu número es válido para el día de hoy.</p>
       </section>
@@ -299,7 +329,7 @@
             <span class="w-3 h-3 rounded-full bg-emerald-500 animate-ping"></span>
             <span class="text-sm uppercase tracking-wider font-extrabold text-emerald-700">¡ES TU TURNO!</span>
           </div>
-          <span class="text-3xl font-black block mt-2 tracking-tight text-emerald-900" x-text="'DIRÍJASE A ' + (seguimientoData.mesa || 'VENTANILLA')">DIRÍJASE A MESA 1</span>
+          <span class="text-3xl font-black block mt-2 tracking-tight text-emerald-900" x-text="'DIRÍJASE A ' + (seguimientoData.mesa_numero ? ('MESA ' + seguimientoData.mesa_numero) : (seguimientoData.mesa || 'VENTANILLA'))">DIRÍJASE A MESA 1</span>
           <p class="text-xs text-emerald-800 mt-2 font-medium">Acércate ahora con tu documentación lista.</p>
         </div>
 
@@ -363,8 +393,8 @@
   <!-- Scripts al final del body -->
   <!-- qrcode: síncrono para que window.QRCode esté disponible cuando el módulo corra -->
   <script src="/vendor/qrcode.min.js"></script>
-  <!-- Módulo principal del Kiosko -->
-  <script type="module" src="/js/pages/kiosko.js"></script>
+  <!-- Módulo principal del Kiosko con cache-busting -->
+  <script type="module" src="/js/pages/kiosko.js?v=2.1.2"></script>
   <!-- Alpine con defer: carga tras el HTML, dispara alpine:init y encuentra kioskoView ya registrado -->
   <script defer src="/vendor/alpine-3.13.3.min.js"></script>
 </body>

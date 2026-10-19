@@ -134,16 +134,41 @@ if ($hasDocker) {
         & node scripts/recrear_desde_cero.js
         & node scripts/seed.js
     } catch {
-        Write-Warning "[AVISO] La base de datos local de PostgreSQL aun no esta disponible en el puerto 5432. Inicie el servicio PostgreSQL o Docker Desktop para completar la carga."
+        Write-Warning "[AVISO] La base de datos local de PostgreSQL aun no esta disponible en el puerto 5432. Inicie el servicio PostgreSQL para completar la carga."
     }
 
-    Write-Host "[INFO] Para iniciar el servidor manualmente ejecute: npm start"
+    # Iniciar la aplicacion de forma persistente
+    $pm2Cmd = Get-Command pm2 -ErrorAction SilentlyContinue
+    if ($pm2Cmd) {
+        Write-Host "[INFO] Iniciando servidor con PM2 para recuperacion automatica ante fallos..."
+        & pm2 start src/server.js --name turnero-app
+        & pm2 save
+    } else {
+        Write-Host "[INFO] Iniciando servidor en segundo plano..."
+        $process = Start-Process node -ArgumentList "src/server.js" -WorkingDirectory $ScriptDir -PassThru
+        Write-Host "[OK] Servidor iniciado con PID $($process.Id)."
+    }
+
+    # Configurar auto-inicio en Windows al encender/reiniciar el equipo
+    try {
+        $startupFolder = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Startup)
+        $shortcutPath = Join-Path $startupFolder "Turnero_2026_AutoStart.vbs"
+        $vbsContent = @"
+Set WshShell = CreateObject("WScript.Shell")
+WshShell.CurrentDirectory = "$($ScriptDir -replace '\\', '\\')"
+WshShell.Run "node src/server.js", 0, False
+"@
+        Set-Content -Path $shortcutPath -Value $vbsContent -Encoding Ascii
+        Write-Host "[OK] Acceso de auto-inicio registrado en Carpeta de Inicio de Windows (prevalece ante reinicios)."
+    } catch {
+        Write-Warning "[AVISO] No se pudo crear el acceso de inicio automatico: $($_.Exception.Message)"
+    }
 }
 
 # ── 3. Resumen de Despliegue y Enlaces ─────────────────────────────────────────
 Write-Host ""
 Write-Host "===================================================================="
-Write-Host " SISTEMA TURNERO 2026 INSTALADO Y LISTO"
+Write-Host " SISTEMA TURNERO 2026 INSTALADO Y EN EJECUCION LISTO"
 Write-Host "===================================================================="
 Write-Host "Acceso Local:        http://localhost:3000"
 Write-Host "Acceso LAN Red:      http://${lanIp}:3000"
@@ -155,11 +180,13 @@ Write-Host "  - Panel de Administrador:        http://${lanIp}:3000/admin.html"
 Write-Host "  - Autoservicio Kiosko Web:       http://${lanIp}:3000/kiosko.html"
 Write-Host ""
 Write-Host "Credenciales Iniciales:"
-Write-Host "  - Administrador: usuario: admin  | contrasena: Admin2026!"
-Write-Host "  - Operadores:    op1 a op5       | contrasena: Operador2026!"
+Write-Host "  - Administrador 1: usuario: admin  | contrasena: soporte"
+Write-Host "  - Administrador 2: usuario: admin2 | contrasena: soporte"
+Write-Host "  - Operadores:      op1 a op5       | contrasena: Operador2026!"
 Write-Host ""
 Write-Host "Recursos Configurados:"
 Write-Host "  - 10 Mesas registradas (Mesa 1 a Mesa 10)"
-Write-Host "  - 2 Lotes creados: Lote 1 (1-250 activo), Lote 2 (251-350 preparado)"
-Write-Host "  - Kiosko web: desactivado por defecto (configurable desde admin)"
+Write-Host "  - 1 Lote creado: Lote 1 (1 a 500 vouchers, activo)"
+Write-Host "  - Modo operativo: Asistido con soporte a impresion ESC/POS"
+Write-Host "  - Resiliencia ante reinicio: Configuracion de auto-arranque activa"
 Write-Host "===================================================================="

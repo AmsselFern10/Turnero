@@ -61,7 +61,7 @@ async function runSuite() {
   const resAdmin = await fetch(`${BASE_HTTP}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'admin', password: 'Admin2026!' })
+    body: JSON.stringify({ username: 'admin', password: 'soporte' })
   })
   const dataAdmin = await resAdmin.json()
   const tokenAdmin = dataAdmin.token

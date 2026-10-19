@@ -44,7 +44,7 @@ async function runTests () {
   const op1Res = await pool.query(`
     INSERT INTO usuarios (username, password_hash, rol, nombre_completo, activo)
     VALUES ('op_rezagado_1', $1, 'operador', 'Operador Rezagado 1', true)
-    ON CONFLICT (username) WHERE eliminado_en IS NULL DO UPDATE SET activo = true, password_hash = $1
+    ON CONFLICT (LOWER(username)) WHERE eliminado_en IS NULL DO UPDATE SET activo = true, password_hash = $1
     RETURNING id
   `, [passHash])
   const op1Id = op1Res.rows[0].id
@@ -52,7 +52,7 @@ async function runTests () {
   const op2Res = await pool.query(`
     INSERT INTO usuarios (username, password_hash, rol, nombre_completo, activo)
     VALUES ('op_rezagado_2', $1, 'operador', 'Operador Rezagado 2', true)
-    ON CONFLICT (username) WHERE eliminado_en IS NULL DO UPDATE SET activo = true, password_hash = $1
+    ON CONFLICT (LOWER(username)) WHERE eliminado_en IS NULL DO UPDATE SET activo = true, password_hash = $1
     RETURNING id
   `, [passHash])
   const op2Id = op2Res.rows[0].id

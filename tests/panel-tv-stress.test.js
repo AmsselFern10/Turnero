@@ -70,7 +70,7 @@ async function run() {
     await pool.query(`
       INSERT INTO usuarios (username, password_hash, rol, nombre_completo, activo)
       VALUES ($1, $2, 'operador', $3, true)
-      ON CONFLICT (username) WHERE eliminado_en IS NULL DO UPDATE SET activo = true, password_hash = $2
+      ON CONFLICT (LOWER(username)) WHERE eliminado_en IS NULL DO UPDATE SET activo = true, password_hash = $2
     `, [`op${i}`, passwordHash, `Operador ${i}`])
   }
 

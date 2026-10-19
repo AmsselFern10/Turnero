@@ -1615,7 +1615,13 @@ export function adminView() {
           });
         } else {
           // Liberar: encontrar la mesa actual del usuario y llamar con operador_id null
-          const mesaActual = this.mesas.find(m => m.operador_id === usrId || m.operador_id === String(usrId));
+          const usrObj = this.usuarios.find(u => u.id === usrId || String(u.id) === String(usrId));
+          const mesaActual = this.mesas.find(m => 
+            m.operador_id === usrId || 
+            String(m.operador_id) === String(usrId) || 
+            Number(m.operador_id) === Number(usrId) ||
+            (usrObj && usrObj.mesa_id && (m.id === usrObj.mesa_id || String(m.id) === String(usrObj.mesa_id)))
+          );
           if (!mesaActual) {
             // Nada que liberar
             return;

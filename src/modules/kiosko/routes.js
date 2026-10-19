@@ -110,7 +110,8 @@ module.exports = async function kioskoRoutes (fastify) {
           const cfgMap = {}
           for (const r of cfgRows) cfgMap[r.clave] = r.valor
 
-          if (cfgMap.kiosko_impresion_automatica === 'true') {
+          const impresoraActiva = cfgMap.impresora_activa === 'true' || cfgMap.kiosko_impresion_automatica === 'true'
+          if (impresoraActiva) {
             const { imprimirTicketESCPOS } = require('./printer')
             const ahora = new Date()
             try {
@@ -121,7 +122,7 @@ module.exports = async function kioskoRoutes (fastify) {
                 tracking_url: resultado.tracking_url || '',
                 fecha: ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }),
                 hora:  ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
-              })
+              }, { forzar: true })
               resultado.impresion = { ok: true, mensaje: 'Comprobante impreso de inmediato.' }
               fastify.log.info({ numero: resultado.numero }, '[Kiosko] Impresión automática OK')
             } catch (printErr) {

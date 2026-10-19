@@ -31,7 +31,7 @@ async function runVerification() {
   const adminRes = await pool.query(`
     INSERT INTO usuarios (username, password_hash, rol, nombre_completo, activo)
     VALUES ('admin_test_m', $1, 'admin', 'Admin Test M', true)
-    ON CONFLICT (username) WHERE eliminado_en IS NULL DO UPDATE SET activo = true
+    ON CONFLICT (LOWER(username)) WHERE eliminado_en IS NULL DO UPDATE SET activo = true
     RETURNING id
   `, [passHash])
   const adminId = adminRes.rows[0].id
@@ -41,7 +41,7 @@ async function runVerification() {
   const opRes = await pool.query(`
     INSERT INTO usuarios (username, password_hash, rol, nombre_completo, activo)
     VALUES ('op_test_m', $1, 'operador', 'Operador Test M', true)
-    ON CONFLICT (username) WHERE eliminado_en IS NULL DO UPDATE SET activo = true
+    ON CONFLICT (LOWER(username)) WHERE eliminado_en IS NULL DO UPDATE SET activo = true
     RETURNING id
   `, [passHash])
   const opId = opRes.rows[0].id

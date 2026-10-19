@@ -92,7 +92,7 @@ async function llamarSiguiente (fastify, { mesaId, operadorId }) {
     if (msg.includes('no encontrada')) {
       throw Object.assign(new Error(msg), { statusCode: 404, codigo: 'mesa_no_encontrada' })
     }
-    if (msg.includes('no te está asignada')) {
+    if (msg.includes('no te esta asignada') || msg.includes('no te está asignada')) {
       throw Object.assign(new Error(msg), { statusCode: 403, codigo: 'mesa_no_asignada' })
     }
     if (msg.includes('No hay turnos en espera')) {
@@ -181,7 +181,7 @@ async function atenderRezagado (fastify, { turnoId, mesaId, operadorId }) {
     if (msg.includes('no encontrada') || (msg.includes('Turno') && msg.includes('no encontrado'))) {
       throw Object.assign(new Error(msg), { statusCode: 404, codigo: 'no_encontrado' })
     }
-    if (msg.includes('no te está asignada')) {
+    if (msg.includes('no te esta asignada') || msg.includes('no te está asignada')) {
       throw Object.assign(new Error(msg), { statusCode: 403, codigo: 'mesa_no_asignada' })
     }
     if (msg.includes('ya fue atendido') || msg.includes('no está disponible') || msg.includes('Solo mesas activas')) {

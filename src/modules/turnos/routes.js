@@ -485,10 +485,10 @@ module.exports = async function turnosRoutes (fastify) {
 
     // El servidor re-llama el turno en_atencion de esa mesa (fuente de verdad en BD)
     const { rows: [turno] } = await fastify.db.query(
-      `SELECT t.id, t.numero, t.mesa_id, m.numero AS mesa_numero, m.nombre AS mesa_nombre, l.numero_lote
+      `SELECT t.id, t.numero, t.mesa_id, t.origen, t.token_consulta, m.numero AS mesa_numero, m.nombre AS mesa_nombre, l.numero_lote
        FROM turnos t
        JOIN mesas m ON t.mesa_id = m.id
-       JOIN lotes_voucher l ON t.lote_id = l.id
+       LEFT JOIN lotes_voucher l ON t.lote_id = l.id
        WHERE t.mesa_id = $1 AND t.estado = 'en_atencion'
        LIMIT 1`,
       [mesa_id]
@@ -508,19 +508,36 @@ module.exports = async function turnosRoutes (fastify) {
       numero:      turno.numero,
       mesa_numero: turno.mesa_numero,
       mesa_nombre: turno.mesa_nombre,
-      lote_numero: turno.numero_lote,
+      lote_numero: turno.numero_lote || null,
+      origen:      turno.origen || 'voucher_fisico',
       llamado_en:  new Date().toISOString()
     }
 
-    // Re-anunciar a la TV pública con evento oficial 'turno_rellamado'
-    await Promise.all([
+    // Re-anunciar a la TV pública y canal de Kiosko con evento oficial 'turno_rellamado'
+    const broadcastPromises = [
       fastify.broadcast('tv:global', 'turno_rellamado', payloadRellamado),
+      fastify.broadcast('kiosko:publico', 'turno_rellamado', payloadRellamado),
       fastify.db.query(
         `INSERT INTO audit_log (mesa_id, turno_id, operador_id, accion, metadata_json, ip_origen)
          VALUES ($1, $2, $3, 'TURNO_RELLAMADO', $4, $5)`,
         [mesa_id, turno.id, operadorId, JSON.stringify({ numero: turno.numero, evento_id }), request.ip]
       )
-    ])
+    ]
+
+    if (turno.token_consulta) {
+      broadcastPromises.push(
+        fastify.broadcast(`kiosko:${turno.token_consulta}`, 'tu_turno_llamado', {
+          turno_id:    turno.id,
+          numero:      turno.numero,
+          mesa_numero: turno.mesa_numero,
+          mesa_nombre: turno.mesa_nombre,
+          llamado_en:  payloadRellamado.llamado_en,
+          es_rellamado: true
+        })
+      )
+    }
+
+    await Promise.all(broadcastPromises)
 
     return reply.status(200).send({ message: 'Turno re-llamado con éxito', turno })
   })

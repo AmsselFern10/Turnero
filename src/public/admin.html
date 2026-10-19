@@ -699,7 +699,7 @@
                     :value="usr.mesa_id || ''">
                     <option value="">Sin mesa</option>
                     <!-- Mesas libres (sin operador) + la mesa ya asignada a este usuario -->
-                    <template x-for="m in mesas.filter(m => m.estado === 'activa' && (!m.operador_id || m.operador_id == usr.id || String(m.operador_id) == String(usr.id)))" :key="m.id">
+                    <template x-for="m in mesas.filter(m => (!m.operador_id || m.operador_id == usr.id || String(m.operador_id) == String(usr.id)))" :key="m.id">
                       <option :value="m.id" x-text="'Mesa ' + m.numero + (m.nombre ? ' – ' + m.nombre : '')"></option>
                     </template>
                   </select>

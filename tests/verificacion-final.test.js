@@ -76,7 +76,7 @@ async function run () {
   const resAdmin = await fetch(`${BASE_HTTP}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'admin', password: 'Admin2026!' })
+    body: JSON.stringify({ username: 'admin', password: 'soporte' })
   }).then(r => r.json())
   const tokenAdmin = resAdmin.token
 
