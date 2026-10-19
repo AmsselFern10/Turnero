@@ -345,6 +345,16 @@ export function adminView() {
       return (modo === 'asistido' || modo === 'empleado') ? '/kiosko.html?modo=tablet' : '/kiosko.html';
     },
 
+    get urlTabletPorton() {
+      const base = (this.config?.kiosko_url_publica || this.config?.kiosko_url_base || '').trim();
+      if (base) {
+        const urlLimpia = base.replace(/\/+$/, '');
+        const sinKiosko = urlLimpia.endsWith('/kiosko.html') ? urlLimpia : `${urlLimpia}/kiosko.html`;
+        return `${sinKiosko}?modo=tablet`;
+      }
+      return typeof window !== 'undefined' ? `${window.location.origin}/kiosko.html?modo=tablet` : '/kiosko.html?modo=tablet';
+    },
+
     get urlEstudianteQR() {
       const base = (this.config?.kiosko_url_publica || this.config?.kiosko_url_base || '').trim();
       if (base) {
@@ -355,6 +365,25 @@ export function adminView() {
         return `${urlLimpia}/kiosko.html`;
       }
       return typeof window !== 'undefined' ? `${window.location.origin}/kiosko.html` : '/kiosko.html';
+    },
+
+    copiarAlPortapapeles(texto, label = 'Enlace') {
+      if (!texto) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(texto).then(() => {
+          showToast(`${label} copiado al portapapeles`, 'success');
+        }).catch(() => {
+          showToast(`${label} copiado`, 'success');
+        });
+      } else {
+        const temp = document.createElement('textarea');
+        temp.value = texto;
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        document.body.removeChild(temp);
+        showToast(`${label} copiado al portapapeles`, 'success');
+      }
     },
 
     get cfgKioskoValida() {
@@ -1791,8 +1820,8 @@ export function adminView() {
       if (typeof window.QRCode !== 'undefined') {
         new window.QRCode(container, {
           text: this.urlEstudianteQR,
-          width: 240,
-          height: 240,
+          width: 280,
+          height: 280,
           colorDark: '#0f172a',
           colorLight: '#ffffff',
           correctLevel: window.QRCode.CorrectLevel.H
@@ -1801,10 +1830,227 @@ export function adminView() {
     },
 
     /**
-     * Dispara la impresión del cartel para estudiantes
+     * Dispara la impresión aislada del cartel en exactamente 1 sola página con QR en gran formato
      */
     imprimirCartel() {
-      window.print();
+      const container = document.getElementById('cartel-qr-code');
+      const imgEl = container ? container.querySelector('img') : null;
+      const canvasEl = container ? container.querySelector('canvas') : null;
+      let qrDataUrl = '';
+
+      if (imgEl && imgEl.src && imgEl.src.startsWith('data:image')) {
+        qrDataUrl = imgEl.src;
+      } else if (canvasEl && canvasEl.toDataURL) {
+        qrDataUrl = canvasEl.toDataURL('image/png');
+      }
+
+      const urlTexto = this.urlEstudianteQR;
+
+      let printFrame = document.getElementById('print-cartel-iframe');
+      if (printFrame) {
+        printFrame.remove();
+      }
+
+      printFrame = document.createElement('iframe');
+      printFrame.id = 'print-cartel-iframe';
+      printFrame.style.position = 'fixed';
+      printFrame.style.right = '0';
+      printFrame.style.bottom = '0';
+      printFrame.style.width = '0';
+      printFrame.style.height = '0';
+      printFrame.style.border = '0';
+      document.body.appendChild(printFrame);
+
+      const doc = printFrame.contentWindow.document;
+      doc.open();
+      doc.write(`
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+          <meta charset="utf-8">
+          <title>Cartel QR - Matrículas 2026</title>
+          <style>
+            @page {
+              size: portrait;
+              margin: 12mm 15mm;
+            }
+            * {
+              box-sizing: border-box;
+              margin: 0;
+              padding: 0;
+            }
+            html, body {
+              width: 100%;
+              height: 100%;
+              background: #ffffff;
+              color: #0f172a;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              overflow: hidden;
+            }
+            .cartel-sheet {
+              width: 100%;
+              max-width: 620px;
+              margin: 0 auto;
+              height: 100%;
+              max-height: 255mm;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: space-between;
+              text-align: center;
+              padding: 16mm 14mm;
+              border: 3.5px solid #0f172a;
+              border-radius: 28px;
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
+            .pill-header {
+              display: inline-block;
+              padding: 8px 22px;
+              background: #eff6ff;
+              border: 2px solid #bfdbfe;
+              border-radius: 9999px;
+              color: #1d4ed8;
+              font-size: 14px;
+              font-weight: 800;
+              letter-spacing: 1.5px;
+              text-transform: uppercase;
+            }
+            .title {
+              font-size: 32px;
+              font-weight: 900;
+              color: #0f172a;
+              line-height: 1.15;
+              letter-spacing: -0.5px;
+              margin-top: 14px;
+            }
+            .subtitle {
+              font-size: 15px;
+              color: #475569;
+              font-weight: 500;
+              margin-top: 6px;
+              max-width: 460px;
+              line-height: 1.35;
+            }
+            .qr-wrapper {
+              margin: 16px 0;
+              padding: 18px;
+              background: #ffffff;
+              border: 3px solid #0f172a;
+              border-radius: 22px;
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+            }
+            .qr-wrapper img {
+              width: 320px !important;
+              height: 320px !important;
+              display: block;
+              image-rendering: -webkit-optimize-contrast;
+              image-rendering: crisp-edges;
+            }
+            .url-container {
+              width: 100%;
+              max-width: 500px;
+              background: #f8fafc;
+              border: 1.5px dashed #cbd5e1;
+              border-radius: 12px;
+              padding: 10px 14px;
+            }
+            .url-label {
+              font-size: 10px;
+              text-transform: uppercase;
+              font-weight: 700;
+              color: #64748b;
+              letter-spacing: 1px;
+              margin-bottom: 2px;
+            }
+            .url-text {
+              font-family: monospace;
+              font-size: 14px;
+              font-weight: 700;
+              color: #1d4ed8;
+              word-break: break-all;
+            }
+            .instructions-box {
+              width: 100%;
+              max-width: 500px;
+              background: #f0fdf4;
+              border: 1.5px solid #bbf7d0;
+              border-radius: 14px;
+              padding: 12px 18px;
+              text-align: left;
+              margin-top: 12px;
+            }
+            .instructions-title {
+              font-size: 12px;
+              font-weight: 800;
+              color: #166534;
+              margin-bottom: 4px;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .instructions-list {
+              font-size: 12px;
+              color: #15803d;
+              font-weight: 600;
+              line-height: 1.45;
+              padding-left: 18px;
+            }
+            .instructions-list li {
+              margin-bottom: 2px;
+            }
+            .footer-note {
+              font-size: 11px;
+              color: #94a3b8;
+              font-weight: 600;
+              margin-top: 8px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="cartel-sheet">
+            <div>
+              <div class="pill-header">Proceso de Matrículas 2026</div>
+              <h1 class="title">Toma tu turno desde el celular</h1>
+              <p class="subtitle">Apunta con la cámara de tu teléfono al código QR para ingresar al autoservicio y seguir tu turno en vivo.</p>
+            </div>
+
+            <div class="qr-wrapper">
+              <img src="${qrDataUrl}" alt="Código QR de Acceso">
+            </div>
+
+            <div class="url-container">
+              <div class="url-label">Enlace Directo:</div>
+              <div class="url-text">${urlTexto}</div>
+            </div>
+
+            <div class="instructions-box">
+              <div class="instructions-title">Instrucciones para el postulante:</div>
+              <ol class="instructions-list">
+                <li>Conéctate al Wi-Fi del campus o usa tus datos móviles.</li>
+                <li>Abre la cámara de tu celular y escanea este código.</li>
+                <li>Presiona &ldquo;Tomar mi turno&rdquo; y mantén la pantalla encendida.</li>
+              </ol>
+            </div>
+
+            <div class="footer-note">
+              Sistema Institucional de Gestión de Turnos • Turnero 2026
+            </div>
+          </div>
+        </body>
+        </html>
+      `);
+      doc.close();
+
+      setTimeout(() => {
+        printFrame.contentWindow.focus();
+        printFrame.contentWindow.print();
+        setTimeout(() => {
+          printFrame.remove();
+        }, 5000);
+      }, 350);
     },
 
     /**
@@ -1991,7 +2237,8 @@ export function adminView() {
       }
     },
 
-    async guardarFondoParams() {
+    async guardarFondoUrlDirecto() {
+      if (!this.validarFondoUrl()) return;
       if (!this.wsConnected) {
         this.notificar({
           tipo: 'error',
@@ -2000,10 +2247,6 @@ export function adminView() {
         });
         return;
       }
-      if (!this.validarFondoUrl()) return;
-
-      if (this._guardandoSeccion.fondo) return;
-      this._guardandoSeccion.fondo = true;
 
       const url = (this.config.fondo_imagen_url || '').trim();
       const activa = this.config.fondo_imagen_activa ? 'true' : 'false';
@@ -2013,11 +2256,14 @@ export function adminView() {
           api.patch('/admin/configuracion/fondo_imagen_url',    { valor: url }),
           api.patch('/admin/configuracion/fondo_imagen_activa', { valor: activa })
         ]);
-        this._configSnapshot = { ...this.config };
+        if (this._configSnapshot) {
+          this._configSnapshot.fondo_imagen_url = url;
+          this._configSnapshot.fondo_imagen_activa = this.config.fondo_imagen_activa;
+        }
         this.notificar({
           tipo: 'success',
-          titulo: 'Fondo de Pantalla Guardado',
-          mensaje: 'Los parámetros de fondo de pantalla se guardaron y sincronizaron con todas las pantallas.'
+          titulo: 'Fondo Actualizado',
+          mensaje: url ? 'La URL del fondo se sincronizó con todas las pantallas.' : 'Fondo restablecido en el servidor.'
         });
       } catch (err) {
         this.notificar({
@@ -2025,9 +2271,19 @@ export function adminView() {
           titulo: 'Error al guardar fondo',
           mensaje: err.mensaje || err.message || 'No se pudieron guardar los parámetros de fondo.'
         });
-      } finally {
-        this._guardandoSeccion.fondo = false;
       }
+    },
+
+    async quitarFondo() {
+      this.config.fondo_imagen_url = '';
+      this.archivoFondoSeleccionado = null;
+      const input = document.getElementById('input-archivo-fondo');
+      if (input) input.value = '';
+      await this.guardarFondoUrlDirecto();
+    },
+
+    async guardarFondoParams() {
+      return this.guardarFondoUrlDirecto();
     },
 
     async seleccionarArchivoFondo(event) {
