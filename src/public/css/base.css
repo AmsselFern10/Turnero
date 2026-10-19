@@ -286,3 +286,28 @@ body {
     scrollbar-color: #CBD5E1 transparent;
   }
 }
+
+/* ── 10. Fondo de Pantalla Institucional Personalizado ───────────────────────── */
+/* Aplica la imagen de fondo exclusivamente al lienzo global (--bg-app) sin alterar */
+/* el fondo blanco de las tarjetas (.card) ni los estilos de headers o footers */
+body.has-custom-bg {
+  background-image: var(--bg-custom-image) !important;
+  background-size: cover !important;
+  background-position: center center !important;
+  background-repeat: no-repeat !important;
+  background-attachment: fixed !important;
+}
+
+/* Las tarjetas centrales y héroe SIEMPRE conservan fondo blanco sólido e impenetrable */
+body.has-custom-bg .card,
+body.has-custom-bg .card-hero {
+  background-color: #FFFFFF !important;
+}
+
+@media (max-width: 768px) {
+  body.has-custom-bg {
+    background-attachment: scroll !important;
+  }
+}
+
+

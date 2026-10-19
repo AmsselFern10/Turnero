@@ -219,6 +219,8 @@ module.exports = async function adminRoutes (fastify) {
         for (const mesa of mesasLiberadas) {
           await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
           await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', { mesa, accion: 'liberada' })
+          // F-4a: notificar al panel del operador afectado para aviso inmediato
+          await fastify.broadcast(`mesa:${mesa.id}`, 'mesa_inactivada', { mesa, motivo: 'usuario_desactivado_por_admin' })
         }
       }
     }
@@ -325,6 +327,8 @@ module.exports = async function adminRoutes (fastify) {
     for (const mesa of mesasLiberadas) {
       await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
       await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', { mesa, accion: 'liberada' })
+      // F-4b: notificar al panel del operador eliminado para aviso inmediato
+      await fastify.broadcast(`mesa:${mesa.id}`, 'mesa_inactivada', { mesa, motivo: 'usuario_eliminado_por_admin' })
     }
 
     await fastify.broadcast('admin:all', 'usuario_eliminado', { id: userId, username: usuario.username })
@@ -804,8 +808,8 @@ module.exports = async function adminRoutes (fastify) {
         return null
       },
       kiosko_modo_uso: (v) => {
-        if (v !== 'estudiante' && v !== 'empleado') {
-          return 'La modalidad de uso del kiosko debe ser "estudiante" o "empleado".'
+        if (v !== 'estudiante' && v !== 'empleado' && v !== 'asistido') {
+          return 'La modalidad de uso del kiosko debe ser "asistido" o "estudiante".'
         }
         return null
       },
@@ -818,7 +822,31 @@ module.exports = async function adminRoutes (fastify) {
       },
       kiosko_url_base: (v) => {
         if (typeof v !== 'string' || v.length > 255) {
-          return 'La URL base del kiosko no debe superar los 255 caracteres.'
+          return 'La dirección local del kiosko no debe superar los 255 caracteres.'
+        }
+        const trimmed = v.trim()
+        if (trimmed.length > 0) {
+          if (!/^https?:\/\//i.test(trimmed)) {
+            return 'La dirección local debe ser una URL válida que empiece con http:// o https://'
+          }
+          if (trimmed.includes('localhost') || trimmed.includes('127.0.0.1')) {
+            return 'No se permite usar "localhost" ni "127.0.0.1". Ingrese una dirección IP local accesible en la red.'
+          }
+        }
+        return null
+      },
+      kiosko_url_publica: (v) => {
+        if (typeof v !== 'string' || v.length > 255) {
+          return 'La dirección pública del kiosko no debe superar los 255 caracteres.'
+        }
+        const trimmed = v.trim()
+        if (trimmed.length > 0) {
+          if (!/^https?:\/\//i.test(trimmed)) {
+            return 'La dirección pública debe ser una URL válida que empiece con http:// o https://'
+          }
+          if (trimmed.includes('localhost') || trimmed.includes('127.0.0.1')) {
+            return 'No se permite usar "localhost" ni "127.0.0.1". Ingrese una dirección pública o dominio accesible desde Internet.'
+          }
         }
         return null
       },
@@ -850,6 +878,24 @@ module.exports = async function adminRoutes (fastify) {
       zona_horaria: (v) => {
         if (typeof v !== 'string' || v.trim().length === 0 || v.length > 80) {
           return 'La zona horaria debe ser una cadena válida no vacía (máximo 80 caracteres).'
+        }
+        return null
+      },
+      fondo_imagen_url: (v) => {
+        if (typeof v !== 'string' || v.length > 1000) {
+          return 'La dirección o ruta de la imagen no debe superar los 1000 caracteres.'
+        }
+        const trimmed = v.trim()
+        if (trimmed.length > 0) {
+          if (!/^https?:\/\//i.test(trimmed) && !trimmed.startsWith('/') && !trimmed.startsWith('data:image/')) {
+            return 'La URL de la imagen debe ser una dirección válida (http://, https://, ruta local / o data:image).'
+          }
+        }
+        return null
+      },
+      fondo_imagen_activa: (v) => {
+        if (v !== 'true' && v !== 'false') {
+          return 'El estado de la imagen de fondo debe ser "true" o "false".'
         }
         return null
       }
@@ -932,5 +978,167 @@ module.exports = async function adminRoutes (fastify) {
 
     return reply.send({ configuracion: cfg, clave: cfg.clave, valor: cfg.valor })
   })
+
+  // ── POST /admin/configuracion/subir-fondo — Subir y guardar archivo local de fondo ───
+  fastify.post('/configuracion/subir-fondo', {
+    bodyLimit: 15 * 1024 * 1024,
+    preHandler: [fastify.authorizeRol('admin')],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['data'],
+        properties: {
+          data: { type: 'string' },
+          nombre: { type: 'string' },
+          activar: { type: 'boolean' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const { data, nombre, activar } = request.body
+
+    if (!data || typeof data !== 'string') {
+      return reply.code(400).send({ statusCode: 400, message: 'No se recibieron datos de imagen.' })
+    }
+
+    let mimeType = 'image/jpeg'
+    let base64Data = data
+    const matches = data.match(/^data:([A-Za-z0-9-+/]+);base64,(.+)$/)
+    if (matches && matches.length === 3) {
+      mimeType = matches[1].toLowerCase()
+      base64Data = matches[2]
+    }
+
+    const mimeToExt = {
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/svg+xml': 'svg'
+    }
+
+    const ext = mimeToExt[mimeType] || 'jpg'
+    const buffer = Buffer.from(base64Data, 'base64')
+
+    if (buffer.length > 10 * 1024 * 1024) {
+      return reply.code(400).send({ statusCode: 400, message: 'La imagen no debe superar los 10 MB.' })
+    }
+
+    const fs = require('fs')
+    const path = require('path')
+    const uploadsDir = path.join(__dirname, '../../public/assets/uploads')
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true })
+    }
+
+    const fileName = `fondo_${Date.now()}.${ext}`
+    const filePath = path.join(uploadsDir, fileName)
+    fs.writeFileSync(filePath, buffer)
+
+    const urlRelativa = `/assets/uploads/${fileName}`
+
+    // Actualizar fondo_imagen_url en BD
+    await fastify.db.query(
+      `INSERT INTO configuracion (clave, valor, actualizado_en, actualizado_por)
+       VALUES ('fondo_imagen_url', $1, NOW(), $2)
+       ON CONFLICT (clave) DO UPDATE
+       SET valor = EXCLUDED.valor, actualizado_en = NOW(), actualizado_por = EXCLUDED.actualizado_por`,
+      [urlRelativa, request.user.id]
+    )
+
+    let estaActiva = 'true'
+    if (activar !== undefined) {
+      estaActiva = activar ? 'true' : 'false'
+      await fastify.db.query(
+        `INSERT INTO configuracion (clave, valor, actualizado_en, actualizado_por)
+         VALUES ('fondo_imagen_activa', $1, NOW(), $2)
+         ON CONFLICT (clave) DO UPDATE
+         SET valor = EXCLUDED.valor, actualizado_en = NOW(), actualizado_por = EXCLUDED.actualizado_por`,
+        [estaActiva, request.user.id]
+      )
+    }
+
+    await fastify.db.query(
+      `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
+       VALUES ($1, 'CONFIG_MODIFICADA', $2, $3)`,
+      [request.user.id, request.ip, JSON.stringify({ clave: 'fondo_imagen_url', fileName, url: urlRelativa, bytes: buffer.length })]
+    )
+
+    await Promise.all([
+      fastify.broadcast('admin:all', 'config_actualizada', { clave: 'fondo_imagen_url', valor: urlRelativa }),
+      fastify.broadcast('tv:global', 'config_actualizada', { clave: 'fondo_imagen_url', valor: urlRelativa }),
+      fastify.broadcast('kiosko:publico', 'config_actualizada', { clave: 'fondo_imagen_url', valor: urlRelativa }),
+      fastify.broadcast('lote:activo', 'config_actualizada', { clave: 'fondo_imagen_url', valor: urlRelativa })
+    ])
+    if (activar !== undefined) {
+      await Promise.all([
+        fastify.broadcast('admin:all', 'config_actualizada', { clave: 'fondo_imagen_activa', valor: estaActiva }),
+        fastify.broadcast('tv:global', 'config_actualizada', { clave: 'fondo_imagen_activa', valor: estaActiva }),
+        fastify.broadcast('kiosko:publico', 'config_actualizada', { clave: 'fondo_imagen_activa', valor: estaActiva }),
+        fastify.broadcast('lote:activo', 'config_actualizada', { clave: 'fondo_imagen_activa', valor: estaActiva })
+      ])
+    }
+
+    return reply.send({
+      ok: true,
+      url: urlRelativa,
+      activa: estaActiva === 'true',
+      mensaje: 'Imagen subida y guardada exitosamente en el servidor.'
+    })
+  })
+
+  // ── POST /admin/impresora/probar — Imprimir ticket de prueba (#000) ────────
+  fastify.post('/impresora/probar', {
+    preHandler: [fastify.authorizeRol('admin')]
+  }, async (request, reply) => {
+    const { imprimirTicketESCPOS } = require('../kiosko/printer')
+    const { ip, puerto } = request.body || {}
+
+    const ahora = new Date()
+    const { rows: rowsUrl } = await fastify.db.query("SELECT valor FROM configuracion WHERE clave = 'kiosko_url_base'")
+    const urlBase = rowsUrl[0]?.valor || 'http://localhost:3000'
+    const tracking_url = `${urlBase.replace(/\/$/, '')}/kiosko/mi-turno/prueba-000`
+
+    const ticket = {
+      numero: 0,
+      formato: '#000',
+      modulo: 'MODULO DE MATRICULA - PRUEBA',
+      tracking_url,
+      fecha: ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+      hora: ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+    }
+
+    try {
+      await imprimirTicketESCPOS(fastify, ticket, { ip, puerto, forzar: true })
+
+      await fastify.db.query(
+        `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
+         VALUES ($1, 'CONFIG_MODIFICADA', $2, $3)`,
+        [request.user.id, request.ip, JSON.stringify({ detalle: 'Impresión de prueba ESC/POS enviada', ticket: '#000', ip, puerto })]
+      )
+
+      return reply.send({
+        ok: true,
+        mensaje: 'Ticket de prueba #000 enviado con éxito a la impresora.'
+      })
+    } catch (err) {
+      fastify.log.warn({ code: err.code, message: err.message }, 'Error al enviar ticket de prueba a impresora')
+
+      const msg = err.code === 'ECONNREFUSED'
+        ? `No se pudo conectar a la impresora en ${ip || 'la IP configurada'}:${puerto || 9100}. Verifique que esté encendida y en la misma red local.`
+        : err.code === 'TIMEOUT'
+          ? `La impresora no respondió a tiempo (Timeout). Verifique la dirección IP.`
+          : err.code === 'IP_NO_CONFIGURADA'
+            ? 'Ingrese una dirección IP válida para la impresora.'
+            : (err.message || 'Error al comunicar con la impresora térmica.')
+
+      return reply.status(503).send({
+        ok: false,
+        codigo: err.code || 'ERROR_IMPRESORA',
+        message: msg
+      })
+    }
+  })
 }
+
 

@@ -775,6 +775,12 @@
             <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg>
             <span>Plan B (Contingencia)</span>
           </button>
+          <button type="button" @click="subTabConfig = 'fondo'"
+                  class="px-3.5 py-1.5 rounded-xl font-semibold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5"
+                  :class="subTabConfig === 'fondo' ? 'bg-blue-50 text-blue-700 border border-blue-300' : 'text-slate-600 hover:bg-slate-100 border border-transparent'">
+            <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" /></svg>
+            <span>Fondo de Pantalla</span>
+          </button>
         </div>
       </div>
 
@@ -945,11 +951,11 @@
             </div>
             <div>
               <h3 class="font-bold text-xs uppercase text-slate-800 tracking-wide">Kiosko Digital y Autoservicio</h3>
-              <p class="text-xs text-slate-400">Emisión digital de turnos en tablet, smartphone o módulo de recepción</p>
+              <p class="text-xs text-slate-400">Emisión digital de turnos en modalidad asistida o autoservicio estudiantil</p>
             </div>
           </div>
           <!-- Enlace pastel a Kiosko -->
-          <a href="/kiosko.html" target="_blank" rel="noopener noreferrer"
+          <a :href="kioskoHref" target="_blank" rel="noopener noreferrer"
              class="btn-ghost btn-sm flex items-center gap-1.5 self-start sm:self-auto cursor-pointer text-blue-700 border border-blue-200 bg-blue-50/60 hover:bg-blue-100 rounded-xl px-3 py-1.5 font-semibold">
             <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
             <span>Abrir Interfaz Kiosko</span>
@@ -963,7 +969,7 @@
               <div class="flex items-center gap-2">
                 <span class="w-2 h-2 rounded-full" :class="config.kiosko_web_activo ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'"></span>
                 <p class="font-semibold text-slate-900 text-xs"
-                   x-text="config.kiosko_web_activo ? 'Modo Kiosko Digital Activo' : 'Modo Vouchers Físicos (Portón)'"></p>
+                   x-text="config.kiosko_web_activo ? 'Modo Kiosko Digital Activo' : 'Modo Vouchers Físicos'"></p>
                 <span class="text-[10px] font-mono-num px-2 py-0.5 rounded-lg font-semibold border"
                       :class="config.kiosko_web_activo ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-slate-200 text-slate-600 border-slate-300'"
                       x-text="config.kiosko_web_activo ? 'ACTIVO' : 'EN REPOSO'"></span>
@@ -985,16 +991,16 @@
             </div>
           </div>
 
-          <!-- Parámetros en grid uniforme -->
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          <!-- Parámetros de Modalidad y Límites -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
               <label for="cfg-kiosko-modo" class="font-semibold block mb-1 text-slate-700">Modalidad de Uso:</label>
               <select id="cfg-kiosko-modo" x-model="config.kiosko_modo_uso"
                       class="input-field transition-colors bg-white">
-                <option value="empleado">Módulo Asistido (Personal en Recepción)</option>
-                <option value="estudiante">Autoservicio (Estudiante en Pantalla/Móvil)</option>
+                <option value="asistido">Modalidad Asistida (Operador en Tablet)</option>
+                <option value="estudiante">Modalidad Estudiante (Autoservicio Móvil/Pantalla)</option>
               </select>
-              <p class="text-[11px] text-slate-400 mt-1">Flujo en la pantalla de autoservicio.</p>
+              <p class="text-[11px] text-slate-400 mt-1">Define el flujo de toma de turnos.</p>
             </div>
 
             <div>
@@ -1006,13 +1012,55 @@
               <p x-show="erroresValidacion.cfgKioskoTope" x-text="erroresValidacion.cfgKioskoTope" class="text-[11px] text-rose-600 font-medium mt-1"></p>
               <p x-show="!erroresValidacion.cfgKioskoTope" class="text-[11px] text-slate-400 mt-1">0 = Sin límite de turnos diarios.</p>
             </div>
+          </div>
+
+          <!-- Direcciones de Red (Local LAN y Pública) -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label for="cfg-kiosko-url-base" class="font-semibold block mb-1 text-slate-700">Dirección Local (Wi-Fi Campus / LAN):</label>
+              <input id="cfg-kiosko-url-base" type="text" x-model.trim="config.kiosko_url_base"
+                     @input="validarKioskoUrlBase()"
+                     placeholder="http://192.168.1.100:3000/kiosko.html"
+                     class="input-field font-mono-num text-[11px] transition-colors bg-white"
+                     :class="erroresValidacion.cfgKioskoUrlBase ? 'border-rose-400 focus:border-rose-500' : ''">
+              <p x-show="erroresValidacion.cfgKioskoUrlBase" x-text="erroresValidacion.cfgKioskoUrlBase" class="text-[11px] text-rose-600 font-medium mt-1"></p>
+              <p x-show="!erroresValidacion.cfgKioskoUrlBase" class="text-[11px] text-slate-400 mt-1">Para estudiantes conectados al Wi-Fi del campus (sin salir a internet).</p>
+            </div>
 
             <div>
-              <label for="cfg-kiosko-url" class="font-semibold block mb-1 text-slate-700">URL Base / IP LAN:</label>
-              <input id="cfg-kiosko-url" type="text" x-model.trim="config.kiosko_url_base"
-                     placeholder="http://192.168.1.100:3000/kiosko.html"
-                     class="input-field font-mono-num text-[11px] transition-colors bg-white">
-              <p class="text-[11px] text-slate-400 mt-1">Dirección para el código QR de acceso.</p>
+              <label for="cfg-kiosko-url-publica" class="font-semibold block mb-1 text-slate-700">Dirección Pública (Internet / Datos Móviles):</label>
+              <input id="cfg-kiosko-url-publica" type="text" x-model.trim="config.kiosko_url_publica"
+                     @input="validarKioskoUrlPublica()"
+                     placeholder="https://turnos.campus.edu/kiosko.html"
+                     class="input-field font-mono-num text-[11px] transition-colors bg-white"
+                     :class="erroresValidacion.cfgKioskoUrlPublica ? 'border-rose-400 focus:border-rose-500' : ''">
+              <p x-show="erroresValidacion.cfgKioskoUrlPublica" x-text="erroresValidacion.cfgKioskoUrlPublica" class="text-[11px] text-rose-600 font-medium mt-1"></p>
+              <p x-show="!erroresValidacion.cfgKioskoUrlPublica" class="text-[11px] text-slate-400 mt-1">Para estudiantes con datos móviles fuera o dentro del campus (se usa en el QR del voucher).</p>
+            </div>
+          </div>
+
+          <!-- Acceso de Estudiantes y Código QR -->
+          <div class="rounded-xl border border-blue-200 bg-blue-50/40 p-4 space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div class="space-y-1">
+                <div class="flex items-center gap-2">
+                  <span class="font-bold text-xs text-blue-900 uppercase tracking-wide">Acceso de Estudiantes (Autoservicio)</span>
+                  <span class="pill pill-primary text-[10px] font-bold">Modo Estudiante Directo</span>
+                </div>
+                <p class="text-[11px] text-slate-600">
+                  Enlace directo para que los estudiantes tomen su turno y realicen seguimiento en vivo desde su celular:
+                </p>
+                <div class="font-mono-num text-xs font-bold text-blue-700 bg-white border border-blue-200 rounded-lg px-2.5 py-1 inline-block break-all select-all"
+                     x-text="urlEstudianteQR"></div>
+              </div>
+              <button type="button" @click="abrirCartelQR()"
+                      class="btn-primary btn-sm flex items-center justify-center gap-2 flex-shrink-0 shadow-xs cursor-pointer">
+                <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75h-.75v-.75zM13.5 13.5h3v3h-3v-3zM16.5 19.5h3v-3h-3v3zM13.5 19.5h1.5v-1.5H13.5v1.5z" />
+                </svg>
+                <span>Ver QR / Imprimir Cartel</span>
+              </button>
             </div>
           </div>
 
@@ -1021,7 +1069,7 @@
             <div class="flex-1 min-w-0 pr-4">
               <p class="font-semibold text-xs text-slate-800">Impresión automática al generar turno</p>
               <p class="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
-                Solo modo tablet (empleado). Al generar un turno, el comprobante se envía a la impresora ESC/POS de inmediato sin botón adicional.
+                Solo modalidad asistida (tablet). Al generar un turno, el comprobante se envía a la impresora ESC/POS de inmediato sin botón adicional.
                 Requiere impresora activa y configurada. En modo celular (estudiante) no aplica.
               </p>
             </div>
@@ -1103,16 +1151,26 @@
           </div>
         </div>
 
-        <!-- Pie de tarjeta: botón pastel verde ubicado coherentemente abajo -->
-        <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+        <!-- Pie de tarjeta: botones de acción -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-slate-100">
           <span class="text-[11px] text-slate-400">Si está inactiva, el kiosko mostrará el comprobante en pantalla.</span>
-          <button type="button" @click="guardarImpresoraParams()"
-                  :disabled="!cfgImpresoraValida || _guardandoSeccion.impresora || !wsConnected"
-                  class="btn-ghost btn-sm flex items-center gap-1.5 text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 cursor-pointer font-semibold rounded-xl px-4 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            <svg x-show="!_guardandoSeccion.impresora" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-            <svg x-show="_guardandoSeccion.impresora" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
-            <span x-text="_guardandoSeccion.impresora ? 'Guardando...' : 'Guardar Ajustes de Impresora'">Guardar Ajustes de Impresora</span>
-          </button>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button type="button" @click="imprimirTicketPrueba()"
+                    :disabled="_imprimiendoPrueba || !wsConnected"
+                    title="Imprimir ticket de prueba con turno #000 y código QR"
+                    class="btn-ghost btn-sm flex items-center gap-1.5 text-blue-700 border border-blue-300 bg-blue-50 hover:bg-blue-100 cursor-pointer font-semibold rounded-xl px-3.5 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+              <svg x-show="!_imprimiendoPrueba" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24-1.03-.48-2.06-.72-3.09a3 3 0 012.91-3.68h6.18a3 3 0 012.91 3.68c-.24 1.03-.48 2.06-.72 3.09M6.72 13.829H3.75a2.25 2.25 0 00-2.25 2.25v3.75a2.25 2.25 0 002.25 2.25h16.5a2.25 2.25 0 002.25-2.25v-3.75a2.25 2.25 0 00-2.25-2.25h-2.97M6.72 13.829a3.75 3.75 0 017.5 0m-7.5 0h7.5m-9 7.5v-3a1.5 1.5 0 011.5-1.5h7.5a1.5 1.5 0 011.5 1.5v3" /></svg>
+              <svg x-show="_imprimiendoPrueba" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+              <span x-text="_imprimiendoPrueba ? 'Imprimiendo #000...' : 'Imprimir Ticket de Prueba (#000)'">Imprimir Ticket de Prueba (#000)</span>
+            </button>
+            <button type="button" @click="guardarImpresoraParams()"
+                    :disabled="!cfgImpresoraValida || _guardandoSeccion.impresora || !wsConnected"
+                    class="btn-ghost btn-sm flex items-center gap-1.5 text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 cursor-pointer font-semibold rounded-xl px-4 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+              <svg x-show="!_guardandoSeccion.impresora" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+              <svg x-show="_guardandoSeccion.impresora" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+              <span x-text="_guardandoSeccion.impresora ? 'Guardando...' : 'Guardar Ajustes de Impresora'">Guardar Ajustes de Impresora</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1230,6 +1288,121 @@
                   class="btn-ghost btn-sm flex items-center gap-1.5 text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 cursor-pointer font-semibold rounded-xl px-4 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
             <span>Ajustar Contador del Lote</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ── BLOQUE 6: FONDO DE PANTALLA INSTITUCIONAL PERSONALIZADO ── -->
+      <div x-show="subTabConfig === 'todos' || subTabConfig === 'fondo'" class="card p-5 space-y-4 rounded-2xl border border-slate-200/90 bg-white">
+        <!-- Cabecera de Tarjeta -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center flex-shrink-0">
+              <svg class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" /></svg>
+            </div>
+            <div>
+              <h3 class="font-bold text-xs uppercase text-slate-800 tracking-wide">Fondo de Pantalla Institucional</h3>
+              <p class="text-xs text-slate-400">Personaliza la imagen base de fondo para Kiosko, Pantalla TV, Ventanillas y Login sin alterar las tarjetas blancas ni este panel.</p>
+            </div>
+          </div>
+          <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 self-start sm:self-auto">
+            <svg class="w-3 h-3 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>
+            <span>Sincronización en vivo</span>
+          </span>
+        </div>
+
+        <div class="space-y-4 text-xs">
+          <!-- Toggle Activar / Desactivar Fondo -->
+          <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="flex-1 min-w-0 pr-4">
+              <p class="font-semibold text-xs text-slate-800">Activar Imagen de Fondo</p>
+              <p class="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                Habilita la imagen personalizada en el fondo general de las pantallas públicas y de operadores. Las cards centrales conservan su fondo blanco y sus colores originales.
+              </p>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <span class="font-semibold text-xs"
+                    :class="config.fondo_imagen_activa ? 'text-emerald-700' : 'text-slate-500'"
+                    x-text="config.fondo_imagen_activa ? 'Activada' : 'Desactivada'"></span>
+              <div class="switch-track" :class="[config.fondo_imagen_activa ? 'active' : '', _togglingFondo ? 'opacity-60 pointer-events-none' : '']"
+                   @click="toggleFondoActivo()"
+                   role="switch" aria-checked="false" :aria-checked="config.fondo_imagen_activa ? 'true' : 'false'"
+                   id="switch-fondo-imagen-activa"
+                   tabindex="0" title="Activar o desactivar imagen de fondo (cambio en vivo)">
+                <div class="switch-thumb"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Opción 1: Subir imagen local desde el equipo -->
+          <div class="rounded-xl border border-blue-200 bg-blue-50/40 p-4 space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span class="font-bold text-xs text-blue-900 uppercase tracking-wide">Buscar en Archivos Locales (Subir al Servidor)</span>
+                <p class="text-[11px] text-slate-600 mt-0.5">
+                  Selecciona una imagen de tu computadora. Se guardará de forma automática y permanente en los archivos del turnero para funcionar 100% sin internet.
+                </p>
+              </div>
+              <div>
+                <input type="file" id="input-archivo-fondo" class="hidden" accept="image/png,image/jpeg,image/webp,image/svg+xml" aria-label="Seleccionar archivo de imagen de fondo" title="Seleccionar archivo de imagen de fondo" @change="seleccionarArchivoFondo($event)">
+                <button type="button" @click="document.getElementById('input-archivo-fondo').click()"
+                        :disabled="_subiendoFondo || !wsConnected"
+                        class="btn-primary btn-sm flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shadow-xs disabled:opacity-60">
+                  <svg x-show="!_subiendoFondo" class="w-4 h-4 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
+                  <svg x-show="_subiendoFondo" class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                  <span x-text="_subiendoFondo ? 'Subiendo y Guardando...' : 'Examinar...'">Examinar...</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Fila informativa de imagen guardada en servidor -->
+            <div x-show="archivoFondoSeleccionado" x-cloak class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white border border-emerald-300 rounded-xl p-3 shadow-xs">
+              <div class="flex items-center space-x-3 min-w-0">
+                <div class="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">
+                  <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                </div>
+                <div class="min-w-0">
+                  <p class="font-bold text-xs text-slate-800 truncate" x-text="archivoFondoSeleccionado?.nombre"></p>
+                  <p class="text-[11px] text-emerald-600 font-medium">Imagen guardada en el servidor y activa en pantallas</p>
+                </div>
+              </div>
+              <span class="text-[11px] text-slate-400 font-mono-num" x-text="archivoFondoSeleccionado?.tamanoTexto"></span>
+            </div>
+          </div>
+
+          <!-- Campo URL de la Imagen -->
+          <div>
+            <label for="cfg-fondo-imagen-url" class="font-semibold block mb-1 text-slate-700">O ingresa una URL / Ruta del Servidor:</label>
+            <input id="cfg-fondo-imagen-url" type="text" x-model.trim="config.fondo_imagen_url"
+                   @input="validarFondoUrl()"
+                   placeholder="https://ejemplo.com/fondo-institucional.jpg o /assets/mi-fondo.png"
+                   class="input-field font-mono-num text-[11px] transition-colors bg-white"
+                   :class="erroresValidacion.cfgFondoUrl ? 'border-rose-400 focus:border-rose-500' : ''">
+            <p x-show="erroresValidacion.cfgFondoUrl" x-text="erroresValidacion.cfgFondoUrl" class="text-[11px] text-rose-600 font-medium mt-1"></p>
+            <p x-show="!erroresValidacion.cfgFondoUrl" class="text-[11px] text-slate-400 mt-1">Recomendado: imagen en alta resolución (1920x1080 o superior). Acepta URLs web directas (https://), rutas locales del servidor (/assets/...) o data:image.</p>
+          </div>
+
+          <!-- Previsualización en vivo si hay imagen definida -->
+          <div x-show="config.fondo_imagen_url && config.fondo_imagen_url.trim().length > 0" x-cloak class="rounded-xl border border-slate-200 p-3 bg-slate-50 space-y-2">
+            <div class="flex items-center justify-between text-[11px]">
+              <span class="font-semibold text-slate-700">Vista Previa de la Imagen:</span>
+              <span class="text-slate-400" x-text="config.fondo_imagen_activa ? 'Estado: Activa en pantallas' : 'Estado: Inactiva (Fondo gris estándar)'"></span>
+            </div>
+            <div class="w-full h-32 rounded-lg border border-slate-300 overflow-hidden relative bg-slate-200">
+              <img :src="config.fondo_imagen_url" alt="Previsualización de fondo" class="w-full h-full object-cover" @error="$el.style.display='none'" @load="$el.style.display='block'">
+            </div>
+          </div>
+        </div>
+
+        <!-- Pie de tarjeta: botón guardar -->
+        <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+          <span class="text-[11px] text-slate-400">Guarda la URL y el estado de activación para sincronizar con Kiosko, TV, Operador y Login.</span>
+          <button type="button" @click="guardarFondoParams()"
+                  :disabled="erroresValidacion.cfgFondoUrl || _guardandoSeccion.fondo || !wsConnected"
+                  class="btn-ghost btn-sm flex items-center gap-1.5 text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 cursor-pointer font-semibold rounded-xl px-4 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            <svg x-show="!_guardandoSeccion.fondo" class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+            <svg x-show="_guardandoSeccion.fondo" class="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+            <span x-text="_guardandoSeccion.fondo ? 'Guardando Fondo...' : 'Guardar Fondo de Pantalla'">Guardar Fondo de Pantalla</span>
           </button>
         </div>
       </div>
@@ -1807,18 +1980,18 @@
           <label class="font-semibold block mb-1.5 text-slate-700">Modalidad de Uso:</label>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <label class="border rounded-xl p-3 flex items-start gap-2.5 cursor-pointer transition-all"
-                   :class="kioskoForm.modo_uso === 'empleado' ? 'border-blue-500 bg-blue-50/40 text-blue-900' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'">
-              <input type="radio" name="kioskoFormModo" value="empleado" x-model="kioskoForm.modo_uso" class="mt-0.5 text-blue-600">
+                   :class="(kioskoForm.modo_uso === 'asistido' || kioskoForm.modo_uso === 'empleado') ? 'border-blue-500 bg-blue-50/40 text-blue-900' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'">
+              <input type="radio" name="kioskoFormModo" value="asistido" x-model="kioskoForm.modo_uso" class="mt-0.5 text-blue-600">
               <div>
-                <span class="font-bold text-xs block">Módulo de Recepción (Emisión Asistida)</span>
-                <span class="text-[11px] text-slate-500 block mt-0.5">Operado por personal desde tablet o smartphone.</span>
+                <span class="font-bold text-xs block">Modalidad Asistida (Emisión por Operador)</span>
+                <span class="text-[11px] text-slate-500 block mt-0.5">Operado por personal desde tablet para emisión de turnos.</span>
               </div>
             </label>
             <label class="border rounded-xl p-3 flex items-start gap-2.5 cursor-pointer transition-all"
                    :class="kioskoForm.modo_uso === 'estudiante' ? 'border-blue-500 bg-blue-50/40 text-blue-900' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'">
               <input type="radio" name="kioskoFormModo" value="estudiante" x-model="kioskoForm.modo_uso" class="mt-0.5 text-blue-600">
               <div>
-                <span class="font-bold text-xs block">Autoservicio Estudiantil</span>
+                <span class="font-bold text-xs block">Modalidad Estudiante (Autoservicio)</span>
                 <span class="text-[11px] text-slate-500 block mt-0.5">Estudiantes escanean QR y generan su propio ticket.</span>
               </div>
             </label>
@@ -1867,6 +2040,57 @@
     </div>
   </div>
 
+  <!-- Modal: Cartel de Código QR para Estudiantes -->
+  <div x-show="modalCartelQR" x-cloak class="modal-backdrop">
+    <div class="modal-box space-y-4 max-w-md text-center bg-white p-6 rounded-2xl border border-slate-300">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100 no-print">
+        <span class="font-bold text-sm text-slate-900">Cartel de Acceso para Estudiantes</span>
+        <button type="button" @click="modalCartelQR = false" title="Cerrar modal" aria-label="Cerrar modal" class="text-slate-400 hover:text-slate-600 cursor-pointer">
+          <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+
+      <!-- Área de impresión del cartel -->
+      <div class="py-2 space-y-3">
+        <div class="inline-flex items-center px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-xs font-bold uppercase tracking-wider">
+          Turnos de Matrícula 2026
+        </div>
+        <h3 class="text-xl font-black text-slate-900 tracking-tight">Toma tu turno desde el celular</h3>
+        <p class="text-xs text-slate-500 max-w-xs mx-auto">
+          Escanea el código QR con tu cámara para ingresar al autoservicio y seguir tu turno en vivo.
+        </p>
+
+        <!-- Contenedor del QR vectorial -->
+        <div class="flex items-center justify-center py-2">
+          <div id="cartel-qr-code" class="p-3 bg-white rounded-xl border-2 border-slate-300 shadow-xs inline-block"></div>
+        </div>
+
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5 max-w-sm mx-auto">
+          <span class="text-[10px] uppercase font-bold text-slate-400 block tracking-wider mb-0.5">Enlace directo:</span>
+          <span class="font-mono-num text-xs font-bold text-slate-800 break-all select-all" x-text="urlEstudianteQR"></span>
+        </div>
+
+        <div class="text-[11px] text-slate-500 space-y-1 text-left bg-blue-50/50 rounded-xl p-3 border border-blue-100 max-w-sm mx-auto">
+          <p class="font-semibold text-blue-900">Instrucciones para el postulante:</p>
+          <p>1. Conéctate al Wi-Fi del campus o usa tus datos móviles.</p>
+          <p>2. Abre la cámara de tu celular y escanea este código.</p>
+          <p>3. Presiona &ldquo;Tomar mi turno&rdquo; y mantén la pantalla encendida.</p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 no-print">
+        <button type="button" @click="modalCartelQR = false" class="btn-ghost btn-sm">Cerrar</button>
+        <button type="button" @click="imprimirCartel()"
+                class="btn-primary btn-sm flex items-center gap-1.5 cursor-pointer">
+          <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24-1.076-.673-2.13-1.27-3.104m12.1 0c-.597.974-1.03 2.028-1.27 3.104M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-18 0A2.25 2.25 0 015.25 14.25h13.5A2.25 2.25 0 0121 16.5m-18 0h18" />
+          </svg>
+          <span>Imprimir Cartel</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── MODAL DE CONFIRMACIÓN REUTILIZABLE (reemplaza confirm() nativo) ── -->
   <div x-show="_confirmModal.visible"
        x-cloak
@@ -1901,6 +2125,8 @@
     </div>
   </div>
 
+  <!-- QR Code Library para cartel de estudiantes -->
+  <script src="/vendor/qrcode.min.js"></script>
   <!-- Módulo primero: registra el listener alpine:init antes de que Alpine arranque -->
   <script type="module" src="/js/pages/admin.js"></script>
   <!-- Alpine con defer: carga tras el HTML, dispara alpine:init y encuentra adminPanel ya registrado -->

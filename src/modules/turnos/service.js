@@ -113,7 +113,7 @@ async function cancelarTurno (fastify, { turnoId, operadorId, mesaId }) {
     `UPDATE turnos
      SET estado = 'cancelado'
      WHERE id = $1 AND mesa_id = $2 AND estado = 'en_atencion'
-     RETURNING id, numero, lote_id`,
+     RETURNING id, numero, lote_id, token_consulta`,
     [turnoId, mesaId]
   )
 

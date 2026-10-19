@@ -82,7 +82,7 @@ async function getKioskoEstado (fastify) {
   const [resConfig, resTurnos, resMesas, resContador] = await Promise.all([
     fastify.db.query(
       `SELECT clave, valor FROM configuracion
-       WHERE clave IN ('kiosko_web_activo', 'modo_generacion_turnos', 'kiosko_tope_diario', 'kiosko_modo_uso', 'kiosko_impresion_automatica')`
+       WHERE clave IN ('kiosko_web_activo', 'modo_generacion_turnos', 'kiosko_tope_diario', 'kiosko_modo_uso', 'kiosko_impresion_automatica', 'kiosko_url_base', 'kiosko_url_publica')`
     ),
     fastify.db.query(
       `SELECT
@@ -119,7 +119,7 @@ async function getKioskoEstado (fastify) {
 
   const activo = cfg.kiosko_web_activo === 'true'
   const modo = cfg.modo_generacion_turnos || 'voucher_fisico'
-  const modoUso = cfg.kiosko_modo_uso || 'empleado'
+  const modoUso = cfg.kiosko_modo_uso || 'asistido'
   const topeDiario = parseInt(cfg.kiosko_tope_diario || '0', 10)
   const impresionAutomatica = cfg.kiosko_impresion_automatica === 'true'
   const ultimoNumeroEmitido = resContador.rows[0]?.ultimo_numero || 0
@@ -138,6 +138,8 @@ async function getKioskoEstado (fastify) {
     tope_diario: topeDiario,
     tope_alcanzado: topeAlcanzado,
     impresion_automatica: impresionAutomatica,
+    url_base: cfg.kiosko_url_base || '',
+    url_publica: cfg.kiosko_url_publica || '',
     turnos_en_espera: turnosData.en_espera || 0,
     ultimo_llamado: ultimoLlamado,
     ultimos_llamados: ultimosLlamados,
@@ -156,6 +158,9 @@ async function getKioskoEstado (fastify) {
 function resolverUrlSeguimiento (baseUrlConfig, reqHost, reqProtocol, token) {
   if (baseUrlConfig && baseUrlConfig.trim() !== '') {
     const base = baseUrlConfig.trim().replace(/\/$/, '')
+    if (base.endsWith('/kiosko.html')) {
+      return `${base}?token=${encodeURIComponent(token)}`
+    }
     return `${base}/kiosko.html?token=${encodeURIComponent(token)}`
   }
 
@@ -198,7 +203,7 @@ async function generarTurno (fastify, { ip, idempotencyKey, deviceId, esTablet, 
     }
   }
 
-  // 3. Comprobar si el smartphone del estudiante ya tiene un turno en espera hoy (no aplica a tablet del portón)
+  // 3. Comprobar si el smartphone del estudiante ya tiene un turno en espera hoy (no aplica a modalidad asistida en tablet)
   if (!esTablet && deviceId) {
     const { rows: [turnoDispositivo] } = await fastify.db.query(
       `SELECT t.id, t.numero, t.token_consulta, t.creado_en, t.estado, t.fecha_turno
@@ -219,7 +224,7 @@ async function generarTurno (fastify, { ip, idempotencyKey, deviceId, esTablet, 
   // 4. Validar configuración activa del sistema
   const { rows: configRows } = await fastify.db.query(
     `SELECT clave, valor FROM configuracion
-     WHERE clave IN ('kiosko_web_activo', 'modo_generacion_turnos', 'kiosko_tope_diario', 'kiosko_url_base')`
+     WHERE clave IN ('kiosko_web_activo', 'modo_generacion_turnos', 'kiosko_tope_diario', 'kiosko_modo_uso', 'kiosko_url_base', 'kiosko_url_publica')`
   )
 
   const cfg = {}
@@ -228,7 +233,7 @@ async function generarTurno (fastify, { ip, idempotencyKey, deviceId, esTablet, 
   }
 
   if (cfg.kiosko_web_activo !== 'true') {
-    throw Object.assign(new Error('El módulo de kiosko no está activo actualmente. Solicite su voucher en el módulo de recepción.'), {
+    throw Object.assign(new Error('El servicio de kiosko no está activo actualmente. Solicite su voucher físico.'), {
       statusCode: 403,
       codigo: 'kiosko_desactivado'
     })
@@ -238,6 +243,15 @@ async function generarTurno (fastify, { ip, idempotencyKey, deviceId, esTablet, 
     throw Object.assign(new Error('El sistema opera actualmente mediante vouchers físicos.'), {
       statusCode: 403,
       codigo: 'modo_no_kiosko'
+    })
+  }
+
+  // Si la modalidad activa es asistida, celulares en modo estudiante no pueden generar turnos
+  const modoUso = cfg.kiosko_modo_uso || 'asistido'
+  if (!esTablet && (modoUso === 'asistido' || modoUso === 'empleado')) {
+    throw Object.assign(new Error('La emisión de turnos desde dispositivos móviles no está habilitada. Por favor solicite su turno en el módulo de atención asistida.'), {
+      statusCode: 403,
+      codigo: 'modo_asistido_activo'
     })
   }
 
@@ -322,7 +336,7 @@ async function generarTurno (fastify, { ip, idempotencyKey, deviceId, esTablet, 
         [idempotencyKey]
       )
       if (dup) {
-        return armarRespuestaTurno(fastify, dup, reqHost, reqProtocol, cfg.kiosko_url_base)
+        return armarRespuestaTurno(fastify, dup, reqHost, reqProtocol, (cfg.kiosko_url_publica || '').trim() || (cfg.kiosko_url_base || '').trim())
       }
     }
     throw err
@@ -331,7 +345,38 @@ async function generarTurno (fastify, { ip, idempotencyKey, deviceId, esTablet, 
   // Invalidar caché de estado del kiosko
   _estadoCache = null
 
-  return armarRespuestaTurno(fastify, turnoCreado, reqHost, reqProtocol, cfg.kiosko_url_base)
+  return armarRespuestaTurno(fastify, turnoCreado, reqHost, reqProtocol, (cfg.kiosko_url_publica || '').trim() || (cfg.kiosko_url_base || '').trim())
+}
+
+// Caché en memoria para métricas globales de atención (mesas activas y tiempo promedio)
+// Evita ejecutar AVG(duracion_atencion_seg) repetidamente en cada consulta de cada smartphone
+let _metricasCache = null
+let _metricasCacheExpira = 0
+const METRICAS_CACHE_TTL_MS = 15000 // 15 segundos
+
+async function obtenerMetricasAtencion (fastify, fecha) {
+  const now = Date.now()
+  if (_metricasCache && now < _metricasCacheExpira && _metricasCache.fecha === fecha) {
+    return _metricasCache
+  }
+
+  const { rows } = await fastify.db.query(
+    `SELECT
+       (SELECT COUNT(*)::int FROM mesas WHERE estado = 'activa') AS mesas_activas,
+       (SELECT COALESCE(AVG(duracion_atencion_seg)::int, 180) FROM turnos
+        WHERE estado = 'atendido' AND fecha_turno = $1 AND duracion_atencion_seg > 0
+       ) AS tiempo_promedio_seg`,
+    [fecha]
+  )
+
+  const data = rows[0] || {}
+  _metricasCache = {
+    fecha,
+    mesas_activas: Math.max(1, data.mesas_activas || 1),
+    tiempo_promedio_seg: data.tiempo_promedio_seg || 180
+  }
+  _metricasCacheExpira = now + METRICAS_CACHE_TTL_MS
+  return _metricasCache
 }
 
 /**
@@ -340,7 +385,7 @@ async function generarTurno (fastify, { ip, idempotencyKey, deviceId, esTablet, 
 async function armarRespuestaTurno (fastify, turno, reqHost, reqProtocol, baseUrlConfig = null) {
   const fechaHoy = turno.fecha_turno
 
-  const [resPos, resMetricas, resUrlBase] = await Promise.all([
+  const [resPos, metricas, resUrlBase] = await Promise.all([
     fastify.db.query(
       `SELECT COUNT(*)::int AS personas_antes
        FROM turnos
@@ -350,27 +395,28 @@ async function armarRespuestaTurno (fastify, turno, reqHost, reqProtocol, baseUr
          AND numero < $2`,
       [fechaHoy, turno.numero]
     ),
-    fastify.db.query(
-      `SELECT
-         (SELECT COUNT(*)::int FROM mesas WHERE estado = 'activa') AS mesas_activas,
-         (SELECT COALESCE(AVG(duracion_atencion_seg)::int, 180) FROM turnos
-          WHERE estado = 'atendido' AND fecha_turno = $1 AND duracion_atencion_seg > 0
-         ) AS tiempo_promedio_seg`,
-      [fechaHoy]
-    ),
+    obtenerMetricasAtencion(fastify, fechaHoy),
     baseUrlConfig !== null
       ? Promise.resolve({ rows: [{ valor: baseUrlConfig }] })
-      : fastify.db.query(`SELECT valor FROM configuracion WHERE clave = 'kiosko_url_base' LIMIT 1`)
+      : fastify.db.query(`SELECT clave, valor FROM configuracion WHERE clave IN ('kiosko_url_publica', 'kiosko_url_base')`)
   ])
 
   const personasAntes = resPos.rows[0]?.personas_antes ?? 0
-  const metricas = resMetricas.rows[0] || {}
-  const mesasActivas = Math.max(1, metricas.mesas_activas || 1)
-  const tiempoPromedioSeg = metricas.tiempo_promedio_seg || 180
+  const mesasActivas = metricas.mesas_activas
+  const tiempoPromedioSeg = metricas.tiempo_promedio_seg
 
   // Estimado: (personas antes * tiempo promedio en minutos) / mesas atendiendo simultáneamente
   const tiempoEstimadoMin = Math.max(1, Math.round((personasAntes * (tiempoPromedioSeg / 60)) / mesasActivas))
-  const urlBase = resUrlBase.rows[0]?.valor || ''
+
+  let urlBase = ''
+  if (baseUrlConfig !== null) {
+    urlBase = baseUrlConfig
+  } else {
+    const cfgMap = {}
+    for (const r of resUrlBase.rows) cfgMap[r.clave] = r.valor
+    urlBase = (cfgMap.kiosko_url_publica || '').trim() || (cfgMap.kiosko_url_base || '').trim()
+  }
+
   const trackingUrl = resolverUrlSeguimiento(urlBase, reqHost, reqProtocol, turno.token_consulta)
 
   return {
@@ -415,7 +461,7 @@ async function consultarMiTurno (fastify, param) {
   let tiempoEstimadoMin = 0
 
   if (turno.estado === 'esperando') {
-    const [resPos, resMetricas] = await Promise.all([
+    const [resPos, metricas] = await Promise.all([
       fastify.db.query(
         `SELECT COUNT(*)::int AS personas_antes
          FROM turnos
@@ -425,19 +471,12 @@ async function consultarMiTurno (fastify, param) {
            AND numero < $2`,
         [turno.fecha_turno, turno.numero]
       ),
-      fastify.db.query(
-        `SELECT
-           (SELECT COUNT(*)::int FROM mesas WHERE estado = 'activa') AS mesas_activas,
-           (SELECT COALESCE(AVG(duracion_atencion_seg)::int, 180) FROM turnos
-            WHERE estado = 'atendido' AND fecha_turno = $1 AND duracion_atencion_seg > 0
-           ) AS tiempo_promedio_seg`,
-        [turno.fecha_turno]
-      )
+      obtenerMetricasAtencion(fastify, turno.fecha_turno)
     ])
 
     personasAntes = resPos.rows[0]?.personas_antes ?? 0
-    const mesasActivas = Math.max(1, resMetricas.rows[0]?.mesas_activas || 1)
-    const tiempoPromedioSeg = resMetricas.rows[0]?.tiempo_promedio_seg || 180
+    const mesasActivas = metricas.mesas_activas
+    const tiempoPromedioSeg = metricas.tiempo_promedio_seg
     tiempoEstimadoMin = Math.max(1, Math.round((personasAntes * (tiempoPromedioSeg / 60)) / mesasActivas))
   }
 

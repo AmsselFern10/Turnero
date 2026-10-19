@@ -18,7 +18,7 @@
  */
 
 import { api } from '../api.js';
-import { showToast } from '../utils.js';
+import { showToast, initFondoPersonalizado } from '../utils.js';
 import { TurneroWSClient } from '../ws-client.js';
 
 export function loginView() {
@@ -36,21 +36,21 @@ export function loginView() {
     mesas: [],
     mesaPreAsignada: null,
     kioskoActivo: false,
-    kioskoModoUso: 'empleado',
+    kioskoModoUso: 'asistido',
     _ws: null,
 
     get kioskoHref() {
-      return this.kioskoModoUso === 'empleado' ? '/kiosko.html?modo=tablet' : '/kiosko.html';
+      return (this.kioskoModoUso === 'asistido' || this.kioskoModoUso === 'empleado') ? '/kiosko.html?modo=tablet' : '/kiosko.html';
     },
 
     get kioskoLabelHeader() {
-      return this.kioskoModoUso === 'empleado' ? 'Módulo de Recepción' : 'Abrir Kiosko';
+      return (this.kioskoModoUso === 'asistido' || this.kioskoModoUso === 'empleado') ? 'Modalidad Asistida' : 'Kiosko Estudiante';
     },
 
     get kioskoLabelCard() {
-      return this.kioskoModoUso === 'empleado'
-        ? 'Ir a Módulo de Recepción (Emisión Asistida)'
-        : 'Ir a Kiosko Digital (Autoservicio)';
+      return (this.kioskoModoUso === 'asistido' || this.kioskoModoUso === 'empleado')
+        ? 'Ir a Modalidad Asistida (Emisión por Operador)'
+        : 'Ir a Kiosko Estudiantil (Autoservicio)';
     },
 
     get noHayMesasDisponibles() {
@@ -65,6 +65,7 @@ export function loginView() {
     async init() {
       this.verificarKioskoActivo();
       this._conectarWSMesas();
+      initFondoPersonalizado(this._ws);
 
       const existingToken = api.getToken();
       if (!existingToken) return;
@@ -83,11 +84,11 @@ export function loginView() {
         const res = await api.get('/kiosko/estado');
         if (res && typeof res.activo === 'boolean') {
           this.kioskoActivo = res.activo;
-          this.kioskoModoUso = res.modo_uso || 'empleado';
+          this.kioskoModoUso = res.modo_uso || 'asistido';
         }
       } catch (_) {
         this.kioskoActivo = false;
-        this.kioskoModoUso = 'empleado';
+        this.kioskoModoUso = 'asistido';
       }
     },
 

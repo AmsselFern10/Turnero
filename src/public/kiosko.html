@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kiosko de Autoservicio — Turnero 2026</title>
+  <title>Kiosko de Turnos — Turnero 2026</title>
   <link rel="stylesheet" href="/css/base.css">
   <link rel="stylesheet" href="/css/components.css">
   <link rel="stylesheet" href="/css/animations.css">
@@ -24,7 +24,7 @@
       </div>
       <div>
         <h1 class="text-sm font-bold tracking-tight text-slate-900 leading-none">Matrículas 2026</h1>
-        <p class="text-xs text-slate-500 font-medium mt-1" x-text="esTablet ? 'Módulo de Recepción • Emisión Asistida' : 'Autoservicio • Kiosko de Acceso'"></p>
+        <p class="text-xs text-slate-500 font-medium mt-1" x-text="esTablet ? 'Modalidad Asistida • Emisión de Turnos' : 'Autoservicio • Kiosko Estudiantil'"></p>
       </div>
     </div>
 
@@ -61,7 +61,7 @@
       <!-- ESTADO 1: BIENVENIDA / SOLICITAR TURNO TÁCTIL -->
       <section x-show="step === 'welcome'" class="space-y-6">
         <div class="pill pill-primary uppercase">
-          <span>Recepción de Postulantes</span>
+          <span x-text="esTablet ? 'Atención Asistida' : 'Emisión de Turnos'"></span>
         </div>
 
         <div class="space-y-2">
@@ -71,15 +71,23 @@
           </p>
         </div>
 
-        <!-- AVISO DE KIOSKO DESACTIVADO O TOPE ALCANZADO -->
-        <template x-if="!kioskoActivo || topeAlcanzado">
-          <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
-            <span class="font-bold block" x-text="topeAlcanzado ? 'Límite de turnos alcanzado hoy' : 'Autoservicio pausado'"></span>
-            <span class="text-[11px] text-amber-700 mt-1 block" x-text="topeAlcanzado ? 'Se ha alcanzado el número máximo de turnos asignados para esta jornada.' : 'El kiosko digital no está admitiendo turnos en este momento. Solicite su voucher en el módulo de recepción.'"></span>
+        <!-- AVISO DE MODALIDAD ASISTIDA ACTIVA CUANDO ENTRA DESDE EL CELULAR -->
+        <template x-if="!esTablet && (kioskoModoUso === 'asistido' || kioskoModoUso === 'empleado')">
+          <div class="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs text-left">
+            <span class="font-bold block">Modalidad Asistida Activa</span>
+            <span class="text-[11px] text-blue-700 mt-1 block">La toma de turnos desde el celular no está habilitada. Por favor solicite su turno en el módulo de atención asistida.</span>
           </div>
         </template>
 
-        <button @click="generarTurno()" :disabled="isGenerating || !kioskoActivo || topeAlcanzado" type="button"
+        <!-- AVISO DE KIOSKO DESACTIVADO O TOPE ALCANZADO -->
+        <template x-if="!kioskoActivo || topeAlcanzado">
+          <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+            <span class="font-bold block" x-text="topeAlcanzado ? 'Límite de turnos alcanzado hoy' : 'Servicio pausado'"></span>
+            <span class="text-[11px] text-amber-700 mt-1 block" x-text="topeAlcanzado ? 'Se ha alcanzado el número máximo de turnos asignados para esta jornada.' : 'El servicio digital no está admitiendo turnos en este momento. Solicite su voucher físico.'"></span>
+          </div>
+        </template>
+
+        <button @click="generarTurno()" :disabled="isGenerating || !kioskoActivo || topeAlcanzado || (!esTablet && (kioskoModoUso === 'asistido' || kioskoModoUso === 'empleado'))" type="button"
                 title="Tomar mi turno" aria-label="Tomar mi turno"
                 class="btn-call flex items-center justify-center space-x-2.5">
           <template x-if="!isGenerating">
@@ -113,7 +121,7 @@
           <div>
             <span class="font-mono-num text-7xl font-black text-slate-900 tracking-tight block select-all"
                   x-text="formatTicket(ticketData.numero)">--</span>
-            <div class="mt-1 text-xs text-slate-500 font-medium">Módulo General de Matrículas</div>
+            <div class="mt-1 text-xs text-slate-500 font-medium">Atención de Matrículas 2026</div>
           </div>
 
           <div class="card-subtle grid grid-cols-2 divide-x divide-slate-200 py-3 px-2">
@@ -171,13 +179,14 @@
                 </template>
               </button>
 
-              <!-- Aviso de impresión automática activa -->
-              <template x-if="impresionAutomatica">
-                <div class="flex items-center justify-center gap-1.5 text-[11px] text-emerald-700 font-medium">
+              <!-- Aviso de estado de impresión -->
+              <template x-if="avisoImpresion">
+                <div class="flex items-center justify-center gap-1.5 text-[11px] font-medium p-2 rounded-lg"
+                     :class="avisoImpresion.includes('Aviso:') ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'text-emerald-700'">
                   <svg class="w-3.5 h-3.5 flex-shrink-0 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24-1.076-.673-2.13-1.27-3.104m12.1 0c-.597.974-1.03 2.028-1.27 3.104M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-18 0A2.25 2.25 0 015.25 14.25h13.5A2.25 2.25 0 0121 16.5m-18 0h18" />
                   </svg>
-                  <span>Comprobante enviado a la impresora</span>
+                  <span x-text="avisoImpresion"></span>
                 </div>
               </template>
 
@@ -258,6 +267,25 @@
       <section x-show="step === 'seguimiento'" class="space-y-5">
         <div class="inline-flex items-center justify-center px-3.5 py-1 rounded-full bg-blue-50 border border-blue-200">
           <span class="text-xs font-bold text-blue-700 tracking-wider uppercase">Seguimiento en Vivo</span>
+        </div>
+
+        <!-- INDICADOR DE ESTADO DE ACTUALIZACIÓN / CONEXIÓN TEMPORAL -->
+        <div x-show="estaActualizando || errorTemporalConexion" x-cloak class="flex items-center justify-center gap-2 text-[11px] font-medium"
+             :class="errorTemporalConexion ? 'text-amber-700' : 'text-slate-500'">
+          <template x-if="estaActualizando && !errorTemporalConexion">
+            <div class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"></path>
+              </svg>
+              <span>Actualizando estado...</span>
+            </div>
+          </template>
+          <template x-if="errorTemporalConexion">
+            <div class="flex items-center gap-1.5 bg-amber-50 border border-amber-200 px-3 py-1 rounded-lg">
+              <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              <span>Reconectando con el servidor... Conservando tu turno</span>
+            </div>
+          </template>
         </div>
 
         <div>

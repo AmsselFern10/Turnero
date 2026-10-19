@@ -100,35 +100,48 @@ module.exports = async function kioskoRoutes (fastify) {
         }
       })
 
-      // Impresión automática en modo tablet: no bloqueante, el turno ya está confirmado
+      // Impresión automática en modalidad asistida (tablet)
       if (esTablet) {
-        setImmediate(async () => {
-          try {
-            const { rows: cfgRows } = await fastify.db.query(
-              `SELECT clave, valor FROM configuracion
-               WHERE clave IN ('kiosko_impresion_automatica', 'impresora_activa', 'impresora_ip', 'impresora_puerto')`
-            )
-            const cfgMap = {}
-            for (const r of cfgRows) cfgMap[r.clave] = r.valor
+        try {
+          const { rows: cfgRows } = await fastify.db.query(
+            `SELECT clave, valor FROM configuracion
+             WHERE clave IN ('kiosko_impresion_automatica', 'impresora_activa', 'impresora_ip', 'impresora_puerto')`
+          )
+          const cfgMap = {}
+          for (const r of cfgRows) cfgMap[r.clave] = r.valor
 
-            if (cfgMap.kiosko_impresion_automatica !== 'true') return
-
+          if (cfgMap.kiosko_impresion_automatica === 'true') {
             const { imprimirTicketESCPOS } = require('./printer')
             const ahora = new Date()
-            await imprimirTicketESCPOS(fastify, {
-              numero:       resultado.numero,
-              formato:      `#${String(resultado.numero).padStart(3, '0')}`,
-              modulo:       'Modulo General de Matriculas',
-              tracking_url: resultado.tracking_url || '',
-              fecha: ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-              hora:  ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
-            })
-            fastify.log.info({ numero: resultado.numero }, '[Kiosko] Impresión automática OK')
-          } catch (printErr) {
-            // El turno ya existe; la impresión fallida solo se registra, no se propaga
-            fastify.log.warn({ code: printErr.code, message: printErr.message }, '[Kiosko] Impresión automática falló (turno preservado)')
+            try {
+              await imprimirTicketESCPOS(fastify, {
+                numero:       resultado.numero,
+                formato:      `#${String(resultado.numero).padStart(3, '0')}`,
+                modulo:       'Módulo de Matrículas',
+                tracking_url: resultado.tracking_url || '',
+                fecha: ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+                hora:  ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+              })
+              resultado.impresion = { ok: true, mensaje: 'Comprobante impreso de inmediato.' }
+              fastify.log.info({ numero: resultado.numero }, '[Kiosko] Impresión automática OK')
+            } catch (printErr) {
+              fastify.log.warn({ code: printErr.code, message: printErr.message }, '[Kiosko] Impresión automática falló (turno preservado)')
+              resultado.impresion = {
+                ok: false,
+                codigo: printErr.code || 'ERROR_IMPRESORA',
+                mensaje: printErr.code === 'IMPRESORA_INACTIVA' || printErr.code === 'IP_NO_CONFIGURADA'
+                  ? 'Impresora no configurada o inactiva en el sistema.'
+                  : printErr.code === 'ECONNREFUSED'
+                    ? 'No se pudo conectar a la impresora. Verifique que esté encendida.'
+                    : printErr.code === 'TIMEOUT'
+                      ? 'La impresora no respondió a tiempo.'
+                      : `Error de impresora: ${printErr.message}`
+              }
+            }
           }
-        })
+        } catch (cfgErr) {
+          fastify.log.warn({ cfgErr }, '[Kiosko] Error comprobando configuración de impresora')
+        }
       }
 
       return resultado
@@ -159,10 +172,35 @@ module.exports = async function kioskoRoutes (fastify) {
   fastify.post('/turnos', generarOpts, generarHandler)
 
   // ── GET /kiosko/mi-turno/:token — Alias de consulta de turno ──────────────
-  fastify.get('/mi-turno/:token', async (request, reply) => {
+  fastify.get('/mi-turno/:token', {
+    schema: {
+      params: {
+        type: 'object',
+        properties: { token: { type: 'string', minLength: 64, maxLength: 64 } }
+      }
+    }
+  }, async (request, reply) => {
     const { token } = request.params
+    const cacheKey = `mi_turno:${token}`
+
+    // Intentar servir desde cache Redis (TTL 4s)
+    try {
+      const cached = await fastify.redis.get(cacheKey)
+      if (cached) {
+        return reply.header('X-Cache', 'HIT').send(JSON.parse(cached))
+      }
+    } catch (_) { /* Redis fallo — continuar sin cache */ }
+
     const resultado = await consultarMiTurno(fastify, { token })
-    return reply.status(200).send(resultado)
+
+    // Guardar en cache 4 segundos (solo si el turno sigue en espera)
+    if (resultado.estado === 'esperando') {
+      try {
+        await fastify.redis.set(cacheKey, JSON.stringify(resultado), 'EX', 4)
+      } catch (_) {}
+    }
+
+    return reply.header('X-Cache', 'MISS').status(200).send(resultado)
   })
 
   // ── POST /kiosko/imprimir — Impresion directa ESC/POS a impresora de red ───

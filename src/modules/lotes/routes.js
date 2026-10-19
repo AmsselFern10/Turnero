@@ -224,7 +224,15 @@ module.exports = async function lotesRoutes (fastify) {
        JSON.stringify({ ultimo_numero_llamado: lote.ultimo_numero_llamado })]
     )
 
-    await fastify.broadcast('admin:all', 'lote_pausado', { lote })
+    await Promise.allSettled([
+      fastify.broadcast('admin:all', 'lote_pausado', { lote }),
+      // F-6: notificar a paneles de operadores que el lote ya no tiene turnos disponibles
+      fastify.broadcast('lote:activo', 'lote_pausado', {
+        lote,
+        proximo_numero:     null,
+        vouchers_restantes: 0
+      })
+    ])
 
     return reply.send({ lote, message: `Lote ${lote.numero_lote} pausado. Continúa desde el ${lote.ultimo_numero_llamado + 1} mañana.` })
   })
@@ -329,16 +337,12 @@ module.exports = async function lotesRoutes (fastify) {
         vouchers_restantes: Math.max(0, nuevo_numero_hasta - loteActualizado.ultimo_numero_llamado),
         modo:               'voucher_fisico'
       }),
+      // TV: notificar extensión para actualizar próximo número visible
       fastify.broadcast('tv:global', 'lote_extendido', {
         lote:                loteActualizado,
-        vouchers_agregados:  cantidadAdicionada
-      }),
-      fastify.broadcast('tv:global', 'proximo_actualizado', {
-        lote:               loteActualizado.numero_lote,
-        ultimo_llamado:     loteActualizado.ultimo_numero_llamado,
-        proximo_numero:     loteActualizado.ultimo_numero_llamado < nuevo_numero_hasta ? loteActualizado.ultimo_numero_llamado + 1 : null,
-        vouchers_restantes: Math.max(0, nuevo_numero_hasta - loteActualizado.ultimo_numero_llamado),
-        modo:               'voucher_fisico'
+        vouchers_agregados:  cantidadAdicionada,
+        proximo_numero:      loteActualizado.ultimo_numero_llamado < nuevo_numero_hasta ? loteActualizado.ultimo_numero_llamado + 1 : null,
+        vouchers_restantes:  Math.max(0, nuevo_numero_hasta - loteActualizado.ultimo_numero_llamado)
       })
     ])
 
@@ -373,7 +377,15 @@ module.exports = async function lotesRoutes (fastify) {
        JSON.stringify({ ultimo_numero_llamado: lote.ultimo_numero_llamado })]
     )
 
-    await fastify.broadcast('admin:all', 'lote_cerrado', { lote })
+    await Promise.allSettled([
+      fastify.broadcast('admin:all', 'lote_cerrado', { lote }),
+      // F-7: notificar a paneles de operadores que el lote fue cerrado definitivamente
+      fastify.broadcast('lote:activo', 'lote_cerrado', {
+        lote,
+        proximo_numero:     null,
+        vouchers_restantes: 0
+      })
+    ])
 
     return reply.send({
       lote,
@@ -502,11 +514,21 @@ module.exports = async function lotesRoutes (fastify) {
       await client.query('COMMIT')
 
       // Notificar al panel admin en tiempo real
-      await fastify.broadcast('admin:all', 'lote_contador_ajustado', {
-        lote: loteActualizado,
-        valor_anterior: lote.ultimo_numero_llamado,
-        motivo
-      })
+      await Promise.allSettled([
+        fastify.broadcast('admin:all', 'lote_contador_ajustado', {
+          lote: loteActualizado,
+          valor_anterior: lote.ultimo_numero_llamado,
+          motivo
+        }),
+        // Notificar a paneles de operadores para actualizar próximo número y vouchers restantes
+        fastify.broadcast('lote:activo', 'proximo_actualizado', {
+          lote:               loteActualizado.numero_lote,
+          ultimo_llamado:     nuevo_ultimo_llamado,
+          proximo_numero:     nuevo_ultimo_llamado < loteActualizado.numero_hasta ? nuevo_ultimo_llamado + 1 : null,
+          vouchers_restantes: Math.max(0, loteActualizado.numero_hasta - nuevo_ultimo_llamado),
+          modo:               'voucher_fisico'
+        })
+      ])
 
       return reply.send({
         lote: loteActualizado,

@@ -159,15 +159,16 @@
         <div class="tv-hist-grid">
           <template x-for="i in [0, 1, 2, 3]" :key="i">
             <div
-              class="card flex-1 px-4 sm:px-5 md:px-6 py-2 sm:py-3 flex items-center justify-between transition-opacity duration-300 min-w-0 overflow-hidden gap-3"
-              :class="{ 'opacity-40': !historial[i] }">
+              class="card bg-white flex-1 px-4 sm:px-5 md:px-6 py-2 sm:py-3 flex items-center justify-between min-w-0 overflow-hidden gap-3">
               <!-- Número de turno en historial -->
               <div
-                class="tv-hist-num font-mono-num font-bold text-slate-900 tracking-tight flex-shrink-0 whitespace-nowrap"
+                class="tv-hist-num font-mono-num font-bold text-slate-900 tracking-tight flex-shrink-0 whitespace-nowrap transition-colors"
+                :class="{ 'text-slate-300': !historial[i] }"
                 x-text="historial[i] ? formatTicket(historial[i].numero) : '--'">--</div>
 
               <!-- Mesa e indicador de tiempo armónico y proporcionado -->
-              <div class="flex items-center space-x-2 sm:space-x-3 min-w-0 ml-2">
+              <div class="flex items-center space-x-2 sm:space-x-3 min-w-0 ml-2 transition-opacity"
+                :class="{ 'opacity-40': !historial[i] }">
                 <span class="tv-hist-mesa font-mono-num font-bold whitespace-nowrap flex-shrink-0"
                   x-text="historial[i] ? ('MESA ' + historial[i].mesa_numero) : '--'">--</span>
                 <div

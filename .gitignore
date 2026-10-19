@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+ngrok.yml
 
 # Scratch y temporales
 scratch/
@@ -23,3 +24,8 @@ data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Uploads de usuarios
+src/public/assets/uploads/*
+!src/public/assets/uploads/.gitkeep
+

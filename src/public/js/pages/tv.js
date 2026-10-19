@@ -29,7 +29,7 @@
  */
 
 import { TurneroWSClient } from '../ws-client.js';
-import { playCallChime } from '../utils.js';
+import { playCallChime, aplicarFondoPersonalizado } from '../utils.js';
 import { speakCall, setSpeechEnabled, initSpeech } from '../audio/speech.js';
 
 // ── Configuración central de tiempos (ms) ────────────────────────────────────
@@ -190,6 +190,9 @@ export function tvView() {
             this._aplicarEscalaSecundaria(data.tv_escala_secundaria, true);
           } else if (data.tv_escala_turnos !== undefined) {
             this._aplicarEscalaSecundaria(data.tv_escala_turnos, true);
+          }
+          if (data.fondo_imagen_url !== undefined && data.fondo_imagen_activa !== undefined) {
+            aplicarFondoPersonalizado(data.fondo_imagen_url, data.fondo_imagen_activa);
           }
         }
       } catch (_) {
@@ -391,6 +394,35 @@ export function tvView() {
         if (p.clave === 'modo_generacion_turnos') {
           this.modo = p.valor;
           this._solicitarSnapshot();
+        }
+        // F-9: kiosko_web_activo también cambia el modo de la TV
+        if (p.clave === 'kiosko_web_activo') {
+          this.modo = p.valor === 'true' ? 'kiosko_web' : 'voucher_fisico';
+        }
+        if (p.clave === 'fondo_imagen_url' || p.clave === 'fondo_imagen_activa') {
+          this._cargarConfiguracionPublica();
+        }
+      });
+
+      // F-5: Nuevo lote activado — solicitar snapshot para sincronizar próximo número y modo
+      this._ws.on('lote_activado', () => {
+        this._solicitarSnapshot();
+      });
+
+      // F-6/F-7: Lote pausado o cerrado — la TV es display pasivo, no llama turnos.
+      // Solo sincronizar estado vía snapshot para que el próximo número quede en null.
+      this._ws.on('lote_pausado', () => {
+        this.proximoNumero = null;
+      });
+      this._ws.on('lote_cerrado', () => {
+        this.proximoNumero = null;
+      });
+
+      // Extensión en caliente del lote activo — actualizar próximo número visible en pantalla
+      this._ws.on('lote_extendido', (p) => {
+        if (!p) return;
+        if (p.proximo_numero !== undefined) {
+          this.proximoNumero = p.proximo_numero;
         }
       });
 

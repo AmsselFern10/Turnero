@@ -120,7 +120,9 @@ module.exports = async function turnosRoutes (fastify) {
               // Kiosko público: un solo canal de aviso para todos los smartphones en espera
               fastify.broadcast('kiosko:publico', 'llamados', {
                 ultimo_llamado: {
+                  id:             turno.id,
                   numero:         turno.numero,
+                  origen:         turno.origen,
                   mesa_numero:    turno.mesa_numero,
                   mesa_nombre:    turno.mesa_nombre,
                   llamado_en:     turno.llamado_en
@@ -130,6 +132,25 @@ module.exports = async function turnosRoutes (fastify) {
                 turnos_esperando: vouchers_restantes
               })
             ])
+
+            if (turno.origen === 'kiosko_web') {
+              try {
+                const { rows: [tkRow] } = await fastify.db.query(
+                  `SELECT token_consulta FROM turnos WHERE id = $1 LIMIT 1`,
+                  [turno.id]
+                )
+                if (tkRow?.token_consulta) {
+                  try { if (fastify.redis?.del) await fastify.redis.del(`mi_turno:${tkRow.token_consulta}`) } catch (_) {}
+                  await fastify.broadcast(`kiosko:${tkRow.token_consulta}`, 'tu_turno_llamado', {
+                    turno_id:    turno.id,
+                    numero:      turno.numero,
+                    mesa_numero: turno.mesa_numero,
+                    mesa_nombre: turno.mesa_nombre,
+                    llamado_en:  turno.llamado_en
+                  })
+                }
+              } catch (_) {}
+            }
           } catch (broadcastErr) {
             fastify.log.error({ err: broadcastErr, mesa_id, turno_id: turno.id }, 'Error no fatal en broadcast WS post-commit')
           }
@@ -185,6 +206,10 @@ module.exports = async function turnosRoutes (fastify) {
       operadorId,
       mesaId: mesa_id
     })
+
+    if (turno.token_consulta) {
+      try { if (fastify.redis?.del) await fastify.redis.del(`mi_turno:${turno.token_consulta}`) } catch (_) {}
+    }
 
     // Notificar al admin y actualizar listas de rezagados en operadores
     await Promise.allSettled([
@@ -307,7 +332,9 @@ module.exports = async function turnosRoutes (fastify) {
             // Kiosko público: avisa al celular del estudiante (si origen fue kiosko_web)
             fastify.broadcast('kiosko:publico', 'llamados', {
               ultimo_llamado: {
+                id:             turno.id,
                 numero:         turno.numero,
+                origen:         turno.origen,
                 mesa_numero:    turno.mesa_numero,
                 mesa_nombre:    turno.mesa_nombre,
                 llamado_en:     turno.llamado_en
@@ -325,6 +352,25 @@ module.exports = async function turnosRoutes (fastify) {
               mesa_numero:  turno.mesa_numero
             })
           ])
+
+          if (turno.origen === 'kiosko_web') {
+            try {
+              const { rows: [tkRow] } = await fastify.db.query(
+                `SELECT token_consulta FROM turnos WHERE id = $1 LIMIT 1`,
+                [turno.id]
+              )
+              if (tkRow?.token_consulta) {
+                try { if (fastify.redis?.del) await fastify.redis.del(`mi_turno:${tkRow.token_consulta}`) } catch (_) {}
+                await fastify.broadcast(`kiosko:${tkRow.token_consulta}`, 'tu_turno_llamado', {
+                  turno_id:    turno.id,
+                  numero:      turno.numero,
+                  mesa_numero: turno.mesa_numero,
+                  mesa_nombre: turno.mesa_nombre,
+                  llamado_en:  turno.llamado_en
+                })
+              }
+            } catch (_) {}
+          }
         } catch (bErr) {
           fastify.log.error({ err: bErr, mesa_id, turno_id: turno.id }, 'Error en broadcast de rezagado post-commit')
         }
@@ -712,7 +758,7 @@ module.exports = async function turnosRoutes (fastify) {
   // ── GET /turnos/configuracion-publica — Parámetros públicos para TV y Kiosko ──
   fastify.get('/configuracion-publica', async (request, reply) => {
     const { rows } = await fastify.db.query(
-      `SELECT clave, valor FROM configuracion WHERE clave IN ('voz_anuncio_activa', 'kiosko_web_activo', 'alerta_vouchers_restantes', 'tv_escala_turnos', 'tv_escala_principal', 'tv_escala_secundaria')`
+      `SELECT clave, valor FROM configuracion WHERE clave IN ('voz_anuncio_activa', 'kiosko_web_activo', 'alerta_vouchers_restantes', 'tv_escala_turnos', 'tv_escala_principal', 'tv_escala_secundaria', 'fondo_imagen_url', 'fondo_imagen_activa')`
     )
     const configMap = {
       voz_anuncio_activa: true,
@@ -720,7 +766,9 @@ module.exports = async function turnosRoutes (fastify) {
       alerta_vouchers_restantes: 20,
       tv_escala_turnos: 100,
       tv_escala_principal: 100,
-      tv_escala_secundaria: 100
+      tv_escala_secundaria: 100,
+      fondo_imagen_url: '',
+      fondo_imagen_activa: false
     }
     for (const r of rows) {
       if (r.clave === 'voz_anuncio_activa') configMap.voz_anuncio_activa = r.valor !== 'false'
@@ -729,6 +777,8 @@ module.exports = async function turnosRoutes (fastify) {
       else if (r.clave === 'tv_escala_turnos') configMap.tv_escala_turnos = parseInt(r.valor, 10) || 100
       else if (r.clave === 'tv_escala_principal') configMap.tv_escala_principal = parseInt(r.valor, 10) || 100
       else if (r.clave === 'tv_escala_secundaria') configMap.tv_escala_secundaria = parseInt(r.valor, 10) || 100
+      else if (r.clave === 'fondo_imagen_url') configMap.fondo_imagen_url = r.valor || ''
+      else if (r.clave === 'fondo_imagen_activa') configMap.fondo_imagen_activa = r.valor === 'true'
     }
     if (!rows.some(r => r.clave === 'tv_escala_principal')) {
       configMap.tv_escala_principal = configMap.tv_escala_turnos

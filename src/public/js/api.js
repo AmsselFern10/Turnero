@@ -222,7 +222,7 @@ class ApiClient {
         if (responseData.error) {
           if (typeof responseData.error === 'object') {
             // Formato del contrato: { error: { codigo, mensaje } }
-            codigo  = responseData.error.codigo  || codigo;
+            codigo = responseData.error.codigo || codigo;
             mensaje = responseData.error.mensaje || mensaje;
           } else if (typeof responseData.error === 'string') {
             // Legado: { error: 'texto' }
@@ -248,10 +248,10 @@ class ApiClient {
       }
 
       const httpError = new Error(mensaje);
-      httpError.status  = response.status;
-      httpError.codigo  = codigo;
+      httpError.status = response.status;
+      httpError.codigo = codigo;
       httpError.mensaje = mensaje;   // alias para compatibilidad con el contrato { codigo, mensaje }
-      httpError.data    = responseData;
+      httpError.data = responseData;
 
       // Extraer Retry-After del servidor (segundos) para que el cliente espere el tiempo correcto
       // antes de reintentar — evita "thundering herd" al volver de sobrecarga.
@@ -322,7 +322,7 @@ class ApiClient {
     });
     if (!response.ok) {
       const err = new Error(`Error al descargar: HTTP ${response.status}`);
-      err.status  = response.status;
+      err.status = response.status;
       err.mensaje = err.message;
       throw err;
     }

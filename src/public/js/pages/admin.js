@@ -91,14 +91,18 @@ export function adminView() {
       cfgAlertaVouchers:    '',
       cfgZonaHoraria:       '',
       cfgKioskoTope:        '',
-      cfgImpresoraPuerto:   ''
+      cfgKioskoUrlBase:     '',
+      cfgKioskoUrlPublica:  '',
+      cfgImpresoraPuerto:   '',
+      cfgFondoUrl:          ''
     },
 
     subTabConfig: 'todos',
     _guardandoSeccion: {
       kiosko: false,
       impresora: false,
-      sistema: false
+      sistema: false,
+      fondo: false
     },
     _savingKeys: {},
 
@@ -116,12 +120,18 @@ export function adminView() {
     modalCambioLote:       false,
     modalConfirmarKiosko:  false,
     modalConfigKiosko:     false,
+    modalCartelQR:         false,
     modalLoteAgotado:      false,   // Modal cuando un lote se agota
     loteAgotadoInfo:       null,    // Info del lote agotado para mostrar en modal
     kioskoConfigEditMode:  false,
     lotePendienteActivar:  null,
     lotePausado:           null,
     nuevoLoteHasta:        500,
+
+    archivoFondoSeleccionado: null,
+    _subiendoFondo:           false,
+    _togglingFondo:           false,
+    _imprimiendoPrueba:       false,
 
     modalAjustarContador:  false,
     ajusteContador: {
@@ -165,8 +175,9 @@ export function adminView() {
       voz_anuncio_activa:           true,
       mostrar_estimado_espera:      true,
       kiosko_tope_diario:           0,
-      kiosko_modo_uso:              'empleado',
+      kiosko_modo_uso:              'asistido',
       kiosko_url_base:              '',
+      kiosko_url_publica:           '',
       kiosko_impresion_automatica:  false,
       impresora_ip:                 '',
       impresora_puerto:             9100,
@@ -174,7 +185,9 @@ export function adminView() {
       tv_escala_principal:          100,
       tv_escala_secundaria:         100,
       tv_escala_turnos:             100,
-      zona_horaria:                 'America/Tegucigalpa'
+      zona_horaria:                 'America/Tegucigalpa',
+      fondo_imagen_url:             '',
+      fondo_imagen_activa:          false
     },
     avisoGuardadoPrincipal:  false,
     avisoGuardadoSecundaria: false,
@@ -183,7 +196,7 @@ export function adminView() {
     _debounceEscalaTv: null,
     kioskoForm: {
       tope_diario:      0,
-      modo_uso:         'empleado',
+      modo_uso:         'asistido',
       impresora_activa: false,
       impresora_ip:     '',
       impresora_puerto: 9100
@@ -326,11 +339,29 @@ export function adminView() {
       return Number.isInteger(n) && n >= 1 && n <= 500;
     },
 
+    get kioskoHref() {
+      const modo = this.config?.kiosko_modo_uso;
+      return (modo === 'asistido' || modo === 'empleado') ? '/kiosko.html?modo=tablet' : '/kiosko.html';
+    },
+
+    get urlEstudianteQR() {
+      const base = (this.config?.kiosko_url_publica || this.config?.kiosko_url_base || '').trim();
+      if (base) {
+        const urlLimpia = base.replace(/\/+$/, '');
+        if (urlLimpia.endsWith('/kiosko.html')) {
+          return urlLimpia;
+        }
+        return `${urlLimpia}/kiosko.html`;
+      }
+      return typeof window !== 'undefined' ? `${window.location.origin}/kiosko.html` : '/kiosko.html';
+    },
+
     get cfgKioskoValida() {
       const tope = Number(this.config?.kiosko_tope_diario);
       if (isNaN(tope) || !Number.isInteger(tope) || tope < 0 || tope > 99999) return false;
       const modo = this.config?.kiosko_modo_uso;
-      if (modo !== 'estudiante' && modo !== 'empleado') return false;
+      if (modo !== 'estudiante' && modo !== 'empleado' && modo !== 'asistido') return false;
+      if (this.erroresValidacion.cfgKioskoUrlBase || this.erroresValidacion.cfgKioskoUrlPublica) return false;
       return true;
     },
 
@@ -582,6 +613,34 @@ export function adminView() {
       return true;
     },
 
+    validarUrlKiosko(url) {
+      if (!url || !url.trim()) return '';
+      const u = url.trim();
+      if (!/^https?:\/\//i.test(u)) {
+        return 'Debe comenzar con http:// o https:// (ej: http://192.168.1.100:3000)';
+      }
+      try {
+        const parsed = new URL(u);
+        const host = parsed.hostname.toLowerCase();
+        if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
+          return 'No use localhost ni 127.0.0.1: solo funcionan dentro de esta PC. Otros dispositivos no podrán conectarse.';
+        }
+      } catch (_) {
+        return 'La URL ingresada no tiene un formato válido.';
+      }
+      return '';
+    },
+
+    validarKioskoUrlBase() {
+      this.erroresValidacion.cfgKioskoUrlBase = this.validarUrlKiosko(this.config?.kiosko_url_base);
+      return !this.erroresValidacion.cfgKioskoUrlBase;
+    },
+
+    validarKioskoUrlPublica() {
+      this.erroresValidacion.cfgKioskoUrlPublica = this.validarUrlKiosko(this.config?.kiosko_url_publica);
+      return !this.erroresValidacion.cfgKioskoUrlPublica;
+    },
+
     validarImpresoraPuerto() {
       const val = this.config?.impresora_puerto;
       if (val === null || val === undefined || isNaN(Number(val))) {
@@ -813,8 +872,9 @@ export function adminView() {
         this.config.voz_anuncio_activa        = c.voz_anuncio_activa !== 'false';
         this.config.mostrar_estimado_espera   = c.mostrar_estimado_espera !== 'false';
         this.config.kiosko_tope_diario        = parseInt(c.kiosko_tope_diario || '0', 10) || 0;
-        this.config.kiosko_modo_uso           = c.kiosko_modo_uso || 'empleado';
+        this.config.kiosko_modo_uso           = c.kiosko_modo_uso || 'asistido';
         this.config.kiosko_url_base           = c.kiosko_url_base || '';
+        this.config.kiosko_url_publica        = c.kiosko_url_publica || '';
         this.config.impresora_ip              = c.impresora_ip     || '';
         this.config.impresora_puerto          = parseInt(c.impresora_puerto || '9100', 10) || 9100;
         this.config.impresora_activa          = c.impresora_activa === 'true' || c.impresora_activa === true;
@@ -823,6 +883,8 @@ export function adminView() {
         this.config.tv_escala_secundaria      = parseInt(c.tv_escala_secundaria || String(escalaBase), 10) || 100;
         this.config.tv_escala_turnos          = this.config.tv_escala_principal;
         this.config.zona_horaria              = c.zona_horaria || 'America/Tegucigalpa';
+        this.config.fondo_imagen_url          = c.fondo_imagen_url || '';
+        this.config.fondo_imagen_activa       = c.fondo_imagen_activa === 'true' || c.fondo_imagen_activa === true;
       }
       this._configSnapshot = { ...this.config };
     },
@@ -1614,6 +1676,8 @@ export function adminView() {
         });
         return;
       }
+      this.validarKioskoUrlBase();
+      this.validarKioskoUrlPublica();
       if (!this.validarKioskoTope() || !this.cfgKioskoValida) return;
 
       if (this._guardandoSeccion.kiosko) return;
@@ -1622,6 +1686,7 @@ export function adminView() {
       const tope = parseInt(this.config.kiosko_tope_diario, 10);
       const modo = this.config.kiosko_modo_uso;
       const urlBase = (this.config.kiosko_url_base || '').trim();
+      const urlPublica = (this.config.kiosko_url_publica || '').trim();
       const impresionAuto = this.config.kiosko_impresion_automatica ? 'true' : 'false';
 
       try {
@@ -1629,13 +1694,14 @@ export function adminView() {
           api.patch('/admin/configuracion/kiosko_tope_diario',           { valor: String(tope) }),
           api.patch('/admin/configuracion/kiosko_modo_uso',              { valor: modo }),
           api.patch('/admin/configuracion/kiosko_url_base',              { valor: urlBase }),
+          api.patch('/admin/configuracion/kiosko_url_publica',           { valor: urlPublica }),
           api.patch('/admin/configuracion/kiosko_impresion_automatica',  { valor: impresionAuto })
         ]);
         this._configSnapshot = { ...this.config };
         this.notificar({
           tipo: 'success',
           titulo: 'Ajustes de Kiosko Guardados',
-          mensaje: 'Modalidad de uso, límite diario, URL de acceso e impresión automática actualizados correctamente.'
+          mensaje: 'Modalidad de uso, límite diario, URLs de acceso e impresión automática actualizados correctamente.'
         });
       } catch (err) {
         this.notificar({
@@ -1645,6 +1711,87 @@ export function adminView() {
         });
       } finally {
         this._guardandoSeccion.kiosko = false;
+      }
+    },
+
+    /**
+     * Muestra el modal con el código QR grande para estudiantes
+     */
+    abrirCartelQR() {
+      this.modalCartelQR = true;
+      this.$nextTick(() => {
+        this.renderizarQrEstudiante();
+      });
+    },
+
+    /**
+     * Renderiza el código QR en alta resolución para proyección o impresión
+     */
+    renderizarQrEstudiante() {
+      const container = document.getElementById('cartel-qr-code');
+      if (!container) return;
+      container.innerHTML = '';
+      if (typeof window.QRCode !== 'undefined') {
+        new window.QRCode(container, {
+          text: this.urlEstudianteQR,
+          width: 240,
+          height: 240,
+          colorDark: '#0f172a',
+          colorLight: '#ffffff',
+          correctLevel: window.QRCode.CorrectLevel.H
+        });
+      }
+    },
+
+    /**
+     * Dispara la impresión del cartel para estudiantes
+     */
+    imprimirCartel() {
+      window.print();
+    },
+
+    /**
+     * Envía un ticket de prueba (#000) con QR a la impresora térmica LAN
+     */
+    async imprimirTicketPrueba() {
+      if (this._imprimiendoPrueba) return;
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Sin conexión',
+          mensaje: 'Sin conexión con el servidor. No se puede enviar la orden de impresión.'
+        });
+        return;
+      }
+
+      const ip = (this.config.impresora_ip || '').trim();
+      const puerto = this.config.impresora_puerto || 9100;
+
+      if (!ip) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'IP requerida',
+          mensaje: 'Ingrese la dirección IP de la impresora antes de imprimir la prueba.'
+        });
+        return;
+      }
+
+      this._imprimiendoPrueba = true;
+      try {
+        const res = await api.post('/admin/impresora/probar', { ip, puerto });
+        this.notificar({
+          tipo: 'success',
+          titulo: 'Ticket de Prueba Enviado',
+          mensaje: res.mensaje || 'Se envió el ticket #000 a la impresora térmica LAN.'
+        });
+      } catch (err) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Fallo al Imprimir Prueba',
+          mensaje: err.mensaje || err.message || 'No se pudo comunicar con la impresora térmica en red.'
+        });
+      } finally {
+        this._imprimiendoPrueba = false;
       }
     },
 
@@ -1731,6 +1878,201 @@ export function adminView() {
         });
       } finally {
         this._guardandoSeccion.sistema = false;
+      }
+    },
+
+    validarFondoUrl() {
+      const url = (this.config.fondo_imagen_url || '').trim();
+      this.erroresValidacion.cfgFondoUrl = '';
+      if (url.length > 1000) {
+        this.erroresValidacion.cfgFondoUrl = 'La dirección no debe superar los 1000 caracteres. Para imágenes de su equipo, use el botón Examinar... para subirlas automáticamente al servidor.';
+        return false;
+      }
+      if (url.length > 0) {
+        if (!/^https?:\/\//i.test(url) && !url.startsWith('/') && !url.startsWith('data:image/')) {
+          this.erroresValidacion.cfgFondoUrl = 'Ingrese una URL válida (http://, https:// o ruta local /assets/...).';
+          return false;
+        }
+      }
+      return true;
+    },
+
+    async toggleFondoActivo() {
+      if (this._togglingFondo) return;
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Sin conexión',
+          mensaje: 'Sin conexión con el servidor. No se puede cambiar la configuración hasta restablecer la red.'
+        });
+        return;
+      }
+      const nuevoEstado = !this.config.fondo_imagen_activa;
+      this.config.fondo_imagen_activa = nuevoEstado;
+      this._togglingFondo = true;
+      try {
+        await api.patch('/admin/configuracion/fondo_imagen_activa', { valor: nuevoEstado ? 'true' : 'false' });
+        if (this._configSnapshot) {
+          this._configSnapshot.fondo_imagen_activa = nuevoEstado;
+        }
+        this.notificar({
+          tipo: 'success',
+          titulo: nuevoEstado ? 'Fondo de Pantalla Activado' : 'Fondo de Pantalla Desactivado',
+          mensaje: nuevoEstado 
+            ? 'El fondo institucional se activó en vivo en todas las pantallas.' 
+            : 'El fondo institucional se desactivó en vivo (las pantallas vuelven al fondo estándar).'
+        });
+      } catch (err) {
+        this.config.fondo_imagen_activa = !nuevoEstado;
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Error al cambiar fondo',
+          mensaje: err.mensaje || err.message || 'No se pudo actualizar el estado del fondo en el servidor.'
+        });
+      } finally {
+        this._togglingFondo = false;
+      }
+    },
+
+    async guardarFondoParams() {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Sin conexión',
+          mensaje: 'Sin conexión con el servidor. No se pueden guardar cambios hasta restablecer la red.'
+        });
+        return;
+      }
+      if (!this.validarFondoUrl()) return;
+
+      if (this._guardandoSeccion.fondo) return;
+      this._guardandoSeccion.fondo = true;
+
+      const url = (this.config.fondo_imagen_url || '').trim();
+      const activa = this.config.fondo_imagen_activa ? 'true' : 'false';
+
+      try {
+        await Promise.all([
+          api.patch('/admin/configuracion/fondo_imagen_url',    { valor: url }),
+          api.patch('/admin/configuracion/fondo_imagen_activa', { valor: activa })
+        ]);
+        this._configSnapshot = { ...this.config };
+        this.notificar({
+          tipo: 'success',
+          titulo: 'Fondo de Pantalla Guardado',
+          mensaje: 'Los parámetros de fondo de pantalla se guardaron y sincronizaron con todas las pantallas.'
+        });
+      } catch (err) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Error al guardar fondo',
+          mensaje: err.mensaje || err.message || 'No se pudieron guardar los parámetros de fondo.'
+        });
+      } finally {
+        this._guardandoSeccion.fondo = false;
+      }
+    },
+
+    async seleccionarArchivoFondo(event) {
+      const file = event?.target?.files?.[0];
+      if (!file) return;
+
+      if (!file.type.startsWith('image/')) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Archivo no válido',
+          mensaje: 'El archivo seleccionado debe ser una imagen válida (JPG, PNG, WebP o SVG).'
+        });
+        if (event.target) event.target.value = '';
+        return;
+      }
+
+      if (file.size > 10 * 1024 * 1024) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Archivo muy grande',
+          mensaje: 'La imagen no debe superar los 10 MB de tamaño.'
+        });
+        if (event.target) event.target.value = '';
+        return;
+      }
+
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Sin conexión',
+          mensaje: 'Sin conexión con el servidor. No se puede subir el archivo hasta restablecer la red.'
+        });
+        if (event.target) event.target.value = '';
+        return;
+      }
+
+      this._subiendoFondo = true;
+      this.erroresValidacion.cfgFondoUrl = '';
+
+      const reader = new FileReader();
+      reader.onerror = () => {
+        this._subiendoFondo = false;
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Error de lectura',
+          mensaje: 'No se pudo leer el archivo seleccionado de su equipo.'
+        });
+      };
+      reader.onload = async (e) => {
+        try {
+          const res = await api.post('/admin/configuracion/subir-fondo', {
+            data: e.target.result,
+            nombre: file.name,
+            activar: true
+          });
+
+          if (res && res.url) {
+            this.config.fondo_imagen_url = res.url;
+            this.config.fondo_imagen_activa = true;
+            if (this._configSnapshot) {
+              this._configSnapshot.fondo_imagen_url = res.url;
+              this._configSnapshot.fondo_imagen_activa = true;
+            }
+            const tamanoKB = Math.round(file.size / 1024);
+            const tamanoTexto = tamanoKB > 1024 ? `${(tamanoKB / 1024).toFixed(1)} MB` : `${tamanoKB} KB`;
+            this.archivoFondoSeleccionado = {
+              nombre: file.name,
+              url: res.url,
+              tamanoTexto
+            };
+
+            this.notificar({
+              tipo: 'success',
+              titulo: 'Fondo Guardado y Activado',
+              mensaje: `La imagen "${file.name}" se guardó en el servidor y ya está activa en todas las pantallas.`
+            });
+          }
+        } catch (err) {
+          this.notificar({
+            tipo: 'error',
+            titulo: 'Error al subir imagen',
+            mensaje: err.mensaje || err.message || 'No se pudo guardar la imagen en el servidor.'
+          });
+        } finally {
+          this._subiendoFondo = false;
+          if (event.target) event.target.value = '';
+        }
+      };
+      reader.readAsDataURL(file);
+    },
+
+    cancelarArchivoFondo() {
+      this.archivoFondoSeleccionado = null;
+      const el = document.getElementById('input-archivo-fondo');
+      if (el) el.value = '';
+      this.config.fondo_imagen_url = this._configSnapshot?.fondo_imagen_url || '';
+    },
+
+    async subirArchivoFondo() {
+      // Método de compatibilidad auxiliar
+      if (this.archivoFondoSeleccionado?.file) {
+        await this.seleccionarArchivoFondo({ target: { files: [this.archivoFondoSeleccionado.file] } });
       }
     },
 

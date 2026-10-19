@@ -36,9 +36,11 @@ const userSockets = new Map()
 /** @type {Map<string, number>} canal → último número de secuencia monotónico */
 const canalSeqs = new Map()
 
-// Caché en memoria para snapshots de TV (evita N+1 en reconexiones masivas - WS-012)
+// Caché en memoria para snapshots de TV y Kiosko (evita N+1 en reconexiones masivas - WS-012)
 let snapshotCacheTv = null
 let snapshotCacheTvTime = 0
+let snapshotCacheKiosko = null
+let snapshotCacheKioskoTime = 0
 const SNAPSHOT_CACHE_TTL = 3000 // 3 segundos
 
 /**
@@ -379,8 +381,19 @@ async function enviarSnapshot (ws, fastify, user) {
       return
     }
 
-    // 4. Canal público Kiosko para smartphones
+    // 4. Canal público Kiosko para smartphones (con caché rápida de 3s para evitar N+1 tras reconexión masiva)
     if (user.canal === 'kiosko:publico') {
+      if (snapshotCacheKiosko && (now - snapshotCacheKioskoTime < SNAPSHOT_CACHE_TTL)) {
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({
+            tipo: 'snapshot',
+            payload: snapshotCacheKiosko,
+            timestamp: new Date().toISOString()
+          }))
+        }
+        return
+      }
+
       const { rows } = await fastify.db.query(
         `SELECT
            (SELECT json_agg(h) FROM (
@@ -400,16 +413,21 @@ async function enviarSnapshot (ws, fastify, user) {
       const ultimosLlamados = data.ultimos_llamados || []
       const ultimoLlamado = ultimosLlamados.length > 0 ? ultimosLlamados[0] : null
 
+      const payload = {
+        ultimo_llamado: ultimoLlamado,
+        ultimos_llamados: ultimosLlamados,
+        mesas_activas: data.mesas_activas || 0,
+        turnos_esperando: data.turnos_esperando || 0,
+        proximo_numero: data.proximo_numero || null
+      }
+
+      snapshotCacheKiosko = payload
+      snapshotCacheKioskoTime = now
+
       if (ws.readyState === 1) {
         ws.send(JSON.stringify({
           tipo: 'snapshot',
-          payload: {
-            ultimo_llamado: ultimoLlamado,
-            ultimos_llamados: ultimosLlamados,
-            mesas_activas: data.mesas_activas || 0,
-            turnos_esperando: data.turnos_esperando || 0,
-            proximo_numero: data.proximo_numero || null
-          },
+          payload,
           timestamp: new Date().toISOString()
         }))
       }
@@ -625,6 +643,12 @@ async function hubPlugin (fastify) {
 
   // ── Helper global fastify.broadcast con degradación local (RNF-DIS-04) ─────
   fastify.decorate('broadcast', async function (canal, tipo, payload) {
+    // Invalidar cachés de snapshot si el evento altera el estado visible
+    if (canal === 'tv:global' || canal === 'kiosko:publico' || tipo === 'llamados' || tipo === 'nuevo_llamado' || tipo === 'turno_llamado') {
+      snapshotCacheTv = null
+      snapshotCacheKiosko = null
+    }
+
     // 1. Difundir SIEMPRE localmente en memoria (Garantiza entrega en LAN aún con Redis caído)
     const seq = broadcastLocal(canal, tipo, payload, null, fastify.log)
 

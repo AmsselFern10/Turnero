@@ -258,3 +258,61 @@ export function showToast({ message, type = 'info', duration = 3500 }) {
     }, 220);
   }, duration);
 }
+
+/**
+ * Aplica o remueve la imagen de fondo personalizada al elemento body.
+ * Modifica exclusivamente el fondo del lienzo general (--bg-app)
+ * preservando intactas las tarjetas blancas (.card), controles, header y footer.
+ * @param {string} url - URL de la imagen
+ * @param {boolean|string} activo - Si está activado o no
+ */
+export function aplicarFondoPersonalizado(url, activo) {
+  if (typeof document === 'undefined') return;
+  const body = document.body;
+  if (!body) return;
+
+  const urlValida = typeof url === 'string' && url.trim().length > 0;
+  const estaActivo = (activo === true || activo === 'true' || activo === 1 || activo === '1');
+
+  if (estaActivo && urlValida) {
+    const cleanUrl = url.trim().replace(/"/g, '\\"');
+    body.style.setProperty('--bg-custom-image', `url("${cleanUrl}")`);
+    body.classList.add('has-custom-bg');
+  } else {
+    body.style.removeProperty('--bg-custom-image');
+    body.classList.remove('has-custom-bg');
+  }
+}
+
+/**
+ * Consulta la configuración pública y aplica el fondo institucional si está activo.
+ * Se suscribe opcionalmente al cliente WebSocket para sincronización en caliente.
+ * @param {Object} [wsClient] - Cliente WebSocket opcional para escuchar 'config_actualizada'
+ */
+export async function initFondoPersonalizado(wsClient = null) {
+  if (typeof window === 'undefined') return;
+
+  async function actualizar() {
+    try {
+      const resp = await fetch('/turnos/configuracion-publica');
+      if (resp.ok) {
+        const data = await resp.json();
+        aplicarFondoPersonalizado(data.fondo_imagen_url, data.fondo_imagen_activa);
+      }
+    } catch (_) {}
+  }
+
+  // Carga inicial
+  await actualizar();
+
+  // Escucha en tiempo real si se provee cliente WS
+  if (wsClient && typeof wsClient.on === 'function') {
+    wsClient.on('config_actualizada', (payload) => {
+      if (!payload) return;
+      if (payload.clave === 'fondo_imagen_url' || payload.clave === 'fondo_imagen_activa') {
+        actualizar();
+      }
+    });
+  }
+}
+

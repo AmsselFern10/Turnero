@@ -26,9 +26,9 @@ const { Pool } = require('pg')
 async function dbPlugin (fastify) {
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    max:              10,    // pgBouncer ya limita las reales; esto limita el pool del app
+    max:              parseInt(process.env.DB_POOL_MAX || '20', 10), // pgBouncer soporta hasta 100 clientes; 20 por instancia permite concurrencia sin saturar
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis: 10000,
     // pgBouncer en modo transaccional no soporta SET SESSION — esto lo desactiva
     statement_timeout: 30000
   })

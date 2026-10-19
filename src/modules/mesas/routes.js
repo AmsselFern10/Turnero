@@ -133,7 +133,7 @@ module.exports = async function mesasRoutes (fastify) {
         [mesaId, request.user.id, request.ip]
       )
 
-      // Notificar a todos los clientes admin
+      // Notificar al admin
       await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
       // Notificar a logins abiertos: la lista de mesas disponibles cambia
       await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', {
@@ -141,12 +141,16 @@ module.exports = async function mesasRoutes (fastify) {
         accion: operador_id ? 'tomada' : 'liberada'
       })
       // Si hay un operador asignado: notificar al login para auto-redirigir al operador afectado.
-      // Se emite a tv:global porque el login escucha ese canal sin auth.
       if (operador_id && mesa.estado === 'activa') {
         await fastify.broadcast('tv:global', 'operador_asignado_por_admin', {
           operador_id: Number(operador_id),
           mesa: { id: mesa.id, numero: mesa.numero, nombre: mesa.nombre, estado: mesa.estado }
         })
+      }
+      // F-2: Si se quita el operador (libera la mesa), notificar al canal mesa para que
+      // el panel del operador que estaba trabajando vea el aviso inmediato y no siga actuando.
+      if (!operador_id) {
+        await fastify.broadcast(`mesa:${mesaId}`, 'mesa_inactivada', { mesa, motivo: 'operador_removido_por_admin' })
       }
 
       return reply.send({ mesa })
@@ -362,6 +366,8 @@ module.exports = async function mesasRoutes (fastify) {
       mesa: { id: mesaId, numero: mesa.numero, estado: 'eliminada' },
       accion: 'tomada'
     })
+    // F-3: Notificar al panel del operador que tenía esta mesa para que vea el aviso inmediato
+    await fastify.broadcast(`mesa:${mesaId}`, 'mesa_inactivada', { mesa: { id: mesaId, numero: mesa.numero }, motivo: 'mesa_eliminada_por_admin' })
 
     return reply.send({ success: true, message: `Mesa ${mesa.numero} eliminada exitosamente.` })
   })

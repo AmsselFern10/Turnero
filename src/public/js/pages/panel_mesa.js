@@ -12,7 +12,7 @@
 
 import { api } from '../api.js';
 import { TurneroWSClient } from '../ws-client.js';
-import { formatTimer, showToast } from '../utils.js';
+import { formatTimer, showToast, initFondoPersonalizado } from '../utils.js';
 
 export function panelMesaView() {
   return {
@@ -206,6 +206,7 @@ export function panelMesaView() {
 
       // 6. Conectar WebSocket al canal segmentado de la mesa
       this.initWebSocket();
+      initFondoPersonalizado(this.ws);
     },
 
     /**
@@ -1084,6 +1085,56 @@ export function panelMesaView() {
         if (p && (p.clave === 'modo_generacion_turnos' || p.clave === 'kiosko_web_activo')) {
           await this.cargarEstado();
         }
+      });
+
+      // F-1: Actualización del nombre/número de la mesa en vivo (admin edita la mesa)
+      this.ws.on('mesa_actualizada', (payload) => {
+        if (!payload || !payload.mesa) return;
+        const m = payload.mesa;
+        // Verificar que el evento corresponde a esta mesa
+        if (Number(m.id) !== Number(this.mesa.id)) return;
+        if (m.numero !== undefined) this.mesa.numero = m.numero;
+        if (m.nombre !== undefined) this.mesa.nombre = m.nombre;
+      });
+
+      // F-6: Lote pausado — el operador ya no puede llamar más turnos
+      this.ws.on('lote_pausado', (payload) => {
+        this.vouchersRestantes = 0;
+        this.proximoNumero = null;
+        if (payload && payload.lote) {
+          if (this.loteActivo) this.loteActivo = { ...this.loteActivo, ...payload.lote };
+        }
+        showToast({
+          message: 'El lote de vouchers fue pausado por el administrador. No hay más turnos disponibles por ahora.',
+          type: 'warning',
+          duration: 6000
+        });
+      });
+
+      // F-7: Lote cerrado — igual que pausado pero definitivo
+      this.ws.on('lote_cerrado', (payload) => {
+        this.vouchersRestantes = 0;
+        this.proximoNumero = null;
+        if (payload && payload.lote) {
+          if (this.loteActivo) this.loteActivo = null;
+        }
+        showToast({
+          message: 'El lote de vouchers fue cerrado definitivamente. El admin debe crear uno nuevo.',
+          type: 'warning',
+          duration: 6000
+        });
+      });
+
+      // F-8: Ajuste del contador del lote (admin corrige el número manualmente)
+      this.ws.on('lote_contador_ajustado', (payload) => {
+        if (!payload || !payload.lote) return;
+        const lote = payload.lote;
+        if (this.loteActivo) {
+          this.loteActivo = { ...this.loteActivo, ultimo_numero_llamado: lote.ultimo_numero_llamado };
+        }
+        const restantes = Math.max(0, (lote.numero_hasta ?? this.loteActivo?.numero_hasta ?? 0) - lote.ultimo_numero_llamado);
+        this.vouchersRestantes = restantes;
+        this.proximoNumero = restantes > 0 ? lote.ultimo_numero_llamado + 1 : null;
       });
 
       // Snapshot tras reconexión por micro-corte (RF-WS-05)

@@ -39,6 +39,32 @@ const CMD = {
 }
 
 /**
+ * Genera la secuencia estándar ESC/POS para imprimir un código QR nativo
+ * Compatible con impresoras térmicas ESC/POS estándar (Epson, Xprinter, Rongta, POS-58/80)
+ */
+function generarComandosQR (url) {
+  if (!url || typeof url !== 'string' || url.trim() === '') return []
+  const data = Buffer.from(url.trim(), 'utf8')
+  const pL = (data.length + 3) % 256
+  const pH = Math.floor((data.length + 3) / 256)
+  return [
+    CMD.ALIGN_CENTER,
+    // Modelo 2: GS ( k 0x04 0x00 0x31 0x41 0x32 0x00
+    Buffer.from([GS, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00]),
+    // Tamaño de módulo (5 puntos): GS ( k 0x03 0x00 0x31 0x43 0x05
+    Buffer.from([GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x05]),
+    // Corrección de error M: GS ( k 0x03 0x00 0x31 0x45 0x31
+    Buffer.from([GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31]),
+    // Guardar datos en buffer: GS ( k pL pH 0x31 0x50 0x30 <data>
+    Buffer.from([GS, 0x28, 0x6B, pL, pH, 0x31, 0x50, 0x30]),
+    data,
+    // Imprimir código QR del buffer: GS ( k 0x03 0x00 0x31 0x51 0x30
+    Buffer.from([GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30]),
+    CMD.LINE_FEED
+  ]
+}
+
+/**
  * Convierte texto a Buffer latin1 (compatible con impresoras térmicas básicas)
  */
 function txt (str) {
@@ -85,8 +111,11 @@ function construirVoucher (ticket) {
 
     CMD.DIVIDER,
 
+    // Código QR ESC/POS nativo
+    ...generarComandosQR(ticket.tracking_url),
+
     // URL de seguimiento
-    CMD.ALIGN_LEFT,
+    CMD.ALIGN_CENTER,
     CMD.BOLD_ON,
     txt('Consulta tu turno:'),
     CMD.BOLD_OFF,
@@ -167,29 +196,32 @@ function enviarPorTCP (ip, puerto, data, timeoutMs = 5000) {
 
 /**
  * Punto de entrada principal del servicio.
- * Llamar desde el route handler: await imprimirTicketESCPOS(fastify, ticket)
+ * Llamar desde el route handler: await imprimirTicketESCPOS(fastify, ticket, opciones)
  *
  * @param {import('fastify').FastifyInstance} fastify
  * @param {object} ticket  - Datos del voucher (numero, formato, modulo, fecha, hora, tracking_url)
+ * @param {object} [opciones] - Opciones adicionales ({ ip, puerto, forzar: false })
  * @throws Error con .code = 'IMPRESORA_INACTIVA' | 'IP_NO_CONFIGURADA' | 'TIMEOUT' | 'ECONNREFUSED' | etc.
  */
-async function imprimirTicketESCPOS (fastify, ticket) {
+async function imprimirTicketESCPOS (fastify, ticket, opciones = {}) {
   const cfg = await leerConfigImpresora(fastify)
+  const ipFinal = ((opciones.ip && String(opciones.ip).trim()) || cfg.ip).trim()
+  const puertoFinal = parseInt(opciones.puerto || cfg.puerto || 9100, 10) || 9100
 
-  if (!cfg.activa) {
+  if (!opciones.forzar && !cfg.activa) {
     const err = new Error('La impresión directa ESC/POS no está activada en la configuración.')
     err.code = 'IMPRESORA_INACTIVA'
     throw err
   }
 
-  if (!cfg.ip || cfg.ip.trim() === '') {
-    const err = new Error('No hay IP de impresora configurada. Ve a Admin > Configuración para ingresarla.')
+  if (!ipFinal || ipFinal === '') {
+    const err = new Error('No hay IP de impresora configurada. Ingrese la dirección IP en Configuración.')
     err.code = 'IP_NO_CONFIGURADA'
     throw err
   }
 
   const voucher = construirVoucher(ticket)
-  await enviarPorTCP(cfg.ip.trim(), cfg.puerto, voucher)
+  await enviarPorTCP(ipFinal, puertoFinal, voucher)
 }
 
 module.exports = { imprimirTicketESCPOS, leerConfigImpresora }

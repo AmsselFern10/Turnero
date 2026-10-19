@@ -31,7 +31,6 @@ async function buildApp (opts = {}) {
 
   // Semaforo: solo 1 reporte XLS concurrente
   app.decorate('_reporteSemaforo', 0)
-  const MAX_REPORTES_CONCURRENTES = 1
 
   // Under-Pressure: rechaza peticiones no esenciales bajo carga alta
   await app.register(require('@fastify/under-pressure'), {
@@ -98,6 +97,109 @@ async function buildApp (opts = {}) {
     options: { maxPayload: 16384, perMessageDeflate: false }
   })
   await app.register(require('./modules/ws/hub'))
+
+  // ── Filtro de aislamiento: solo el kiosko de estudiantes es accesible desde Internet ──
+  function isPrivateIp (rawIp) {
+    if (!rawIp) return true
+    const ip = rawIp.replace(/^::ffff:/, '').trim()
+    if (ip === '::1' || ip === 'localhost' || ip === '127.0.0.1') return true
+    if (ip.startsWith('10.')) return true
+    if (ip.startsWith('192.168.')) return true
+    if (ip.startsWith('169.254.')) return true
+    if (ip.startsWith('fe80:') || ip.startsWith('fc00:') || ip.startsWith('fd00:')) return true
+    if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ip)) return true
+    return false
+  }
+
+  let _urlPublicaCache = null
+  let _urlPublicaCacheExpira = 0
+  async function getUrlPublicaHost (fApp) {
+    const now = Date.now()
+    if (_urlPublicaCache !== null && now < _urlPublicaCacheExpira) {
+      return _urlPublicaCache
+    }
+    try {
+      const { rows } = await fApp.db.query("SELECT valor FROM configuracion WHERE clave = 'kiosko_url_publica' LIMIT 1")
+      const val = (rows[0]?.valor || '').trim()
+      if (val) {
+        try {
+          const u = new URL(val.startsWith('http') ? val : `http://${val}`)
+          _urlPublicaCache = u.host.toLowerCase()
+        } catch (_) {
+          _urlPublicaCache = val.toLowerCase()
+        }
+      } else {
+        _urlPublicaCache = ''
+      }
+    } catch (_) {
+      _urlPublicaCache = ''
+    }
+    _urlPublicaCacheExpira = now + 5000
+    return _urlPublicaCache
+  }
+
+  app.addHook('onRequest', async (request, reply) => {
+    const publicHost = await getUrlPublicaHost(app)
+    const reqHost = (request.headers['x-forwarded-host'] || request.headers.host || '').toLowerCase()
+    const clientIp = request.headers['cf-connecting-ip'] || request.headers['x-real-ip'] || request.ip
+
+    const esHostPublico = Boolean(publicHost && (reqHost === publicHost || reqHost.startsWith(`${publicHost}:`)))
+    const esIpPublica = !isPrivateIp(clientIp)
+    const esAccesoPublico = esHostPublico || esIpPublica
+
+    if (esAccesoPublico) {
+      const urlPath = request.url.split('?')[0]
+
+      // Redirigir root a /kiosko.html
+      if (urlPath === '/' || urlPath === '') {
+        return reply.redirect('/kiosko.html')
+      }
+
+      // Rutas permitidas públicamente (kiosko para estudiantes, tablet asistida y sus recursos)
+      const rutasPermitidas = [
+        '/kiosko.html',
+        '/kiosko/estado',
+        '/kiosko/generar',
+        '/turnos/generar',
+        '/turnos/configuracion-publica',
+        '/kiosko/turnos',
+        '/kiosko/imprimir',
+        '/health'
+      ]
+
+      const esRutaPermitida =
+        rutasPermitidas.includes(urlPath) ||
+        urlPath.startsWith('/kiosko/mi-turno/') ||
+        urlPath.startsWith('/turnos/mi-turno/') ||
+        urlPath.startsWith('/css/') ||
+        urlPath.startsWith('/vendor/') ||
+        urlPath.startsWith('/assets/') ||
+        urlPath.startsWith('/js/')
+
+      // Si es WebSocket, solo permitir canales de kiosko
+      if (urlPath === '/ws') {
+        const canal = request.query?.canal || ''
+        if (canal === 'kiosko:publico' || canal.startsWith('kiosko:')) {
+          return // Permitido
+        }
+        return reply.code(403).send({ error: { codigo: 'acceso_restringido', mensaje: 'Canal no disponible desde acceso público.' } })
+      }
+
+      if (!esRutaPermitida) {
+        if (urlPath.endsWith('.html')) {
+          return reply.code(403).type('text/html').send(
+            '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Acceso Restringido</title></head><body style="font-family:sans-serif;background:#EEF2F6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;"><div style="background:#fff;padding:2rem;border-radius:1rem;border:1px solid #CBD5E1;max-width:400px;text-align:center;"><h2>Acceso Restringido</h2><p style="color:#64748B;font-size:0.9rem;">Este módulo solo está disponible desde la red local institucional (LAN/WiFi del campus).</p><a href="/kiosko.html" style="color:#1D4ED8;text-decoration:none;font-weight:bold;">Ir al Kiosko de Estudiantes</a></div></body></html>'
+          )
+        }
+        return reply.code(403).send({
+          error: {
+            codigo: 'acceso_restringido_red_local',
+            mensaje: 'Este módulo solo está disponible desde la red local institucional.'
+          }
+        })
+      }
+    }
+  })
 
   await app.register(require('./modules/auth/routes'),   { prefix: '/auth' })
   await app.register(require('./modules/mesas/routes'),  { prefix: '/mesas' })
