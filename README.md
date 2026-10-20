@@ -192,11 +192,14 @@ Puedes poner en marcha el sistema mediante cualquiera de las siguientes opciones
 
 El sistema incluye instaladores automatizados que verifican el entorno, preparan el archivo `.env` de forma segura (preservando valores existentes), compilan estilos, levantan Docker y ejecutan las migraciones y seed inicial:
 
-* **En Windows (PowerShell):**
+* **En Windows (Instalación Inicial):**
   ```powershell
   powershell -ExecutionPolicy Bypass -File install.ps1
   ```
-  *(O ejecuta directamente haciendo doble clic sobre `install.bat` en el explorador).*
+
+* **Control del Sistema en Windows (Scripts .bat directos):**
+  - **Iniciar el sistema:** Doble clic en `iniciar_sistema.bat` (levanta contenedores Docker o proceso Node en puerto 3000).
+  - **Detener el sistema y liberar puertos:** Doble clic en `detener_sistema.bat` (apaga Docker, detiene PM2, mata procesos colgados en el puerto 3000 y desactiva el auto-inicio de Windows).
 
 * **En Linux / macOS:**
   ```bash
