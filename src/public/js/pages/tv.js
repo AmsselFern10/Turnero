@@ -621,8 +621,9 @@ export function tvView() {
     async _ejecutarAnuncioNuevo(item) {
       this._reproduciendoTipo = 'nuevo';
 
-      // REGLA DE ORO: El turno actual pasa al historial exactamente antes de mostrar el nuevo
-      if (this.ultimoLlamado && this.ultimoLlamado.numero !== null) {
+      // REGLA DE ORO: El turno actual pasa al historial exactamente antes de mostrar el nuevo,
+      // SI Y SOLO SI el nuevo turno tiene un número distinto al que ya está en el Hero
+      if (this.ultimoLlamado && this.ultimoLlamado.numero !== null && Number(this.ultimoLlamado.numero) !== Number(item.numero)) {
         this._agregarAlHistorial({
           numero:         this.ultimoLlamado.numero,
           mesa_numero:    this.ultimoLlamado.mesa_numero,
@@ -650,6 +651,9 @@ export function tvView() {
       this._ultimoLlamadoReal = { ...this.ultimoLlamado };
       this.proximoNumero      = prox !== null && prox !== undefined ? Number(prox) : null;
       this._lastSeqAnunciado  = Math.max(this._lastSeqAnunciado, item.seq);
+
+      // INVARIANTE: El turno que está en el Hero NUNCA puede aparecer en turnos anteriores
+      this.historial = this.historial.filter(h => Number(h.numero) !== Number(item.numero));
 
       this.glowState = 'nuevo';
       this._ajustarTamanoTicket();
@@ -780,18 +784,30 @@ export function tvView() {
     _agregarAlHistorial({ numero, mesa_numero, llamado_en, tiempoRelativo }) {
       if (numero === null || numero === undefined) return;
 
+      const numVal = Number(numero);
+
+      // INVARIANTE ABSOLUTA: El turno del Hero NUNCA entra al historial
+      if (this.ultimoLlamado && Number(this.ultimoLlamado.numero) === numVal) {
+        return;
+      }
+
       // Si el turno ya figuraba en el historial (ej: rezagado re-llamado), remover su entrada previa
-      const idxExistente = this.historial.findIndex(h => Number(h.numero) === Number(numero));
+      const idxExistente = this.historial.findIndex(h => Number(h.numero) === numVal);
       if (idxExistente !== -1) {
         this.historial.splice(idxExistente, 1);
       }
 
       this.historial.unshift({
-        numero:         Number(numero),
+        numero:         numVal,
         mesa_numero,
         llamado_en,
         tiempoRelativo: tiempoRelativo || this._calcTiempoRelativo(llamado_en)
       });
+
+      // Garantizar que ningún turno del historial coincida con el hero activo
+      if (this.ultimoLlamado && this.ultimoLlamado.numero !== null) {
+        this.historial = this.historial.filter(h => Number(h.numero) !== Number(this.ultimoLlamado.numero));
+      }
 
       // Máximo 4 turnos históricos (RF-TV-02)
       if (this.historial.length > 4) {
@@ -831,6 +847,7 @@ export function tvView() {
         if (ultimo) {
           const uKey = ultimo.evento_id || (`snap_${ultimo.id || ultimo.llamado_en || ''}_${ultimo.numero}`);
           this.ultimoLlamado = {
+            eventoId:    uKey,
             numero:      Number(ultimo.numero),
             mesa_numero: ultimo.mesa_numero,
             mesa_nombre: ultimo.mesa_nombre,
@@ -846,55 +863,49 @@ export function tvView() {
           if (ultimo.seq) this._seqVistos.add(`ws_seq_${ultimo.seq}`);
         }
 
-        // Historial inicial silencioso
-        this.historial = [];
-        for (const h of histArr) {
-          if (!h) continue;
-          const hKey = h.evento_id || (`snap_${h.id || h.llamado_en || ''}_${h.numero}`);
-          this._seqVistos.add(hKey);
-          if (h.seq) this._seqVistos.add(`ws_seq_${h.seq}`);
-          this._agregarAlHistorial({
+        // Historial inicial silencioso (garantizando que nunca incluya el hero)
+        const heroNum = this.ultimoLlamado && this.ultimoLlamado.numero !== null ? Number(this.ultimoLlamado.numero) : null;
+        this.historial = histArr
+          .filter(h => h && h.numero !== null && Number(h.numero) !== heroNum)
+          .slice(0, 4)
+          .map(h => ({
             numero:         Number(h.numero),
             mesa_numero:    h.mesa_numero,
             llamado_en:     h.llamado_en,
             tiempoRelativo: this._calcTiempoRelativo(h.llamado_en)
-          });
-        }
+          }));
         return;
       }
 
-      // CASO B: Reconexión con la pantalla ya activa
-      // Inyectar en la cola turnos recientes (< 60 s) que no se hayan visto ni anunciado
-      const ahora = Date.now();
-      const pendientesSnapshot = [];
-
-      const evaluar = (item) => {
-        if (!item) return;
-        const numVal = Number(item.numero);
-        if (Number.isNaN(numVal)) return;
-
-        const sKey = item.evento_id || (item.seq ? `ws_seq_${item.seq}` : `snap_${item.id || item.llamado_en}_${numVal}`);
-        if (this._seqVistos.has(sKey)) return;
-        this._seqVistos.add(sKey);
-
-        // Si el evento específico ya está en pantalla o en la cola, no duplicar
-        if (this.ultimoLlamado && this.ultimoLlamado.eventoId === sKey) return;
-        if (this._cola.some(c => c.eventoId === sKey)) return;
-
-        const edad = ahora - new Date(item.llamado_en).getTime() + this._serverTimeOffset;
-        if (edad < CFG.antiguedadMaxMs) {
-          pendientesSnapshot.push(item);
+      // CASO B: Sincronización o recuperación de snapshot con la pantalla activa
+      // Si el reproductor no está en medio de una locución, sincronizar directamente
+      if (!this._reproduciendo && this._cola.length === 0) {
+        if (ultimo) {
+          const uKey = ultimo.evento_id || (`snap_${ultimo.id || ultimo.llamado_en || ''}_${ultimo.numero}`);
+          this.ultimoLlamado = {
+            eventoId:    uKey,
+            numero:      Number(ultimo.numero),
+            mesa_numero: ultimo.mesa_numero,
+            mesa_nombre: ultimo.mesa_nombre,
+            proximo:     proximo !== null ? Number(proximo) : null,
+            llamado_en:  ultimo.llamado_en
+          };
+          this._ultimoLlamadoReal = { ...this.ultimoLlamado };
+          this.proximoNumero      = proximo !== null ? Number(proximo) : null;
+          this._ajustarTamanoTicket();
         }
-      };
 
-      evaluar(ultimo);
-      for (const h of histArr) evaluar(h);
-
-      // Si hay turnos recientes verdaderamente perdidos durante desconexión, encolarlos
-      if (pendientesSnapshot.length > 0) {
-        for (const p of pendientesSnapshot) {
-          this._onNuevoLlamado(p, { seq: p.seq });
-        }
+        // Sincronizar historial directamente de la base de datos sin incluir el hero
+        const heroNum = this.ultimoLlamado && this.ultimoLlamado.numero !== null ? Number(this.ultimoLlamado.numero) : null;
+        this.historial = histArr
+          .filter(h => h && h.numero !== null && Number(h.numero) !== heroNum)
+          .slice(0, 4)
+          .map(h => ({
+            numero:         Number(h.numero),
+            mesa_numero:    h.mesa_numero,
+            llamado_en:     h.llamado_en,
+            tiempoRelativo: this._calcTiempoRelativo(h.llamado_en)
+          }));
       }
     },
 
@@ -982,6 +993,11 @@ export function tvView() {
         this._reproduciendo = false;
         this.glowState      = 'idle';
         this._actualizarContadorCola();
+
+        // Garantizar que ningún turno del historial coincida con el hero
+        if (this.ultimoLlamado && this.ultimoLlamado.numero !== null) {
+          this.historial = this.historial.filter(h => Number(h.numero) !== Number(this.ultimoLlamado.numero));
+        }
 
         // 4. Despachar el turno pendiente si hay, o sincronizar snapshot fresco
         if (this._cola.length > 0 || this._colaRellamados.length > 0) {
