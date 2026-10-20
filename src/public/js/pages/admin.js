@@ -201,6 +201,7 @@ export function adminView() {
       impresora_activa: false,
       impresora_ip:     '',
       impresora_puerto: 9100
+    },
     _configSnapshot: null,
     kioskoUltimoNumero: 0,
     _reiniciandoContadorKiosko: false,
