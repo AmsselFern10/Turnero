@@ -69,7 +69,7 @@ services:
   # La app se conecta al puerto 5433 (pgBouncer), nunca directamente a PG
   # ---------------------------------------------------------------------------
   pgbouncer:
-    image: edoburu/pgbouncer:1.22.1
+    image: edoburu/pgbouncer:latest
     container_name: turnero-pgbouncer
     restart: unless-stopped
     environment:
