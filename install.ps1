@@ -86,6 +86,7 @@ try {
 }
 
 if ($hasDocker) {
+    $env:COMPOSE_BAKE = "false"
     Write-Host "[INFO] Desplegando mediante Docker Compose en Windows..."
     & docker compose up -d --build
     if ($LASTEXITCODE -ne 0) {

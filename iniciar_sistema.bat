@@ -30,6 +30,7 @@ where docker >nul 2>&1
 if %errorLevel% equ 0 (
     docker info >nul 2>&1
     if %errorLevel% equ 0 (
+        set "COMPOSE_BAKE=false"
         echo   [INFO] Docker detectado. Iniciando contenedores en segundo plano...
         docker compose up -d
         echo   [OK] Contenedores activos en puerto 3000 con politica 'restart: unless-stopped'.
