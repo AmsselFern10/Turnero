@@ -60,14 +60,23 @@ module.exports = async function turnosRoutes (fastify) {
       // 1. Servir desde caché si ya completó
       if (fastify._idempotencyCache?.has(iKey)) {
         fastify.log.info({ iKey, mesa_id }, '[IDEM] Servido desde cache')
-        return reply.status(200).send(fastify._idempotencyCache.get(iKey))
+        const cached = fastify._idempotencyCache.get(iKey)
+        return reply.status(200).send({ ...cached, es_idempotente: true })
       }
-      // 2. Coalescing: Si hay un request en vuelo con la misma key, esperar a que termine
+      // 2. Coalescing por iKey: Si hay un request en vuelo con la misma key, esperar a que termine
       if (fastify._idempotencyPromises?.has(iKey)) {
         fastify.log.info({ iKey, mesa_id }, '[IDEM] Esperando request concurrente en vuelo')
         const resultadoEnVuelo = await fastify._idempotencyPromises.get(iKey)
-        return reply.status(200).send(resultadoEnVuelo)
+        return reply.status(200).send({ ...resultadoEnVuelo, es_idempotente: true })
       }
+    }
+
+    // 3. Coalescing por Mesa: si ya hay una llamada en vuelo en ESTA MISMA mesa, esperar el mismo resultado
+    const mesaLockKey = `mesa:${mesa_id}`
+    if (fastify._mesaLlamarPromises?.has(mesaLockKey)) {
+      fastify.log.info({ mesa_id }, '[IDEM] Request en vuelo para esta mesa, coalescing concurrente')
+      const resultadoMesa = await fastify._mesaLlamarPromises.get(mesaLockKey)
+      return reply.status(200).send({ ...resultadoMesa, es_idempotente: true })
     }
 
     const operacionLlamar = (async () => {
@@ -157,11 +166,14 @@ module.exports = async function turnosRoutes (fastify) {
         })
       }
 
-      return { turno, proximo_numero, vouchers_restantes }
+      return { turno, proximo_numero, vouchers_restantes, es_idempotente: Boolean(es_idempotente) }
     })()
 
     if (iKey && fastify._idempotencyPromises) {
       fastify._idempotencyPromises.set(iKey, operacionLlamar)
+    }
+    if (fastify._mesaLlamarPromises) {
+      fastify._mesaLlamarPromises.set(mesaLockKey, operacionLlamar)
     }
 
     let responseBody
@@ -170,6 +182,9 @@ module.exports = async function turnosRoutes (fastify) {
     } finally {
       if (iKey && fastify._idempotencyPromises) {
         fastify._idempotencyPromises.delete(iKey)
+      }
+      if (fastify._mesaLlamarPromises) {
+        fastify._mesaLlamarPromises.delete(mesaLockKey)
       }
     }
 

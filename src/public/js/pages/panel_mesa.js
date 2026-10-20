@@ -63,6 +63,8 @@ export function panelMesaView() {
     mesaInactivada: false,
     motivoPausa: 'Descanso programado / Almuerzo',
     loadingAction: false,
+    _cooldown: false,
+    _llamarKey: null,
 
     // Rezagados (turnos cancelados/no presentados)
     totalRezagados: 0,
@@ -365,6 +367,7 @@ export function panelMesaView() {
       }
 
       this.loadingAction = true;
+      let exito = false;
 
       // Idempotency-Key por intento: si la red falla y el usuario reintenta,
       // el mismo UUID devuelve el turno ya creado sin quemar un nuevo número.
@@ -375,22 +378,35 @@ export function panelMesaView() {
           mesa_id: this.mesa.id
         }, { headers: { 'Idempotency-Key': idempotencyKey } });
 
-        const { turno, proximo_numero, vouchers_restantes } = res;
+        const { turno, proximo_numero, vouchers_restantes, es_idempotente } = res;
         this.turnoActual = turno;
         this.proximoNumero = proximo_numero ?? null;
         this.vouchersRestantes = vouchers_restantes ?? 0;
-        this.atendidosHoy++;
 
-        // Iniciar cronómetro desde la marca temporal devuelta por la BD
-        this.iniciarCronometro(turno.llamado_en);
+        if (es_idempotente) {
+          // El turno ya había sido asignado en este mismo instante (reintento o coalescing de red)
+          // No incrementamos contador ni relanzamos avisos sonoros redundantes
+          showToast({
+            message: `Turno #${turno.numero} ya activo en Mesa ${this.mesa.numero}`,
+            type: 'info',
+            duration: 3500
+          });
+        } else {
+          this.atendidosHoy++;
 
-        // Activar micro-animación de destello y banner en Card B de 5 segundos
-        this.triggerCallNext(turno);
+          // Iniciar cronómetro desde la marca temporal devuelta por la BD
+          this.iniciarCronometro(turno.llamado_en);
 
-        showToast({
-          message: `Llamando al Turno #${turno.numero} en Mesa ${this.mesa.numero}`,
-          type: 'success'
-        });
+          // Activar micro-animación de destello y banner en Card B de 5 segundos
+          this.triggerCallNext(turno);
+
+          showToast({
+            message: `Llamando al Turno #${turno.numero} en Mesa ${this.mesa.numero}`,
+            type: 'success'
+          });
+        }
+
+        exito = true;
 
       } catch (err) {
         console.error('[MESA] Error al llamar siguiente:', err);
@@ -405,17 +421,17 @@ export function panelMesaView() {
             type: 'warning',
             duration: waitMs
           });
-          // Extender el cooldown al tiempo indicado por el servidor
+          // Extender el cooldown al tiempo indicado por el servidor sin resetear la key
           this._cooldown = true;
+          this.loadingAction = false;
           setTimeout(() => {
             this._cooldown = false;
-            this._llamarKey = null;
-            this.loadingAction = false;
           }, waitMs);
           return; // No ejecutar el finally normal
         }
 
         if (err.status === 409 || err.codigo === 'sin_turnos_en_espera' || msg.toLowerCase().includes('agotado') || msg.toLowerCase().includes('espera')) {
+          this._llamarKey = null;
           if (this.modo === 'kiosko_web' || err.codigo === 'sin_turnos_en_espera' || msg.toLowerCase().includes('espera')) {
             showToast({
               message: 'No hay estudiantes esperando turno en este momento en el Kiosko.',
@@ -430,19 +446,23 @@ export function panelMesaView() {
             });
           }
         } else {
+          // Error transitorio: preservamos this._llamarKey para que el reintento sea idempotente
           showToast({
-            message: msg || 'No se pudo llamar al siguiente turno',
+            message: msg || 'No se pudo llamar al siguiente turno. Puedes reintentar.',
             type: 'danger'
           });
         }
       } finally {
         this.loadingAction = false;
-        // Cooldown breve (800ms) tras éxito para proteger contra ráfaga/doble-clic accidental
+        // Cooldown de 1.5s para blindar contra doble clic y ráfagas
         this._cooldown = true;
         setTimeout(() => {
           this._cooldown = false;
-          this._llamarKey = null;
-        }, 800);
+          // Solo si la llamada fue exitosa liberamos la key para permitir el próximo llamado
+          if (exito) {
+            this._llamarKey = null;
+          }
+        }, 1500);
       }
     },
 
@@ -871,6 +891,10 @@ export function panelMesaView() {
           e.preventDefault();
           e.stopPropagation();
 
+          if (this.loadingAction || this.mesaPausada || this._cooldown) {
+            return;
+          }
+
           // Desenfocar cualquier elemento activo para evitar clicks nativos del navegador en botones enfocados
           if (document.activeElement && typeof document.activeElement.blur === 'function') {
             document.activeElement.blur();
@@ -889,6 +913,7 @@ export function panelMesaView() {
         if ((e.key === 'r' || e.key === 'R') && !e.repeat) {
           e.preventDefault();
           e.stopPropagation();
+          if (this.loadingAction || this._cooldown) return;
           if (document.activeElement && typeof document.activeElement.blur === 'function') {
             document.activeElement.blur();
           }
@@ -900,6 +925,7 @@ export function panelMesaView() {
         if ((e.key === 'n' || e.key === 'N' || e.key === 'Escape') && !e.repeat) {
           e.preventDefault();
           e.stopPropagation();
+          if (this.loadingAction || this._cooldown) return;
           if (document.activeElement && typeof document.activeElement.blur === 'function') {
             document.activeElement.blur();
           }

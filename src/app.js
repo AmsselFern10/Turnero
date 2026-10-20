@@ -28,6 +28,7 @@ async function buildApp (opts = {}) {
 
   app.decorate('_idempotencyCache', new Map())
   app.decorate('_idempotencyPromises', new Map())
+  app.decorate('_mesaLlamarPromises', new Map())
 
   // Semaforo: solo 1 reporte XLS concurrente
   app.decorate('_reporteSemaforo', 0)
