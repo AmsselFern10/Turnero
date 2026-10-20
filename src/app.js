@@ -43,6 +43,8 @@ async function buildApp (opts = {}) {
   })
 
   await app.register(require('@fastify/helmet'), {
+    hsts: false,
+    crossOriginOpenerPolicy: false,
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
@@ -50,7 +52,8 @@ async function buildApp (opts = {}) {
         connectSrc: ["'self'", "ws:", "wss:"],
         styleSrc:   ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         fontSrc:    ["'self'", "https://fonts.gstatic.com"],
-        imgSrc:     ["'self'", "data:"]
+        imgSrc:     ["'self'", "data:"],
+        upgradeInsecureRequests: null
       }
     }
   })
