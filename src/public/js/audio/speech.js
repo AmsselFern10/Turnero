@@ -117,6 +117,12 @@ export function speakCall({ numero, mesa_numero }) {
       return resolve();
     }
 
+    // Si la pestaña está en segundo plano (hidden) en Chromium, la síntesis se suspende/pausa
+    // y onend nunca se dispara hasta activar la pestaña. Resolvemos de inmediato para no congelar.
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      return resolve();
+    }
+
     // Texto corto sin ceros a la izquierda para locución natural y ágil
     const numLimpio  = !Number.isNaN(Number(numero)) ? Number(numero) : numero;
     const mesaLimpia = !Number.isNaN(Number(mesa_numero)) ? Number(mesa_numero) : mesa_numero;
@@ -125,6 +131,11 @@ export function speakCall({ numero, mesa_numero }) {
     try {
       if (!_cachedVoice) {
         _seleccionarVozEspanola();
+      }
+
+      // Si la síntesis previa quedó en pausa por el navegador, reanudar o limpiar
+      if (window.speechSynthesis.paused) {
+        try { window.speechSynthesis.resume(); } catch (_) {}
       }
 
       const utterance = new SpeechSynthesisUtterance(texto);
@@ -137,7 +148,7 @@ export function speakCall({ numero, mesa_numero }) {
         utterance.lang  = 'es-ES';
       }
 
-      utterance.rate   = 0.96; // Cadencia inteligible y enérgica
+      utterance.rate   = 0.98; // Cadencia inteligible, natural y enérgica
       utterance.pitch  = 1.0;
       utterance.volume = 1.0;
 
@@ -154,14 +165,15 @@ export function speakCall({ numero, mesa_numero }) {
 
       utterance.onend  = finalizar;
       utterance.onerror = (err) => {
-        console.warn('[SPEECH] Error en síntesis de voz:', err);
+        console.warn('[SPEECH] Error o interrupción en síntesis de voz:', err);
         finalizar();
       };
 
-      // Timeout de seguridad de 8 s por si Chrome suspende o nunca dispara onend
+      // Timeout de seguridad de 3.5 s (una locución de 6 palabras toma ~1.5s).
+      // Si tras 3.5s no termina, continuar sin bloquear la pantalla TV.
       const timeoutSeguridad = setTimeout(() => {
         finalizar();
-      }, 8000);
+      }, 3500);
 
       window.speechSynthesis.speak(utterance);
     } catch (err) {

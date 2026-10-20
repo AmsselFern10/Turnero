@@ -1009,11 +1009,11 @@ module.exports = async function adminRoutes (fastify) {
       [fechaHoy]
     )
 
-    // 3. Auditoría inmutable
+    // 3. Auditoría inmutable con acción permitida por audit_log_accion_check
     await fastify.db.query(
       `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
-       VALUES ($1, 'KIOSKO_CONTADOR_REINICIADO', $2, $3)`,
-      [request.user.id, request.ip, JSON.stringify({ fecha: fechaHoy, turnosCancelados })]
+       VALUES ($1, 'CONFIG_MODIFICADA', $2, $3)`,
+      [request.user.id, request.ip, JSON.stringify({ clave: 'kiosko_contador_diario', accion_detalle: 'KIOSKO_CONTADOR_REINICIADO', fecha: fechaHoy, turnosCancelados })]
     )
 
     // 4. Invalidar caché interna del servicio kiosko
@@ -1038,9 +1038,9 @@ module.exports = async function adminRoutes (fastify) {
         vouchers_restantes: 0,
         modo: 'kiosko_web'
       }),
-      fastify.broadcast('tv:global', 'proximo_actualizado', {
+      fastify.broadcast('tv:global', 'contador_kiosko_reiniciado', {
         proximo_numero: null,
-        vouchers_restantes: 0,
+        turnos_en_espera: 0,
         modo: 'kiosko_web'
       })
     ])

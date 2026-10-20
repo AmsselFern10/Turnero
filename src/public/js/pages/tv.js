@@ -34,12 +34,12 @@ import { speakCall, setSpeechEnabled, initSpeech } from '../audio/speech.js';
 
 // ── Configuración central de tiempos (ms) ────────────────────────────────────
 const CFG = {
-  anuncioBaseMs:     4000,
-  anuncioMinMs:      2200,
-  rellamadoMinMs:    2000,
+  anuncioBaseMs:     2800,
+  anuncioMinMs:      1800,
+  rellamadoMinMs:    1800,
   antiguedadMaxMs:  60000,
   graciaBannerMs:    3000,
-  watchdogMs:       12000,
+  watchdogMs:        6000,
   maxCola:             50,
   maxSeqVistos:       300,
 };
@@ -426,6 +426,15 @@ export function tvView() {
         }
       });
 
+      // Contador Kiosko reiniciado por el Administrador
+      this._ws.on('contador_kiosko_reiniciado', () => {
+        this.proximoNumero = null;
+        this._cola = [];
+        this._colaRellamados = [];
+        this._actualizarContadorCola();
+        this._solicitarSnapshot();
+      });
+
       this._ws.connect();
     },
 
@@ -445,18 +454,6 @@ export function tvView() {
       const numero = payload.numero ?? payload.turno;
       if (numero === undefined || numero === null || Number.isNaN(+numero)) return;
       const numVal = Number(numero);
-
-      // ── DEDUPLICACIÓN POR NÚMERO DE TURNO ─────────────────────────
-      // Los turnos rezagados se anuncian siempre (aunque su número ya se haya anunciado antes)
-      if (!payload.es_rezagado) {
-        if (this.ultimoLlamado && Number(this.ultimoLlamado.numero) === numVal) return;
-        if (this._cola.some(c => Number(c.numero) === numVal)) return;
-        if (this.historial.some(h => Number(h.numero) === numVal)) return;
-      } else {
-        // Para rezagados, evitar duplicar solo si el mismo evento ya está en cola
-        const rezEventoId = payload.evento_id || `rezagado_${numero}_${payload.llamado_en || Date.now()}`;
-        if (this._cola.some(c => c.eventoId === rezEventoId)) return;
-      }
 
       const mesa_numero = payload.mesa_numero ?? payload.mesa ?? '';
       let proximo       = payload.proximo ?? payload.proximo_numero ?? null;
@@ -484,9 +481,12 @@ export function tvView() {
         this._lastSeqRecibido = Math.max(this._lastSeqRecibido, wsSeq);
       }
 
-      // Deduplicación estricta por evento único
+      // ── DEDUPLICACIÓN ESTRICTA POR EVENTO ÚNICO ─────────────────────────
+      // Previene duplicados de red sin descartar llamadas a números legítimos (ej: tras reset de kiosko o lotes nuevos)
       if (this._seqVistos.has(eventoId)) return;
       if (wsSeq !== null && this._seqVistos.has(`ws_seq_${wsSeq}`)) return;
+      if (this._cola.some(c => c.eventoId === eventoId)) return;
+      if (this.ultimoLlamado && this.ultimoLlamado.eventoId === eventoId) return;
 
       this._seqVistos.add(eventoId);
       if (wsSeq !== null) this._seqVistos.add(`ws_seq_${wsSeq}`);
@@ -641,6 +641,7 @@ export function tvView() {
         }
       }
       this.ultimoLlamado = {
+        eventoId:    item.eventoId,
         numero:      item.numero,
         mesa_numero: item.mesa_numero,
         proximo:     prox,
@@ -653,13 +654,25 @@ export function tvView() {
       this.glowState = 'nuevo';
       this._ajustarTamanoTicket();
 
+      // Si la pestaña está oculta en segundo plano (ej: usuario operando en otra pestaña),
+      // no bloquear con timers ni audio: el modelo visual queda al día y avanzamos de inmediato
+      const isHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+      if (isHidden) {
+        if (this._avanceTimer) clearTimeout(this._avanceTimer);
+        this._avanceTimer = null;
+        this.glowState    = 'idle';
+        if (this._watchdogTimer) { clearTimeout(this._watchdogTimer); this._watchdogTimer = null; }
+        this._reproducirSiguiente();
+        return;
+      }
+
       // Calcular duración mínima adaptativa según saturación de cola
       const pendientes = this._cola.length + this._colaRellamados.length;
       let duracionMinima = CFG.anuncioBaseMs;
-      if (pendientes >= 5) {
-        duracionMinima = CFG.anuncioMinMs; // 2200 ms
-      } else if (pendientes >= 2) {
-        duracionMinima = 3000;
+      if (pendientes >= 2) {
+        duracionMinima = CFG.anuncioMinMs; // 1800 ms
+      } else if (pendientes === 1) {
+        duracionMinima = 2200;
       }
 
       const inicio = Date.now();
@@ -703,7 +716,20 @@ export function tvView() {
       this.glowState = 'rellamado';
       this._ajustarTamanoTicket();
 
-      const duracionMinima = CFG.rellamadoMinMs; // 2000 ms
+      // Si la pestaña está oculta en background, avanzar de inmediato
+      const isHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+      if (isHidden) {
+        if (this._cola.length === 0 && this._ultimoLlamadoReal) {
+          this.ultimoLlamado = { ...this._ultimoLlamadoReal };
+          this.proximoNumero = this._ultimoLlamadoReal.proximo ?? null;
+        }
+        this.glowState = 'idle';
+        if (this._watchdogTimer) { clearTimeout(this._watchdogTimer); this._watchdogTimer = null; }
+        this._reproducirSiguiente();
+        return;
+      }
+
+      const duracionMinima = CFG.rellamadoMinMs; // 1800 ms
       const inicio = Date.now();
 
       // SECUENCIA DEL ANUNCIADOR para re-llamado
@@ -851,10 +877,9 @@ export function tvView() {
         if (this._seqVistos.has(sKey)) return;
         this._seqVistos.add(sKey);
 
-        // Si el turno ya está en pantalla, en la cola o en el historial, NUNCA re-anunciar
-        if (this.ultimoLlamado && Number(this.ultimoLlamado.numero) === numVal) return;
-        if (this._cola.some(c => Number(c.numero) === numVal)) return;
-        if (this.historial.some(h => Number(h.numero) === numVal)) return;
+        // Si el evento específico ya está en pantalla o en la cola, no duplicar
+        if (this.ultimoLlamado && this.ultimoLlamado.eventoId === sKey) return;
+        if (this._cola.some(c => c.eventoId === sKey)) return;
 
         const edad = ahora - new Date(item.llamado_en).getTime() + this._serverTimeOffset;
         if (edad < CFG.antiguedadMaxMs) {
@@ -927,21 +952,43 @@ export function tvView() {
     _initVisibilityChange() {
       this._onVisibilityHandler = () => {
         if (document.visibilityState !== 'visible') return;
-        // Al volver a la pestaña, descartar elementos con más de 60 s para no atiborrar
-        const ahora = Date.now();
-        this._cola = this._cola.filter(item => {
-          const edad = ahora - new Date(item.llamado_en).getTime();
-          if (edad > CFG.antiguedadMaxMs) {
-            this._agregarAlHistorial({
-              numero: item.numero,
-              mesa_numero: item.mesa_numero,
-              llamado_en: item.llamado_en
-            });
-            return false;
+
+        // 1. Cancelar cualquier síntesis de voz o audio que haya quedado en pausa por Chromium
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          try { window.speechSynthesis.cancel(); } catch (_) {}
+        }
+
+        // 2. Limpiar timers de background atascados
+        if (this._watchdogTimer) { clearTimeout(this._watchdogTimer); this._watchdogTimer = null; }
+        if (this._avanceTimer)   { clearTimeout(this._avanceTimer);   this._avanceTimer   = null; }
+
+        // 3. Si se acumularon turnos mientras la pestaña estaba oculta,
+        // archivar los antiguos al historial y dejar el último para anunciar de inmediato
+        if (this._cola.length > 1) {
+          const ultimoItem = this._cola.pop();
+          while (this._cola.length > 0) {
+            const des = this._cola.shift();
+            if (des) {
+              this._agregarAlHistorial({
+                numero: des.numero,
+                mesa_numero: des.mesa_numero,
+                llamado_en: des.llamado_en
+              });
+            }
           }
-          return true;
-        });
+          this._cola.push(ultimoItem);
+        }
+
+        this._reproduciendo = false;
+        this.glowState      = 'idle';
         this._actualizarContadorCola();
+
+        // 4. Despachar el turno pendiente si hay, o sincronizar snapshot fresco
+        if (this._cola.length > 0 || this._colaRellamados.length > 0) {
+          this._despacharReproductor();
+        } else {
+          this._solicitarSnapshot();
+        }
       };
       document.addEventListener('visibilitychange', this._onVisibilityHandler);
     }

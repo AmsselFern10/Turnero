@@ -185,13 +185,20 @@ export function synthesizeInstitutionalChime() {
  */
 export async function playCallChime() {
   try {
+    // Si la pestaña está oculta en segundo plano, no esperar audio
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      return;
+    }
+
     const ctx = _getAudioCtx();
     if (!ctx) return;
 
     // Anti-solapamiento: si el chime anterior todavía suena, omitir
     if (ctx.currentTime < _chimeEndTime) {
       const restante = Math.max(0, (_chimeEndTime - ctx.currentTime) * 1000);
-      await new Promise(r => setTimeout(r, restante));
+      if (restante > 0) {
+        await new Promise(r => setTimeout(r, Math.min(restante, 400)));
+      }
       return;
     }
 
@@ -203,18 +210,19 @@ export async function playCallChime() {
       source.buffer = buffer;
       source.connect(ctx.destination);
       source.start();
-      const durMs = Math.min(Math.round(buffer.duration * 1000), 1000);
+      // Cadencia ágil: esperar 450ms del chime antes de que inicie la voz superpuesta
+      const durMs = Math.min(Math.round(buffer.duration * 1000), 450);
       _chimeEndTime = ctx.currentTime + buffer.duration + 0.05;
       await new Promise(r => setTimeout(r, durMs));
     } else {
       // Fallback: síntesis sin red
       synthesizeInstitutionalChime();
-      await new Promise(r => setTimeout(r, Math.round(CHIME_DURATION * 1000)));
+      await new Promise(r => setTimeout(r, 450));
     }
   } catch (err) {
     console.warn('[AUDIO] Error al reproducir chime:', err);
     synthesizeInstitutionalChime();
-    await new Promise(r => setTimeout(r, Math.round(CHIME_DURATION * 1000)));
+    await new Promise(r => setTimeout(r, 450));
   }
 }
 
