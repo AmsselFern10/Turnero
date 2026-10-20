@@ -1075,6 +1075,28 @@
               </div>
             </div>
 
+            <!-- Control de Reinicio de Contador de Kiosko -->
+            <div class="p-3.5 rounded-xl border border-amber-200 bg-amber-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div class="space-y-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-bold text-xs text-amber-900">Reinicio de Conteo Kiosko:</span>
+                  <span class="pill text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                    Último emitido: <span class="font-mono-num font-bold ml-1" x-text="ultimoNumeroKioskoDisplay">#0</span>
+                  </span>
+                </div>
+                <p class="text-[11px] text-amber-800 leading-relaxed">
+                  Restablece la numeración diaria del Kiosko a 0 para que el siguiente turno generado comience desde el <strong>#1</strong> (compartido entre modalidad asistida y estudiante).
+                </p>
+              </div>
+              <button type="button" @click="confirmarReinicioContadorKiosko()"
+                      :disabled="_reiniciandoContadorKiosko || !wsConnected"
+                      class="btn-ghost btn-sm flex items-center justify-center gap-1.5 cursor-pointer text-amber-900 border border-amber-300 bg-white hover:bg-amber-100 rounded-xl px-3.5 py-2 font-semibold text-xs flex-shrink-0 transition-colors disabled:opacity-50 shadow-xs">
+                <svg x-show="!_reiniciandoContadorKiosko" class="w-3.5 h-3.5 stroke-[2] text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                <svg x-show="_reiniciandoContadorKiosko" class="w-3.5 h-3.5 animate-spin text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                <span x-text="_reiniciandoContadorKiosko ? 'Reiniciando...' : 'Reiniciar Conteo a 0'">Reiniciar Conteo a 0</span>
+              </button>
+            </div>
+
             <!-- Pie de tarjeta: exactamente 1 botón guardar, condicionado por cambios -->
             <div class="flex items-center justify-between pt-3 border-t border-slate-100">
               <span class="text-[11px]" :class="kioskoHasChanges ? 'text-amber-700 font-medium' : 'text-slate-400'"

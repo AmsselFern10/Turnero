@@ -161,6 +161,9 @@ async function buildApp (opts = {}) {
     app.log.error({ err: error, url: request.url, method: request.method, correlationId, pgCode: error.code, pgConstraint: error.constraint }, 'Unhandled error')
     const status = error.statusCode || error.status || 500
     if (error.error?.codigo) return reply.status(status).send({ error: error.error })
+    if (error.codigo) return reply.status(status).send({ error: { codigo: error.codigo, mensaje: error.message } })
+    if (status === 409) return reply.status(409).send({ error: { codigo: error.codigo || 'conflicto', mensaje: error.message || 'Conflicto al procesar la solicitud.' } })
+    if (status === 404) return reply.status(404).send({ error: { codigo: error.codigo || 'no_encontrado', mensaje: error.message || 'Recurso no encontrado.' } })
     if (error.validation) return reply.status(400).send({ error: { codigo: 'validacion_invalida', mensaje: 'Revise los datos ingresados.' } })
     if (status === 401) return reply.status(401).send({ error: { codigo: 'credenciales_invalidas', mensaje: 'Usuario o contrasena incorrectos.' } })
     if (status === 403) return reply.status(403).send({ error: { codigo: 'sin_permiso', mensaje: 'No tiene permiso para esta accion.' } })

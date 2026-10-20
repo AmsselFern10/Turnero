@@ -508,6 +508,11 @@ function createKioskoService (fastifyOrDb) {
   }
 }
 
+function invalidarCacheEstado () {
+  _estadoCache = null
+  _estadoCacheExpira = 0
+}
+
 module.exports = {
   createKioskoService,
   getKioskoEstado,
@@ -515,5 +520,6 @@ module.exports = {
   consultarMiTurno,
   cancelarTurnosVencidosDiaAnterior,
   getLanIpAddress,
-  resolverUrlSeguimiento
+  resolverUrlSeguimiento,
+  invalidarCacheEstado
 }

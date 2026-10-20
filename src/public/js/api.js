@@ -216,35 +216,35 @@ class ApiClient {
         if (responseData.codigo) {
           codigo = responseData.codigo;
         }
-        if (responseData.mensaje) {
+        if (responseData.error && typeof responseData.error === 'object') {
+          // Formato del contrato: { error: { codigo, mensaje } }
+          codigo = responseData.error.codigo || codigo;
+          mensaje = responseData.error.mensaje || mensaje;
+        } else if (responseData.mensaje) {
           mensaje = responseData.mensaje;
-        }
-        if (responseData.error) {
-          if (typeof responseData.error === 'object') {
-            // Formato del contrato: { error: { codigo, mensaje } }
-            codigo = responseData.error.codigo || codigo;
-            mensaje = responseData.error.mensaje || mensaje;
-          } else if (typeof responseData.error === 'string') {
-            // Legado: { error: 'texto' }
-            mensaje = responseData.error;
-          }
         } else if (responseData.message) {
           mensaje = responseData.message;
+        } else if (typeof responseData.error === 'string') {
+          mensaje = responseData.error;
         }
       }
 
       // Mapeo de codigos HTTP a codigos semanticos cuando el servidor no los provee
       if (codigo === 'error_interno') {
-        const httpCodigos = {
-          400: 'validacion_invalida',
-          401: 'credenciales_invalidas',
-          403: 'sin_permiso',
-          404: 'mesa_no_encontrada',
-          409: 'conflicto',
-          429: 'servidor_ocupado',
-          503: 'servidor_ocupado'
-        };
-        codigo = httpCodigos[response.status] || 'error_interno';
+        if (mensaje && mensaje.toLowerCase().includes('espera')) {
+          codigo = 'sin_turnos_en_espera';
+        } else {
+          const httpCodigos = {
+            400: 'validacion_invalida',
+            401: 'credenciales_invalidas',
+            403: 'sin_permiso',
+            404: 'mesa_no_encontrada',
+            409: 'conflicto',
+            429: 'servidor_ocupado',
+            503: 'servidor_ocupado'
+          };
+          codigo = httpCodigos[response.status] || 'error_interno';
+        }
       }
 
       const httpError = new Error(mensaje);

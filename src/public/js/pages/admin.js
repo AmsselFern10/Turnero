@@ -201,8 +201,9 @@ export function adminView() {
       impresora_activa: false,
       impresora_ip:     '',
       impresora_puerto: 9100
-    },
     _configSnapshot: null,
+    kioskoUltimoNumero: 0,
+    _reiniciandoContadorKiosko: false,
 
     filtroReporte: {
       fecha:       new Date().toISOString().slice(0, 10),
@@ -261,6 +262,10 @@ export function adminView() {
     // =========================================================================
     // GETTERS DE VALIDACIÓN REACTIVA
     // =========================================================================
+
+    get ultimoNumeroKioskoDisplay() {
+      return '#' + (this.kioskoUltimoNumero || 0);
+    },
 
     get extensionValida() {
       const raw = this.extensionCantidad;
@@ -965,6 +970,7 @@ export function adminView() {
         this.config.zona_horaria              = c.zona_horaria || 'America/Tegucigalpa';
         this.config.fondo_imagen_url          = c.fondo_imagen_url || '';
         this.config.fondo_imagen_activa       = c.fondo_imagen_activa === 'true' || c.fondo_imagen_activa === true;
+        this.kioskoUltimoNumero               = res.kiosko_ultimo_numero || 0;
       }
       this.validarFondoUrl();
       this._configSnapshot = { ...this.config };
@@ -1802,6 +1808,42 @@ export function adminView() {
       } finally {
         this._guardandoSeccion.kiosko = false;
       }
+    },
+
+    /**
+     * Solicita confirmación y reinicia el contador diario de turnos del Kiosko a 0
+     */
+    confirmarReinicioContadorKiosko() {
+      if (this._reiniciandoContadorKiosko) return;
+      this._pedirConfirmacion({
+        titulo: '¿Reiniciar Conteo de Kiosko a 0?',
+        mensaje: `El contador diario de turnos del Kiosko se restablecerá a 0 (turno actual: ${this.ultimoNumeroKioskoDisplay}). El próximo turno emitido —tanto en modalidad asistida como estudiante— comenzará desde el #1 y se cancelarán turnos en espera previos.`,
+        botonTexto: 'Sí, Reiniciar a 0',
+        botonClase: 'btn-danger btn-sm',
+        tipo: 'peligro',
+        accion: async () => {
+          this._reiniciandoContadorKiosko = true;
+          try {
+            await api.post('/admin/kiosko/reiniciar-contador', {});
+            this.kioskoUltimoNumero = 0;
+            this.notificar({
+              tipo: 'success',
+              titulo: 'Contador Reiniciado',
+              mensaje: 'El contador de turnos del Kiosko fue reiniciado a 0. El próximo turno será el #1.'
+            });
+            await this.cargarDashboard();
+          } catch (err) {
+            console.error('[ADMIN] Error al reiniciar contador kiosko:', err);
+            this.notificar({
+              tipo: 'error',
+              titulo: 'Error',
+              mensaje: err.mensaje || err.message || 'No se pudo reiniciar el contador del Kiosko.'
+            });
+          } finally {
+            this._reiniciandoContadorKiosko = false;
+          }
+        }
+      });
     },
 
     /**
@@ -2667,6 +2709,10 @@ export function adminView() {
       this.ws.on('turno_llamado',           recargarEnVivo);
       this.ws.on('turno_cancelado',         recargarEnVivo);
       this.ws.on('kiosko_turno_generado',   recargarEnVivo);
+      this.ws.on('contador_kiosko_reiniciado', async (payload) => {
+        this.kioskoUltimoNumero = 0;
+        await recargarEnVivo();
+      });
       this.ws.on('proximo_actualizado',     recargarEnVivo);
       // mesa_actualizada también recarga usuarios para mantener la columna Mesa sincronizada
       this.ws.on('mesa_actualizada', async () => {

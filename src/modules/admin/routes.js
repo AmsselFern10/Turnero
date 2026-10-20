@@ -728,14 +728,20 @@ module.exports = async function adminRoutes (fastify) {
   fastify.get('/configuracion', {
     preHandler: [fastify.authorizeRol('admin')]
   }, async (request, reply) => {
-    const { rows } = await fastify.db.query(
-      `SELECT clave, valor, descripcion, actualizado_en FROM configuracion ORDER BY clave`
-    )
+    const [cfgRes, contadorRes] = await Promise.all([
+      fastify.db.query(
+        `SELECT clave, valor, descripcion, actualizado_en FROM configuracion ORDER BY clave`
+      ),
+      fastify.db.query(
+        `SELECT ultimo_numero FROM kiosko_contador_diario WHERE fecha = fn_fecha_hoy() LIMIT 1`
+      )
+    ])
     const configMap = {}
-    for (const r of rows) {
+    for (const r of cfgRes.rows) {
       configMap[r.clave] = r.valor
     }
-    return reply.send({ configuracion: configMap, lista: rows })
+    const kioskoUltimoNumero = contadorRes.rows[0]?.ultimo_numero || 0
+    return reply.send({ configuracion: configMap, lista: cfgRes.rows, kiosko_ultimo_numero: kioskoUltimoNumero })
   })
 
   // ── PATCH /admin/configuracion — Actualizar parámetro (RF-ADM-07) ─────────
@@ -977,6 +983,74 @@ module.exports = async function adminRoutes (fastify) {
     ])
 
     return reply.send({ configuracion: cfg, clave: cfg.clave, valor: cfg.valor })
+  })
+
+  // ── POST /admin/kiosko/reiniciar-contador — Reinicia el contador diario de kiosko a 0 ─
+  fastify.post('/kiosko/reiniciar-contador', {
+    preHandler: [fastify.authorizeRol('admin')]
+  }, async (request, reply) => {
+    const fechaRes = await fastify.db.query('SELECT fn_fecha_hoy() AS fecha')
+    const fechaHoy = fechaRes.rows[0]?.fecha
+
+    // 1. Resetear el contador correlativo diario de Kiosko a 0
+    await fastify.db.query(
+      `INSERT INTO kiosko_contador_diario (fecha, ultimo_numero, actualizado_en)
+       VALUES ($1, 0, NOW())
+       ON CONFLICT (fecha)
+       DO UPDATE SET ultimo_numero = 0, actualizado_en = NOW()`,
+      [fechaHoy]
+    )
+
+    // 2. Cancelar turnos 'esperando' de kiosko de hoy para vaciar la cola previa
+    const { rowCount: turnosCancelados } = await fastify.db.query(
+      `UPDATE turnos
+       SET estado = 'cancelado', finalizado_en = NOW()
+       WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = $1`,
+      [fechaHoy]
+    )
+
+    // 3. Auditoría inmutable
+    await fastify.db.query(
+      `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
+       VALUES ($1, 'KIOSKO_CONTADOR_REINICIADO', $2, $3)`,
+      [request.user.id, request.ip, JSON.stringify({ fecha: fechaHoy, turnosCancelados })]
+    )
+
+    // 4. Invalidar caché interna del servicio kiosko
+    const { invalidarCacheEstado } = require('../kiosko/service')
+    if (typeof invalidarCacheEstado === 'function') {
+      invalidarCacheEstado()
+    }
+
+    // 5. Broadcasts en tiempo real a todos los canales
+    await Promise.all([
+      fastify.broadcast('admin:all', 'contador_kiosko_reiniciado', {
+        ultimo_numero: 0,
+        turnos_en_espera: 0,
+        turnos_cancelados: turnosCancelados
+      }),
+      fastify.broadcast('kiosko:publico', 'contador_reiniciado', {
+        ultimo_numero: 0,
+        turnos_en_espera: 0
+      }),
+      fastify.broadcast('lote:activo', 'proximo_actualizado', {
+        proximo_numero: null,
+        vouchers_restantes: 0,
+        modo: 'kiosko_web'
+      }),
+      fastify.broadcast('tv:global', 'proximo_actualizado', {
+        proximo_numero: null,
+        vouchers_restantes: 0,
+        modo: 'kiosko_web'
+      })
+    ])
+
+    return reply.send({
+      ok: true,
+      mensaje: 'Contador de turnos del Kiosko reiniciado a 0 exitosamente.',
+      ultimo_numero: 0,
+      turnos_cancelados: turnosCancelados
+    })
   })
 
   // ── POST /admin/configuracion/subir-fondo — Subir y guardar archivo local de fondo ───

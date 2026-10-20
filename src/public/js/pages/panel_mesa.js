@@ -354,6 +354,16 @@ export function panelMesaView() {
         return;
       }
 
+      // En modo Kiosko Web, si no hay estudiantes en la cola, informar amablemente
+      if (this.modo === 'kiosko_web' && (!this.proximoNumero || this.vouchersRestantes === 0)) {
+        showToast({
+          message: 'No hay estudiantes esperando turno en este momento en el Kiosko.',
+          type: 'info',
+          duration: 4000
+        });
+        return;
+      }
+
       this.loadingAction = true;
 
       // Idempotency-Key por intento: si la red falla y el usuario reintenta,
@@ -405,10 +415,10 @@ export function panelMesaView() {
           return; // No ejecutar el finally normal
         }
 
-        if (err.status === 409 || msg.toLowerCase().includes('agotado') || msg.toLowerCase().includes('espera')) {
-          if (err.codigo === 'sin_turnos_en_espera' || msg.includes('espera')) {
+        if (err.status === 409 || err.codigo === 'sin_turnos_en_espera' || msg.toLowerCase().includes('agotado') || msg.toLowerCase().includes('espera')) {
+          if (this.modo === 'kiosko_web' || err.codigo === 'sin_turnos_en_espera' || msg.toLowerCase().includes('espera')) {
             showToast({
-              message: 'No hay estudiantes esperando turno en este momento.',
+              message: 'No hay estudiantes esperando turno en este momento en el Kiosko.',
               type: 'info',
               duration: 5000
             });
