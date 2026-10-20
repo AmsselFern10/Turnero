@@ -14,6 +14,23 @@ import { api } from '../api.js';
 import { TurneroWSClient } from '../ws-client.js';
 import { formatTimer, showToast, initFondoPersonalizado } from '../utils.js';
 
+/**
+ * Genera un UUID v4. Usa crypto.randomUUID() cuando esté disponible
+ * (contextos seguros: HTTPS o localhost). En HTTP-LAN usa un fallback
+ * basado en Math.random(), suficiente para Idempotency-Keys de corta vida.
+ */
+function generarUUID() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // Fallback RFC-4122 v4 para contextos HTTP no seguros (LAN)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 export function panelMesaView() {
   return {
     // Datos de la mesa y del operador
@@ -341,7 +358,7 @@ export function panelMesaView() {
 
       // Idempotency-Key por intento: si la red falla y el usuario reintenta,
       // el mismo UUID devuelve el turno ya creado sin quemar un nuevo número.
-      if (!this._llamarKey) this._llamarKey = crypto.randomUUID();
+      if (!this._llamarKey) this._llamarKey = generarUUID();
       const idempotencyKey = this._llamarKey;
       try {
         const res = await api.post('/turnos/llamar', {
@@ -668,7 +685,7 @@ export function panelMesaView() {
 
       this.loadingRezagado = true;
       this.errorRezagado = '';
-      const iKey = crypto.randomUUID();
+      const iKey = generarUUID();
 
       try {
         const res = await api.post('/turnos/atender-rezagado', {

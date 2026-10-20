@@ -50,6 +50,8 @@ WORKDIR /app
 # Copiar código fuente primero y luego las dependencias de producción limpias
 COPY --chown=fastify:nodejs . .
 COPY --from=deps --chown=fastify:nodejs /app/node_modules ./node_modules
+# Asegurar que la carpeta de subidas exista con permisos para fastify
+RUN mkdir -p /app/src/public/assets/uploads && chown -R fastify:nodejs /app/src/public/assets/uploads
 
 USER fastify
 
