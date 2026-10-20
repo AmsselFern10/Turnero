@@ -8,10 +8,27 @@ echo             TURNERO DE MATRICULAS 2026 - INICIO DEL SISTEMA
 echo ======================================================================
 echo.
 
-:: 1. Reactivar auto-inicio en Windows al encender o reiniciar el equipo
-echo [1/2] Configurando auto-inicio de Windows...
+:: 1. Gestionar servicios y auto-arranque
+echo [1/2] Verificando modo de ejecucion...
 set "STARTUP_FOLDER=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 set "STARTUP_VBS=%STARTUP_FOLDER%\Turnero_2026_AutoStart.vbs"
+
+:: Opcion A: Si Docker esta disponible y corriendo, usar Docker (maneja su propio auto-inicio con restart: unless-stopped)
+where docker >nul 2>&1
+if %errorLevel% equ 0 (
+    docker info >nul 2>&1
+    if %errorLevel% equ 0 (
+        :: Limpiar script VBS viejo para evitar errores de Windows Script Host
+        if exist "%STARTUP_VBS%" del /f /q "%STARTUP_VBS%" >nul 2>&1
+        set "COMPOSE_BAKE=false"
+        echo   [INFO] Docker activo. Iniciando contenedores en segundo plano...
+        docker compose up -d
+        echo   [OK] Contenedores activos en puerto 3000 con politica 'restart: unless-stopped'.
+        goto fin
+    )
+)
+
+:: Si no se usa Docker, configurar auto-inicio para Node nativo
 if exist "%STARTUP_FOLDER%" (
     (
         echo Set WshShell = CreateObject^("WScript.Shell"^)
@@ -24,19 +41,6 @@ if exist "%STARTUP_FOLDER%" (
 :: 2. Levantar los servicios y ocupar el puerto 3000
 echo.
 echo [2/2] Iniciando servicios del Turnero en el puerto 3000...
-
-:: Opcion A: Si Docker esta disponible y corriendo, iniciar contenedores
-where docker >nul 2>&1
-if %errorLevel% equ 0 (
-    docker info >nul 2>&1
-    if %errorLevel% equ 0 (
-        set "COMPOSE_BAKE=false"
-        echo   [INFO] Docker detectado. Iniciando contenedores en segundo plano...
-        docker compose up -d
-        echo   [OK] Contenedores activos en puerto 3000 con politica 'restart: unless-stopped'.
-        goto fin
-    )
-)
 
 :: Opcion B: Si PM2 esta instalado globalmente, usar PM2
 where pm2 >nul 2>&1

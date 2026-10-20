@@ -115,6 +115,12 @@ if ($hasDocker) {
     Write-Host "[INFO] Poblando base de datos con seed inicial..."
     & docker compose exec -T app node scripts/seed.js
 
+    # En modo Docker, los contenedores arrancan automaticamente con Docker Desktop (restart: unless-stopped)
+    # Limpiamos cualquier script VBS viejo para evitar errores de Windows Script Host
+    $startupVbs = Join-Path ([System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::Startup)) "Turnero_2026_AutoStart.vbs"
+    if (Test-Path $startupVbs) {
+        Remove-Item $startupVbs -Force -ErrorAction SilentlyContinue
+    }
 } else {
     Write-Host "[INFO] Docker Desktop no detectado o no activo. Procediendo con Node.js local..."
 
