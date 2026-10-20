@@ -1,5 +1,5 @@
 # =============================================================================
-# install.ps1 — Instalador Automatizado Turnero de Matriculas 2026 (Windows)
+# install.ps1 - Instalador Automatizado Turnero de Matriculas 2026 (Windows)
 #
 # Deja el sistema completamente instalado, configurado y corriendo.
 #
@@ -12,11 +12,11 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 
 Write-Host "===================================================================="
-Write-Host " INSTALADOR — SISTEMA DIGITAL TURNERO DE MATRICULAS 2026 (v2.1)"
+Write-Host " INSTALADOR - SISTEMA DIGITAL TURNERO DE MATRICULAS 2026 v2.1"
 Write-Host "===================================================================="
 Write-Host "[INFO] Iniciando verificacion de entorno e instalacion..."
 
-# ── 1. Configuracion de Variables de Entorno (.env) ───────────────────────────
+# 1. Configuracion de Variables de Entorno (.env)
 $envFile = Join-Path $ScriptDir ".env"
 if (Test-Path $envFile) {
     Write-Host "[OK] Archivo .env existente detectado. Se omite creacion y se conserva la configuracion actual intacta."
@@ -76,7 +76,7 @@ try {
     $lanIp = "localhost"
 }
 
-# ── 2. Seleccion de Modo de Instalacion ────────────────────────────────────────
+# 2. Seleccion de Modo de Instalacion
 $hasDocker = $false
 try {
     & docker info 2>$null | Out-Null
@@ -165,7 +165,7 @@ WshShell.Run "node src/server.js", 0, False
     }
 }
 
-# ── 3. Resumen de Despliegue y Enlaces ─────────────────────────────────────────
+# 3. Resumen de Despliegue y Enlaces
 Write-Host ""
 Write-Host "===================================================================="
 Write-Host " SISTEMA TURNERO 2026 INSTALADO Y EN EJECUCION LISTO"
