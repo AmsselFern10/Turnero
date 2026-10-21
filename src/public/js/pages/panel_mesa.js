@@ -138,6 +138,30 @@ export function panelMesaView() {
       return 'Sin rezagados';
     },
 
+    get textoBotonLlamar() {
+      if (this.loadingAction) return 'Llamando...';
+      if (this._cooldown) return 'Procesando...';
+      return 'LLAMAR SIGUIENTE';
+    },
+
+    get turnoActualDisplay() {
+      return this.turnoActual?.numero ? String(this.turnoActual.numero).padStart(3, '0') : '---';
+    },
+
+    get atendidosHoyTexto() {
+      return `${this.atendidosHoy} ${this.atendidosHoy === 1 ? 'turno' : 'turnos'}`;
+    },
+
+    get turnoActualModalDisplay() {
+      return this.turnoActual?.numero ? '#' + String(this.turnoActual.numero).padStart(3, '0') : '';
+    },
+
+    get rezagadoSeleccionadoDisplay() {
+      return this.rezagadoSeleccionado?.numero
+        ? `Turno #${String(this.rezagadoSeleccionado.numero).padStart(3, '0')} seleccionado`
+        : 'Seleccione un turno de la lista';
+    },
+
     // Getter reactivo para filtrar rezagados en el modal
     get rezagadosFiltrados() {
       if (!this.filtroRezagados || !this.filtroRezagados.trim()) {
@@ -211,7 +235,7 @@ export function panelMesaView() {
         const me = await api.get('/auth/me');
         if (me?.usuario) {
           const mesaServidor = me.usuario.mesa_asignada;
-          if (mesaServidor) {
+          if (mesaServidor && mesaServidor.estado !== 'inactiva') {
             if (mesaData && Number(mesaData.id) !== Number(mesaServidor.id)) {
               console.warn(`[MESA] Discrepancia: asignada en servidor es Mesa ${mesaServidor.numero}, local tenía Mesa ${mesaData.numero}. Sincronizando...`);
               showToast({
@@ -222,8 +246,8 @@ export function panelMesaView() {
             }
             mesaData = mesaServidor;
             sessionStorage.setItem('turnero_mesa', JSON.stringify(mesaServidor));
-          } else if (user.rol === 'operador') {
-            console.warn('[MESA] El operador no tiene mesa asignada en el servidor. Redirigiendo a selección...');
+          } else {
+            console.warn('[MESA] El usuario no tiene mesa activa asignada en el servidor. Redirigiendo a selección...');
             sessionStorage.removeItem('turnero_mesa');
             sessionStorage.removeItem('mesa_seleccionada');
             window.location.href = '/index.html';
@@ -278,6 +302,18 @@ export function panelMesaView() {
           : 0);
 
         if (data.mesa) {
+          if (data.mesa.estado === 'inactiva') {
+            console.warn('[MESA] La mesa está inactiva en el servidor. Redirigiendo...');
+            showToast({
+              message: `La Mesa ${data.mesa.numero || ''} está inactiva. Redirigiendo a selección...`,
+              type: 'warning',
+              duration: 3500
+            });
+            sessionStorage.removeItem('turnero_mesa');
+            sessionStorage.removeItem('mesa_seleccionada');
+            setTimeout(() => { window.location.href = '/index.html'; }, 1000);
+            return;
+          }
           this.mesaPausada = data.mesa.estado === 'pausada';
           if (data.mesa.nombre) this.mesa.nombre = data.mesa.nombre;
           if (data.mesa.numero !== undefined && data.mesa.numero !== null) {
@@ -1200,15 +1236,22 @@ export function panelMesaView() {
         this.mesaPausada = false;
       });
 
-      // El admin inactivó esta mesa: avisar al operador y redirigir a selección de mesa
+      // El admin inactivó o liberó esta mesa: avisar al operador y redirigir a selección de mesa
       this.ws.on('mesa_inactivada', () => {
         this.mesaInactivada = true;
         // Limpiar la sesión de mesa para que el login muestre la grilla
+        sessionStorage.removeItem('turnero_mesa');
+        sessionStorage.removeItem('mesa_seleccionada');
         sessionStorage.removeItem('mesa_id');
         sessionStorage.removeItem('mesa_numero');
         sessionStorage.removeItem('mesa_nombre');
-        // Redirigir tras 4 segundos para que el operador vea el aviso
-        setTimeout(() => { window.location.href = '/'; }, 4000);
+        showToast({
+          message: 'Esta ventanilla fue inactivada o liberada por la administración.',
+          type: 'warning',
+          duration: 4000
+        });
+        // Redirigir tras 2.5 segundos para que el operador vea el aviso
+        setTimeout(() => { window.location.href = '/index.html'; }, 2500);
       });
 
       // Actualización en caliente del próximo turno cuando CUALQUIER mesa llama o el lote avanza (RF-TURN-09)

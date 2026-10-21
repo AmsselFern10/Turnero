@@ -57,6 +57,18 @@ export function loginView() {
       return !this.loadingMesas && this.mesas.length === 0 && !this.errorMessage;
     },
 
+    get textoBotonLogin() {
+      return this.loading ? 'Validando...' : 'Iniciar sesión';
+    },
+
+    get textoBotonCancelar() {
+      return this.loading ? 'Cerrando sesión...' : 'Cancelar';
+    },
+
+    togglePassword() {
+      this.showPassword = !this.showPassword;
+    },
+
     formatearNombreMesa(mesa) {
       if (!mesa?.nombre) return 'Sitio de atención';
       return mesa.nombre.replace(/^Mesa \d+ — /, '');
@@ -157,6 +169,17 @@ export function loginView() {
       this._ws.on('operador_asignado_por_admin', (payload) => {
         if (this.currentUser && Number(payload.operador_id) === Number(this.currentUser.id)) {
           this._redirigirConMesaAsignada(payload.mesa);
+        }
+      });
+
+      this._ws.on('operador_desasignado_por_admin', (payload) => {
+        if (this.currentUser && Number(payload.operador_id) === Number(this.currentUser.id)) {
+          this.mesaPreAsignada = null;
+          if (this.currentUser) this.currentUser.mesa_asignada = null;
+          sessionStorage.removeItem('turnero_mesa');
+          sessionStorage.removeItem('mesa_seleccionada');
+          showToast({ message: 'Tu asignación de mesa fue liberada por la administración.', type: 'info', duration: 4000 });
+          this._decidirPasoPostLogin(this.currentUser);
         }
       });
 
@@ -285,17 +308,34 @@ export function loginView() {
       }
     },
 
-    continuarMesaAsignada() {
-      if (!this.mesaPreAsignada) {
-        this.step = 'mesas_grid';
-        this.cargarMesas();
-        this._conectarWSMesas();
-        return;
+    async continuarMesaAsignada() {
+      if (this.loading) return;
+      this.loading = true;
+      try {
+        const { usuario } = await api.get('/auth/me');
+        if (!usuario?.mesa_asignada || usuario.mesa_asignada.estado === 'inactiva') {
+          showToast({
+            message: 'La mesa asignada ya no se encuentra activa o fue liberada.',
+            type: 'warning',
+            duration: 4000
+          });
+          this.mesaPreAsignada = null;
+          this.currentUser = usuario;
+          sessionStorage.removeItem('turnero_mesa');
+          sessionStorage.removeItem('mesa_seleccionada');
+          this._decidirPasoPostLogin(usuario);
+          return;
+        }
+        this.mesaPreAsignada = usuario.mesa_asignada;
+        sessionStorage.setItem('turnero_mesa', JSON.stringify(usuario.mesa_asignada));
+        this.step = 'redirecting';
+        this.redirectText = `Continuando en Mesa ${this.mesaPreAsignada.numero}...`;
+        setTimeout(() => { window.location.href = '/panel_mesa.html'; }, 350);
+      } catch (err) {
+        showToast({ message: 'No se pudo verificar el estado de la mesa.', type: 'error', duration: 4000 });
+      } finally {
+        this.loading = false;
       }
-      sessionStorage.setItem('turnero_mesa', JSON.stringify(this.mesaPreAsignada));
-      this.step = 'redirecting';
-      this.redirectText = `Continuando en Mesa ${this.mesaPreAsignada.numero}...`;
-      setTimeout(() => { window.location.href = '/panel_mesa.html'; }, 350);
     },
 
     irAdmin() {
@@ -303,21 +343,21 @@ export function loginView() {
     },
 
     async irOperarMesa() {
-      if (this.mesaPreAsignada || this.currentUser?.mesa_asignada) {
-        this.mesaPreAsignada = this.mesaPreAsignada || this.currentUser?.mesa_asignada;
-        this.step = 'mesa_asignada';
-        return;
-      }
       try {
         const res = await api.get('/auth/me');
-        if (res?.usuario?.mesa_asignada) {
+        if (res?.usuario) {
           this.currentUser = res.usuario;
-          this.mesaPreAsignada = res.usuario.mesa_asignada;
-          this.step = 'mesa_asignada';
-          return;
+          if (res.usuario.mesa_asignada && res.usuario.mesa_asignada.estado !== 'inactiva') {
+            this.mesaPreAsignada = res.usuario.mesa_asignada;
+            this.step = 'mesa_asignada';
+            return;
+          }
         }
       } catch (_) {}
 
+      this.mesaPreAsignada = null;
+      sessionStorage.removeItem('turnero_mesa');
+      sessionStorage.removeItem('mesa_seleccionada');
       this.step = 'mesas_grid';
       await this.cargarMesas();
       this._conectarWSMesas();

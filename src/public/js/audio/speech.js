@@ -137,19 +137,15 @@ export function speakCall({ numero, mesa_numero }) {
     const texto = `Turno ${numLimpio}, Mesa ${mesaLimpia}`;
 
     try {
+      const ss = window.speechSynthesis;
+
       if (!_cachedVoice) {
         _seleccionarVozEspanola();
       }
 
-      // CORRECCIÓN CRÍTICA (Chrome bug): cancel() limpia la cola interna de Chrome.
-      // Sin esto, una utterance anterior atascada impide que onend se dispare en la siguiente.
-      // Es seguro porque speakCall es llamado en secuencia estricta (después del chime),
-      // y el flujo es secuencial — no hay utterances superpuestas en uso normal.
-      try { window.speechSynthesis.cancel(); } catch (_) {}
-
       // Si la síntesis quedó en pausa por el navegador, reanudar
-      if (window.speechSynthesis.paused) {
-        try { window.speechSynthesis.resume(); } catch (_) {}
+      if (ss && ss.paused) {
+        try { ss.resume(); } catch (_) {}
       }
 
       const utterance = new SpeechSynthesisUtterance(texto);

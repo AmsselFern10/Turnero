@@ -115,6 +115,65 @@ export function kioskoView () {
       return `${pos} personas antes de ti`;
     },
 
+    get subtituloHeader () {
+      return this.esTablet
+        ? 'Modalidad asistida • Emisión de turnos'
+        : 'Autoservicio • Kiosko estudiantil';
+    },
+
+    get estadoConexionTexto () {
+      return this.wsConectado ? 'En línea' : 'Reconectando...';
+    },
+
+    get modoUsoBadgeTexto () {
+      if (this.esTablet) return 'Atención asistida • Portón';
+      return this.kioskoModoUso === 'asistido' ? 'Modalidad asistida' : 'Emisión de turnos';
+    },
+
+    get tituloBienvenida () {
+      return this.esTablet
+        ? 'Módulo de asignación de turnos'
+        : 'Bienvenido al proceso de matrícula';
+    },
+
+    get descripcionBienvenida () {
+      if (this.esTablet) {
+        return 'Presione el botón para asignar el siguiente turno oficial y emitir el comprobante.';
+      }
+      return this.kioskoModoUso === 'asistido'
+        ? 'El proceso se atiende de forma presencial asistida en portería.'
+        : 'Presiona el botón para tomar tu turno correlativo y asignarte a la fila oficial de hoy.';
+    },
+
+    get tituloTopePausado () {
+      return this.topeAlcanzado ? 'Límite de turnos alcanzado hoy' : 'Servicio pausado';
+    },
+
+    get mensajeTopePausado () {
+      return this.topeAlcanzado
+        ? 'Se ha alcanzado el número máximo de turnos asignados para esta jornada.'
+        : 'El servicio digital no está admitiendo turnos en este momento. Solicite su voucher físico.';
+    },
+
+    get textoBotonGenerar () {
+      return this.esTablet ? 'Asignar turno' : 'Tomar mi turno';
+    },
+
+    get tiempoEstimadoTexto () {
+      return `~${this.ticketData?.tiempoEstimadoMin ?? 0} min`;
+    },
+
+    get destinoLlamadoTexto () {
+      const mesa = this.seguimientoData?.mesa_numero
+        ? `Mesa ${this.seguimientoData.mesa_numero}`
+        : (this.seguimientoData?.mesa || 'Ventanilla');
+      return `Diríjase a ${mesa}`;
+    },
+
+    get estadoRedLocalTexto () {
+      return this.redLocalOk ? 'Red local LAN conectada' : 'Sin conexión';
+    },
+
     /**
      * Inicialización del Kiosko
      */

@@ -166,6 +166,12 @@ module.exports = async function mesasRoutes (fastify) {
       // el panel del operador que estaba trabajando vea el aviso inmediato y no siga actuando.
       if (!operador_id) {
         await fastify.broadcast(`mesa:${mesaId}`, 'mesa_inactivada', { mesa, motivo: 'operador_removido_por_admin' })
+        if (mesaActual.operador_id) {
+          await fastify.broadcast('tv:global', 'operador_desasignado_por_admin', {
+            operador_id: Number(mesaActual.operador_id),
+            mesa_id: mesaId
+          })
+        }
       }
 
       return reply.send({ mesa })
@@ -265,6 +271,12 @@ module.exports = async function mesasRoutes (fastify) {
     await fastify.broadcast(`mesa:${mesaId}`, eventoMesa, { mesa })
     await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
     await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', { mesa, accion: estado === 'inactiva' ? 'eliminada' : 'actualizada' })
+    if (estado === 'inactiva' && mesaActual.operador_id) {
+      await fastify.broadcast('tv:global', 'operador_desasignado_por_admin', {
+        operador_id: Number(mesaActual.operador_id),
+        mesa_id: mesaId
+      })
+    }
 
     return reply.send({ mesa })
   })

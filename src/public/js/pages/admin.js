@@ -1493,6 +1493,12 @@ export function adminView() {
       const ejecutar = async () => {
         try {
           await api.patch(`/mesas/${mesaId}/asignar`, { operador_id: operadorId });
+          if (!operadorId && mesa && Number(mesa.operador_id) === Number(this.currentUser?.id)) {
+            sessionStorage.removeItem('turnero_mesa');
+            sessionStorage.removeItem('mesa_seleccionada');
+          } else if (operadorId && Number(operadorId) === Number(this.currentUser?.id)) {
+            sessionStorage.setItem('turnero_mesa', JSON.stringify({ id: mesa.id, numero: mesa.numero, nombre: mesa.nombre, estado: 'activa' }));
+          }
           this.notificar({
             tipo: 'success',
             titulo: 'Asignación actualizada',
@@ -1626,6 +1632,10 @@ export function adminView() {
           this._loading = true;
           try {
             await api.patch(`/mesas/${mesaId}/estado`, { estado: 'inactiva' });
+            if (mesa && Number(mesa.operador_id) === Number(this.currentUser?.id)) {
+              sessionStorage.removeItem('turnero_mesa');
+              sessionStorage.removeItem('mesa_seleccionada');
+            }
             this.notificar({
               tipo: 'warning',
               titulo: 'Mesa inactivada',

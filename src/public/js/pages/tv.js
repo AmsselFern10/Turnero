@@ -34,15 +34,13 @@ import { speakCall, setSpeechEnabled, initSpeech, isSpeechBlocked } from '../aud
 
 // ── Configuración central de tiempos (ms) ────────────────────────────────────
 const CFG = {
-  anuncioBaseMs:     2800,
-  anuncioMinMs:      1800,
-  rellamadoMinMs:    1800,
-  antiguedadMaxMs:  60000,
-  graciaBannerMs:    3000,
-  watchdogMs:       12000, // Cubre el timeout de 6s de speakCall + margen
-  maxCola:             50,
-  maxSeqVistos:       300,
-  staleCheckMs:     30000, // Intervalo de verificación anti-stale cuando visible
+  anuncioBaseMs:    2800,  // Duración fija por anuncio — se respeta siempre, sin excepciones
+  antiguedadMaxMs: 60000,
+  graciaBannerMs:   3000,
+  watchdogMs:      12000,  // Cubre el timeout de speakCall (3.5s) + margen holgado
+  maxCola:            50,
+  maxSeqVistos:      300,
+  staleCheckMs:    30000,
 };
 
 const STORAGE_KEY_ESCALA_PRINCIPAL    = 'turnero_tv_escala_principal';
@@ -82,16 +80,34 @@ export function tvView() {
     vozActiva:      true,
     vozBloqueada:   false, // true si el navegador bloqueó la síntesis de voz
 
+    // ── Getters de presentación desacoplados de la vista HTML ─────────────────
+    get estilosRootVariables() {
+      const pScale = (this.escalaPrincipal / 100).toFixed(2);
+      const sScale = (this.escalaSecundaria / 100).toFixed(2);
+      return {
+        '--tv-escala-principal': pScale,
+        '--tv-escala-secundaria': sScale,
+        '--tv-num-scale': pScale
+      };
+    },
+
+    get estiloFondoPrincipal() {
+      const alpha = (this.opacidadPrincipal / 100).toFixed(2);
+      return { backgroundColor: `rgba(255, 255, 255, ${alpha})` };
+    },
+
+    get estiloFondoSecundario() {
+      const alpha = (this.opacidadSecundaria / 100).toFixed(2);
+      return { backgroundColor: `rgba(255, 255, 255, ${alpha})` };
+    },
+
     // ── Propiedades privadas (control de máquina de estados y timers) ────────
-    _ws:                null,
-    _cola:              [],     // FIFO de turnos normales
-    _colaRellamados:    [],     // Cola prioritaria de re-llamados
-    _seqVistos:         null,   // Set de seq y evento_id procesados
-    _ultimoLlamadoReal: null,   // Respaldo del último llamado oficial durante re-llamados
-    _reproduciendo:     false,
-    _reproduciendoTipo: null,   // 'nuevo' | 'rellamado' | null
-    _lastSeqAnunciado:  0,
-    _lastSeqRecibido:   0,
+    _ws:               null,
+    _cola:             [],    // Cola FIFO única — llamados, re-llamados y rezagados en orden de llegada
+    _seqVistos:        null,  // Set de seq y evento_id procesados (deduplicación)
+    _reproduciendo:    false,
+    _lastSeqAnunciado: 0,
+    _lastSeqRecibido:  0,
 
     // Timers y listeners
     _watchdogTimer:     null,
@@ -115,7 +131,6 @@ export function tvView() {
 
       this._seqVistos = new Set();
       this._cola = [];
-      this._colaRellamados = [];
 
       // Aplicar escalas y opacidades guardadas inmediatamente en offline/arranque
       let cachedPrincipal  = null;
@@ -229,6 +244,11 @@ export function tvView() {
       } catch (_) {
         // En caso de fallo de red, ya se inicializó con el último valor guardado en localStorage
       }
+    },
+
+    desbloquearAudio() {
+      this.audioSuspended = false;
+      initSpeech();
     },
 
     toggleVoz() {
@@ -605,6 +625,12 @@ export function tvView() {
         es_rezagado: !!payload.es_rezagado
       };
 
+      // Deduplicación para rezagados: si el operador presiona dos veces o el servidor reenvía,
+      // limitar a 1 rezagado/re-llamado pendiente por número de turno en la cola activa.
+      if (item.es_rezagado && this._cola.some(c => (c.es_rezagado || c.tipo === 'rellamado') && c.numero === item.numero)) {
+        return;
+      }
+
       // Si la llamada es extremadamente antigua (> 60s), se añade en silencio al historial
       const edad = Date.now() - new Date(llamado_en).getTime() + this._serverTimeOffset;
       if (edad > CFG.antiguedadMaxMs && !this._reproduciendo && this.ultimoLlamado.numero !== null) {
@@ -616,7 +642,8 @@ export function tvView() {
         return;
       }
 
-      // Inserción FIFO natural
+      // Cola FIFO única: todo entra al final en el orden en que el servidor lo emitió.
+      // Llamado normal, re-llamado y rezagado son exactamente lo mismo aquí.
       this._cola.push(item);
 
       // Control de tamaño máximo de cola
@@ -624,9 +651,9 @@ export function tvView() {
         const descartado = this._cola.shift();
         if (descartado) {
           this._agregarAlHistorial({
-            numero: descartado.numero,
+            numero:      descartado.numero,
             mesa_numero: descartado.mesa_numero,
-            llamado_en: descartado.llamado_en
+            llamado_en:  descartado.llamado_en
           });
         }
       }
@@ -640,10 +667,6 @@ export function tvView() {
 
       const numero = payload.numero ?? payload.turno;
       if (numero === undefined || numero === null || Number.isNaN(+numero)) return;
-      const numVal = Number(numero);
-
-      // Si ya hay un re-llamado pendiente para este mismo turno, ignorar duplicado
-      if (this._colaRellamados.some(r => Number(r.numero) === numVal)) return;
 
       const mesa_numero = payload.mesa_numero ?? payload.mesa ?? '';
       const llamado_en  = payload.llamado_en ?? new Date().toISOString();
@@ -651,36 +674,33 @@ export function tvView() {
 
       if (!this._seqVistos) this._seqVistos = new Set();
       if (this._seqVistos.has(eventoId)) return;
+
+      // Deduplicación de re-llamados en cola:
+      // Si el operador presiona dos veces o el servidor reenvía dos eventos distintos,
+      // limitar a 1 re-llamado/rezagado pendiente por número de turno en la cola activa.
+      // (Ojo: se pueden hacer más re-llamados después de reproducirse, pero no duplicados en la misma cola simultáneamente).
+      if (this._cola.some(c => (c.tipo === 'rellamado' || c.es_rezagado) && c.numero === Number(numero))) {
+        return;
+      }
+
       this._seqVistos.add(eventoId);
 
-      const itemRellamado = {
+      // El re-llamado entra al final de la cola única, en el orden en que llegó.
+      this._cola.push({
         tipo:        'rellamado',
         eventoId,
+        seq:         Date.now(),
         numero:      Number(numero),
         mesa_numero,
         llamado_en
-      };
+      });
 
-      // ── Caso especial: el turno aún no había sido anunciado (estaba en _cola normal) ──
-      // Si T9 está esperando en posición 9 de la cola y el operador ya lanza un re-llamado,
-      // sacarlo de la cola normal para que no aparezca dos veces en pantalla:
-      // una como "SEGUNDO AVISO" (rellamado con prioridad) y otra después como llamada normal.
-      const idxEnCola = this._cola.findIndex(c => Number(c.numero) === numVal);
-      if (idxEnCola !== -1) {
-        // El turno nunca llegó a anunciarse — eliminarlo de la cola normal.
-        // El re-llamado actuará como su primera y única aparición, con prioridad.
-        this._cola.splice(idxEnCola, 1);
-        console.info(`[TV] Re-llamado de T${numVal}: eliminado de cola normal (pos ${idxEnCola + 1}) para evitar doble anuncio.`);
-      }
-
-      // Entra con prioridad máxima en la cola de re-llamados (se ejecutará tras el anuncio en curso)
-      this._colaRellamados.push(itemRellamado);
       this._actualizarContadorCola();
       this._despacharReproductor();
     },
 
     _actualizarContadorCola() {
-      this.colaPendiente = this._cola.length + this._colaRellamados.length;
+      this.colaPendiente = this._cola.length;
     },
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -688,58 +708,49 @@ export function tvView() {
     // ─────────────────────────────────────────────────────────────────────────
 
     _despacharReproductor() {
+      // Guard de re-entrada: si ya hay un ciclo de reproducción activo, no arrancar otro.
+      // _reproduciendo cubre el caso normal; este guard cubre el instante entre que
+      // _avanceTimer y el watchdog disparan casi al mismo tiempo.
       if (this._reproduciendo) return;
       this._reproducirSiguiente();
     },
 
     async _reproducirSiguiente() {
-      // 1. Verificar si hay trabajo pendiente
-      if (this._colaRellamados.length === 0 && this._cola.length === 0) {
-        this._reproduciendo     = false;
-        this._reproduciendoTipo = null;
-        this.colaPendiente      = 0;
-        this.glowState          = 'idle';
+      // Cola vacía: máquina de estados en reposo
+      if (this._cola.length === 0) {
+        this._reproduciendo = false;
+        this.colaPendiente  = 0;
+        this.glowState      = 'idle';
         if (this._watchdogTimer) { clearTimeout(this._watchdogTimer); this._watchdogTimer = null; }
         return;
       }
 
       this._reproduciendo = true;
 
-      // Activar Watchdog de seguridad (12 s)
+      // Watchdog de seguridad: si speakCall nunca resuelve (bug del navegador),
+      // el watchdog avanza la cola tras 12 s para que no quede congelada.
       if (this._watchdogTimer) clearTimeout(this._watchdogTimer);
       this._watchdogTimer = setTimeout(() => {
-        console.warn('[TV] Watchdog activado (> 12 s de anuncio sin terminar). Forzando avance seguro.');
+        console.warn('[TV] Watchdog activado (> 12 s sin terminar). Forzando avance.');
         this._forzarAvanceWatchdog();
       }, CFG.watchdogMs);
 
-      // 2. Prioridad a re-llamados (sin alterar la cola normal ni el historial)
-      if (this._colaRellamados.length > 0) {
-        const rellamado = this._colaRellamados.shift();
-        this._actualizarContadorCola();
-        await this._ejecutarAnuncioRellamado(rellamado);
-        return;
-      }
-
-      // 3. Turno normal (FIFO por seq)
+      // FIFO estricto: el primero en llegar es el primero en anunciarse, siempre
       const item = this._cola.shift();
       this._actualizarContadorCola();
-      await this._ejecutarAnuncioNuevo(item);
+      await this._ejecutarAnuncio(item);
     },
 
-    async _ejecutarAnuncioNuevo(item) {
-      this._reproduciendoTipo = 'nuevo';
-
+    async _ejecutarAnuncio(item) {
       // Guardar referencia al hero anterior ANTES de reemplazarlo.
-      // Esto es crítico: si se llama _agregarAlHistorial después de actualizar
-      // this.ultimoLlamado, la invariante interna bloquea el turno saliente.
       const heroAnterior = (this.ultimoLlamado && this.ultimoLlamado.numero !== null)
         ? { ...this.ultimoLlamado }
         : null;
 
-      // UNA SOLA FUENTE DE VERDAD: Actualizar hero y próximo PRIMERO
-      let prox = item.proximo;
+      // Actualizar hero con el nuevo item
+      let prox = item.proximo ?? null;
       if (prox === null) {
-        if (!item.es_rezagado && this.modo !== 'kiosko_web') {
+        if (!item.es_rezagado && item.tipo !== 'rellamado' && this.modo !== 'kiosko_web') {
           prox = Number(item.numero) + 1;
         } else {
           prox = this.proximoNumero;
@@ -752,16 +763,13 @@ export function tvView() {
         proximo:     prox,
         llamado_en:  item.llamado_en
       };
-      this._ultimoLlamadoReal = { ...this.ultimoLlamado };
-      this.proximoNumero      = prox !== null && prox !== undefined ? Number(prox) : null;
-      this._lastSeqAnunciado  = Math.max(this._lastSeqAnunciado, item.seq);
+      this.proximoNumero     = prox !== null && prox !== undefined ? Number(prox) : null;
+      this._lastSeqAnunciado = Math.max(this._lastSeqAnunciado, item.seq ?? 0);
 
-      // INVARIANTE: El turno que está en el Hero NUNCA puede aparecer en turnos anteriores
+      // El turno del hero nunca aparece en el historial
       this.historial = this.historial.filter(h => Number(h.numero) !== Number(item.numero));
 
-      // REGLA DE ORO: El hero anterior pasa al historial ahora que el hero YA está actualizado.
-      // La invariante de _agregarAlHistorial compara contra this.ultimoLlamado (el nuevo),
-      // por lo que el turno saliente pasa sin ser bloqueado.
+      // El hero anterior pasa al historial
       if (heroAnterior && Number(heroAnterior.numero) !== Number(item.numero)) {
         this._agregarAlHistorial({
           numero:         heroAnterior.numero,
@@ -771,21 +779,13 @@ export function tvView() {
         });
       }
 
-      this.glowState = 'nuevo';
+      // glowState según tipo de item: 'rellamado' para re-llamados y rezagados, 'nuevo' para el resto
+      this.glowState = (item.tipo === 'rellamado') ? 'rellamado' : 'nuevo';
       this._ajustarTamanoTicket();
-
-      // Calcular duración mínima adaptativa según saturación de cola
-      const pendientes = this._cola.length + this._colaRellamados.length;
-      let duracionMinima = CFG.anuncioBaseMs;
-      if (pendientes >= 2) {
-        duracionMinima = CFG.anuncioMinMs; // 1800 ms
-      } else if (pendientes === 1) {
-        duracionMinima = 2200;
-      }
 
       const inicio = Date.now();
 
-      // SECUENCIA DEL ANUNCIADOR: Campana -> esperar fin -> Voz -> esperar onend
+      // Secuencia: campana → voz. La voz NUNCA se corta.
       try {
         await playCallChime();
         await speakCall({ numero: item.numero, mesa_numero: item.mesa_numero });
@@ -793,63 +793,15 @@ export function tvView() {
         console.warn('[TV] Error en anuncio multimedia:', err);
       }
 
-      // Garantizar que la duración sea max(duracionMinima, tiempoRealAudio)
+      // Duración mínima fija: garantiza que el número sea visible incluso si la voz fue corta
       const transcurrido = Date.now() - inicio;
-      const remanente    = Math.max(0, duracionMinima - transcurrido);
+      const remanente    = Math.max(0, CFG.anuncioBaseMs - transcurrido);
 
       if (this._avanceTimer) clearTimeout(this._avanceTimer);
       this._avanceTimer = setTimeout(() => {
         this._avanceTimer = null;
-        this.glowState    = 'idle';
         if (this._watchdogTimer) { clearTimeout(this._watchdogTimer); this._watchdogTimer = null; }
-        this._reproducirSiguiente();
-      }, remanente);
-    },
-
-    async _ejecutarAnuncioRellamado(item) {
-      this._reproduciendoTipo = 'rellamado';
-
-      // Respaldar el último llamado legítimo antes de tomar temporalmente el hero
-      if (!this._ultimoLlamadoReal && this.ultimoLlamado.numero !== null) {
-        this._ultimoLlamadoReal = { ...this.ultimoLlamado };
-      }
-
-      // Tomar el hero para el re-llamado: NO entra al historial y NO cambia el último llamado real
-      this.ultimoLlamado = {
-        numero:      item.numero,
-        mesa_numero: item.mesa_numero,
-        proximo:     this._ultimoLlamadoReal ? this._ultimoLlamadoReal.proximo : this.proximoNumero,
-        llamado_en:  item.llamado_en
-      };
-      this.glowState = 'rellamado';
-      this._ajustarTamanoTicket();
-
-      const duracionMinima = CFG.rellamadoMinMs; // 1800 ms
-      const inicio = Date.now();
-
-      // SECUENCIA DEL ANUNCIADOR para re-llamado
-      try {
-        await playCallChime();
-        await speakCall({ numero: item.numero, mesa_numero: item.mesa_numero });
-      } catch (err) {
-        console.warn('[TV] Error en anuncio de re-llamado:', err);
-      }
-
-      const transcurrido = Date.now() - inicio;
-      const remanente    = Math.max(0, duracionMinima - transcurrido);
-
-      if (this._avanceTimer) clearTimeout(this._avanceTimer);
-      this._avanceTimer = setTimeout(() => {
-        this._avanceTimer = null;
-
-        // AL TERMINAR: El hero regresa al último llamado real si no hay otros turnos pendientes en cola
-        if (this._cola.length === 0 && this._ultimoLlamadoReal) {
-          this.ultimoLlamado = { ...this._ultimoLlamadoReal };
-          this.proximoNumero = this._ultimoLlamadoReal.proximo ?? null;
-        }
         this.glowState = 'idle';
-
-        if (this._watchdogTimer) { clearTimeout(this._watchdogTimer); this._watchdogTimer = null; }
         this._reproducirSiguiente();
       }, remanente);
     },
@@ -857,13 +809,6 @@ export function tvView() {
     _forzarAvanceWatchdog() {
       if (this._watchdogTimer) { clearTimeout(this._watchdogTimer); this._watchdogTimer = null; }
       if (this._avanceTimer)   { clearTimeout(this._avanceTimer);   this._avanceTimer   = null; }
-
-      // Si estábamos en re-llamado, restaurar el hero real
-      if (this._reproduciendoTipo === 'rellamado' && this._ultimoLlamadoReal) {
-        this.ultimoLlamado = { ...this._ultimoLlamadoReal };
-        this.proximoNumero = this._ultimoLlamadoReal.proximo ?? null;
-      }
-
       this.glowState = 'idle';
       this._reproducirSiguiente();
     },
