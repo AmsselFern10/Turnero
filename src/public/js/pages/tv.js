@@ -474,6 +474,12 @@ export function tvView() {
       this._ws.on('turno_rellamado', (p, ts, raw) => this._onRellamado(p, raw));
       this._ws.on('rellamado', (p, ts, raw) => this._onRellamado(p, raw)); // Alias retrocompatible
       this._ws.on('snapshot', (p) => this._onSnapshot(p));
+      // Registrar la secuencia monotónica más alta de cualquier mensaje del canal
+      this._ws.on('*', (rawMsg) => {
+        if (rawMsg && typeof rawMsg.seq === 'number') {
+          this._lastSeqRecibido = Math.max(this._lastSeqRecibido, rawMsg.seq);
+        }
+      });
 
       // Vista previa instantánea enviada desde el panel de administración
       this._ws.on('preview_escala_tv', (p) => {
@@ -598,12 +604,9 @@ export function tvView() {
 
       if (!this._seqVistos) this._seqVistos = new Set();
 
-      // Detección de hueco en seq monotónica (solo si hay wsSeq válido)
+      // Registro de secuencia monotónica del canal WebSocket (sin falsas alertas de hueco:
+      // TCP garantiza orden y entrega en vivo; reconexiones y snapshots son gestionados por ws-client).
       if (wsSeq !== null) {
-        if (this._lastSeqRecibido > 0 && wsSeq > this._lastSeqRecibido + 1) {
-          console.warn(`[TV] Hueco de seq detectado (esperado ${this._lastSeqRecibido + 1}, recibido ${wsSeq}). Solicitando snapshot.`);
-          this._solicitarSnapshot();
-        }
         this._lastSeqRecibido = Math.max(this._lastSeqRecibido, wsSeq);
       }
 
