@@ -57,6 +57,14 @@ module.exports = async function authRoutes (fastify) {
       maxAge:   7 * 24 * 60 * 60  // 7 dias
     })
 
+    // Cookie de sesión para navegación directa y protección de pantallas en servidor
+    reply.setCookie('turnero_token', token, {
+      httpOnly: true,
+      secure:   process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path:     '/'
+    })
+
     return reply.status(200).send({ token, usuario })
   })
 
@@ -81,6 +89,7 @@ module.exports = async function authRoutes (fastify) {
     } catch (_) {}
 
     reply.clearCookie('refresh_token', { path: '/auth/refresh' })
+    reply.clearCookie('turnero_token', { path: '/' })
     if (fastify.desconectarUsuario) {
       fastify.desconectarUsuario(request.user.id)
     }
@@ -91,12 +100,34 @@ module.exports = async function authRoutes (fastify) {
   fastify.post('/ws-ticket', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
+    const canal = request.body?.canal
+    let mesaId = request.user.mesa_id || null
+
+    if (request.user.rol === 'operador') {
+      const { rows: [m] } = await fastify.db.query(
+        `SELECT id FROM mesas WHERE operador_id = $1 AND estado != 'inactiva' LIMIT 1`,
+        [request.user.id]
+      )
+      mesaId = m ? Number(m.id) : null
+
+      if (canal) {
+        if (canal.startsWith('mesa:')) {
+          const reqMesa = parseInt(canal.replace('mesa:', ''), 10)
+          if (!mesaId || reqMesa !== mesaId) {
+            return reply.status(403).send({ error: 'No tiene autorización para escuchar otra mesa' })
+          }
+        } else if (canal === 'admin:all') {
+          return reply.status(403).send({ error: 'No tiene autorización para escuchar canal administrativo' })
+        }
+      }
+    }
+
     const ticket = require('crypto').randomUUID()
     const payload = JSON.stringify({
       id:            request.user.id,
       username:      request.user.username,
       rol:           request.user.rol,
-      mesa_id:       request.user.mesa_id || null
+      mesa_id:       mesaId
     })
     await fastify.redis.setex(`ws_ticket:${ticket}`, 30, payload)
     return reply.status(200).send({ ticket })
@@ -112,6 +143,12 @@ module.exports = async function authRoutes (fastify) {
     }
 
     const { token } = await refresh(fastify, { refreshToken })
+    reply.setCookie('turnero_token', token, {
+      httpOnly: true,
+      secure:   process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path:     '/'
+    })
     return reply.status(200).send({ token })
   })
 

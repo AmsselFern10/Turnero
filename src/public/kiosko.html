@@ -108,10 +108,11 @@
 
         <!-- BOTÓN DE ACCIÓN HABILITADO PARA TABLET O PARA ESTUDIANTES EN AUTOSERVICIO -->
         <template x-if="esTablet || kioskoModoUso === 'estudiante'">
-          <button @click="generarTurno()" :disabled="isGenerating || !kioskoActivo || topeAlcanzado" type="button"
+          <button @click="generarTurno()" :disabled="isGenerating || !kioskoActivo || topeAlcanzado || !wsConectado" type="button"
                   :title="esTablet ? 'Asignar siguiente turno' : 'Tomar mi turno'"
                   :aria-label="esTablet ? 'Asignar siguiente turno' : 'Tomar mi turno'"
-                  class="btn-call flex items-center justify-center space-x-2.5">
+                  class="btn-call flex items-center justify-center space-x-2.5"
+                  :class="!wsConectado ? 'opacity-50 cursor-not-allowed' : ''">
             <template x-if="!isGenerating">
               <div class="flex items-center space-x-2.5">
                 <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

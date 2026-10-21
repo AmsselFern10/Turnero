@@ -161,7 +161,7 @@ export function panelMesaView() {
 
     // Conectividad y reloj
     ws: null,
-    wsConnected: false,
+    wsConnected: true,
     relojHora: '--:--:--',
     relojFecha: '',
     relojTimer: null,
@@ -204,6 +204,37 @@ export function panelMesaView() {
 
       if (!mesaData && queryMesaId) {
         mesaData = { id: parseInt(queryMesaId, 10), numero: parseInt(queryMesaId, 10), nombre: `Mesa ${queryMesaId}` };
+      }
+
+      // Validar mesa asignada en servidor (evita quedar en mesa desfasada si cambió en BD)
+      try {
+        const me = await api.get('/auth/me');
+        if (me?.usuario) {
+          const mesaServidor = me.usuario.mesa_asignada;
+          if (mesaServidor) {
+            if (mesaData && Number(mesaData.id) !== Number(mesaServidor.id)) {
+              console.warn(`[MESA] Discrepancia: asignada en servidor es Mesa ${mesaServidor.numero}, local tenía Mesa ${mesaData.numero}. Sincronizando...`);
+              showToast({
+                message: `Sitio de atención sincronizado a Mesa ${mesaServidor.numero}`,
+                type: 'info',
+                duration: 3500
+              });
+            }
+            mesaData = mesaServidor;
+            sessionStorage.setItem('turnero_mesa', JSON.stringify(mesaServidor));
+          } else if (user.rol === 'operador') {
+            console.warn('[MESA] El operador no tiene mesa asignada en el servidor. Redirigiendo a selección...');
+            sessionStorage.removeItem('turnero_mesa');
+            sessionStorage.removeItem('mesa_seleccionada');
+            window.location.href = '/index.html';
+            return;
+          }
+        }
+      } catch (err) {
+        if (err?.status === 401 || err?.status === 403) {
+          api.clearSession(true);
+          return;
+        }
       }
 
       if (!mesaData || !mesaData.id) {
@@ -508,6 +539,15 @@ export function panelMesaView() {
     async cancelarTurno() {
       if (!this.turnoActual || this.loadingAction || this._cooldown) return;
 
+      if (!this.wsConnected) {
+        showToast({
+          message: 'Sin conexión con el servidor. No se puede registrar la ausencia en este momento.',
+          type: 'warning',
+          duration: 4000
+        });
+        return;
+      }
+
       this.loadingAction = true;
       const turnoId = this.turnoActual.id;
       const turnoNum = this.turnoActual.numero;
@@ -526,7 +566,7 @@ export function panelMesaView() {
       } catch (err) {
         console.error('[MESA] Error al cancelar turno:', err);
         const msg = err.mensaje || err.message || '';
-        if (err.status === 404 || msg.toLowerCase().includes('no encontrado') || msg.toLowerCase().includes('no está en atención')) {
+        if (err.status === 404 || err.status === 409 || msg.toLowerCase().includes('no encontrado') || msg.toLowerCase().includes('no está en atención') || msg.toLowerCase().includes('no esta en atencion')) {
           // El turno ya no estaba en atención (doble clic u otra acción concurrente)
           this.turnoActual = null;
           this.detenerCronometro();
@@ -554,6 +594,31 @@ export function panelMesaView() {
     async rellamarTurno() {
       if (!this.turnoActual || this.loadingAction || this._cooldown) return;
 
+      if (!this.wsConnected) {
+        showToast({
+          message: 'Sin conexión con el servidor. No se puede re-llamar el turno en este momento.',
+          type: 'warning',
+          duration: 4000
+        });
+        return;
+      }
+
+      // Guardia de tiempo mínimo: no permitir re-llamar si el turno acaba de ser llamado
+      // y probablemente aún no ha aparecido en la TV (la TV puede tener varios turnos en cola)
+      const MIN_SEGUNDOS_RELLAMADO = 8;
+      if (this.turnoActual.llamado_en) {
+        const segsDesdeCallado = (Date.now() - new Date(this.turnoActual.llamado_en).getTime()) / 1000;
+        if (segsDesdeCallado < MIN_SEGUNDOS_RELLAMADO) {
+          const restantes = Math.ceil(MIN_SEGUNDOS_RELLAMADO - segsDesdeCallado);
+          showToast({
+            message: `El turno #${this.turnoActual.numero} aún no ha aparecido en la TV. Espera ${restantes}s antes de re-llamar.`,
+            type: 'warning',
+            duration: 4000
+          });
+          return;
+        }
+      }
+
       this.loadingAction = true;
       try {
         await api.post(`/turnos/${this.turnoActual.id}/rellamar`, {
@@ -568,13 +633,20 @@ export function panelMesaView() {
         });
       } catch (err) {
         console.error('[MESA] Error al re-llamar:', err);
-        showToast({ message: err.message || 'Error al re-llamar turno', type: 'danger' });
+        const msg = err.mensaje || err.message || '';
+        if (err.status === 404 || err.status === 409 || msg.toLowerCase().includes('no hay turno en atención') || msg.toLowerCase().includes('no hay turno en atencion')) {
+          this.turnoActual = null;
+          this.detenerCronometro();
+          await this.cargarEstado();
+        }
+        showToast({ message: msg || 'Error al re-llamar turno', type: 'danger' });
       } finally {
         this.loadingAction = false;
         this._cooldown = true;
         setTimeout(() => { this._cooldown = false; }, 500);
       }
     },
+
 
     /**
      * Consulta y refresca la lista de turnos rezagados (cancelados) de hoy
@@ -767,6 +839,14 @@ export function panelMesaView() {
      * Acción 5: Pausar Mesa (PATCH /mesas/:id/estado)
      */
     async pausarMesa() {
+      if (!this.wsConnected) {
+        showToast({
+          message: 'Sin conexión con el servidor. No se puede pausar la mesa.',
+          type: 'warning',
+          duration: 4000
+        });
+        return;
+      }
       try {
         await api.patch(`/mesas/${this.mesa.id}/estado`, {
           estado: 'pausada'
@@ -782,6 +862,14 @@ export function panelMesaView() {
      * Acción 5: Reanudar Atención (PATCH /mesas/:id/estado)
      */
     async reanudarMesa() {
+      if (!this.wsConnected) {
+        showToast({
+          message: 'Sin conexión con el servidor. No se puede reanudar la atención.',
+          type: 'warning',
+          duration: 4000
+        });
+        return;
+      }
       try {
         await api.patch(`/mesas/${this.mesa.id}/estado`, {
           estado: 'activa'
@@ -1051,6 +1139,39 @@ export function panelMesaView() {
 
       this.ws.onStatusChange(({ status }) => {
         this.wsConnected = status === 'CONECTADO';
+      });
+
+      // Si el servidor rechaza el canal por discrepancia de mesa, resincronizar
+      this.ws.on('auth_error', async ({ code, reason }) => {
+        console.warn('[MESA] WebSocket error de autorización:', code, reason);
+        try {
+          const me = await api.get('/auth/me');
+          if (me?.usuario?.mesa_asignada) {
+            const nuevaMesa = me.usuario.mesa_asignada;
+            if (Number(nuevaMesa.id) !== Number(this.mesa.id)) {
+              showToast({
+                message: `Sitio asignado actualizado a Mesa ${nuevaMesa.numero}. Reconectando...`,
+                type: 'info',
+                duration: 4000
+              });
+              this.mesa = nuevaMesa;
+              sessionStorage.setItem('turnero_mesa', JSON.stringify(nuevaMesa));
+              this.initWebSocket();
+              await this.cargarEstado();
+              return;
+            }
+          } else if (me?.usuario?.rol === 'operador' && !me.usuario.mesa_asignada) {
+            showToast({
+              message: 'Tu ventanilla fue liberada o desactivada. Redirigiendo a selección...',
+              type: 'warning',
+              duration: 3500
+            });
+            setTimeout(() => {
+              window.location.href = '/index.html';
+            }, 1200);
+            return;
+          }
+        } catch (_) {}
       });
 
       // Evento de turno llamado para esta mesa (idempotente)

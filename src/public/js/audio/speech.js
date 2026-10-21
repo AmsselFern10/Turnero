@@ -11,8 +11,10 @@
  *     para prevenir el recolector de basura (GC) de Chrome que cancela el evento onend.
  *  2. Detección y selección de voz en español tras 'voiceschanged' (evita voices vacío).
  *  3. Texto corto sin ceros a la izquierda ("Turno 87, Mesa 1").
- *  4. Espera reactiva de fin de voz (onend/onerror) con timeout de seguridad de 8 s.
- *  5. Cero llamadas a speechSynthesis.cancel() automáticas en cada anuncio.
+ *  4. Espera reactiva de fin de voz (onend/onerror) con timeout de seguridad de 3.5 s.
+ *  5. cancel() previo en cada anuncio para limpiar la cola de Chrome (evita el bug
+ *     de onend que nunca se dispara con utterances acumuladas en la cola interna).
+ *  6. Detección de voz bloqueada por el navegador: expuesto como isSpeechBlocked().
  * ==============================================================================
  */
 
@@ -22,6 +24,9 @@ let _voicesInitialized = false;
 
 /** @type {SpeechSynthesisUtterance|null} Referencia retenida para evitar GC de Chrome */
 let _activeUtterance = null;
+
+/** @type {boolean} true si el navegador bloqueó la síntesis por falta de gesto del usuario */
+let _speechBlocked = false;
 
 /**
  * Busca y almacena en caché la mejor voz disponible en español.
@@ -46,6 +51,7 @@ function _seleccionarVozEspanola() {
     || null;
 
     _voicesInitialized = Boolean(_cachedVoice);
+    if (_voicesInitialized) _speechBlocked = false; // voces disponibles → desbloquear flag
   } catch (_) {}
 }
 
@@ -87,6 +93,14 @@ export function isSpeechEnabled() {
 }
 
 /**
+ * Consulta si el navegador bloqueó la síntesis por falta de gesto del usuario.
+ * @returns {boolean}
+ */
+export function isSpeechBlocked() {
+  return _speechBlocked;
+}
+
+/**
  * Cancela cualquier locución en curso de forma explícita.
  */
 export function cancelSpeech() {
@@ -105,7 +119,7 @@ export function cancelSpeech() {
  * @param {Object} params
  * @param {number|string} params.numero - Número de turno (ej. 87)
  * @param {number|string} params.mesa_numero - Número de mesa (ej. 1)
- * @returns {Promise<void>} Resuelve exactamente al terminar la voz (onend) o timeout de 8s.
+ * @returns {Promise<void>} Resuelve exactamente al terminar la voz (onend) o timeout de 3.5s.
  */
 export function speakCall({ numero, mesa_numero }) {
   return new Promise((resolve) => {
@@ -114,12 +128,6 @@ export function speakCall({ numero, mesa_numero }) {
     }
 
     if (numero === undefined || numero === null || mesa_numero === undefined || mesa_numero === null) {
-      return resolve();
-    }
-
-    // Si la pestaña está en segundo plano (hidden) en Chromium, la síntesis se suspende/pausa
-    // y onend nunca se dispara hasta activar la pestaña. Resolvemos de inmediato para no congelar.
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
       return resolve();
     }
 
@@ -133,7 +141,13 @@ export function speakCall({ numero, mesa_numero }) {
         _seleccionarVozEspanola();
       }
 
-      // Si la síntesis previa quedó en pausa por el navegador, reanudar o limpiar
+      // CORRECCIÓN CRÍTICA (Chrome bug): cancel() limpia la cola interna de Chrome.
+      // Sin esto, una utterance anterior atascada impide que onend se dispare en la siguiente.
+      // Es seguro porque speakCall es llamado en secuencia estricta (después del chime),
+      // y el flujo es secuencial — no hay utterances superpuestas en uso normal.
+      try { window.speechSynthesis.cancel(); } catch (_) {}
+
+      // Si la síntesis quedó en pausa por el navegador, reanudar
       if (window.speechSynthesis.paused) {
         try { window.speechSynthesis.resume(); } catch (_) {}
       }
@@ -153,29 +167,57 @@ export function speakCall({ numero, mesa_numero }) {
       utterance.volume = 1.0;
 
       let finalizado = false;
-      const finalizar = () => {
+      const finalizar = (bloqueado = false) => {
         if (finalizado) return;
         finalizado = true;
         if (timeoutSeguridad) clearTimeout(timeoutSeguridad);
         if (_activeUtterance === utterance) {
           _activeUtterance = null;
         }
+        if (bloqueado) _speechBlocked = true;
         resolve();
       };
 
-      utterance.onend  = finalizar;
-      utterance.onerror = (err) => {
-        console.warn('[SPEECH] Error o interrupción en síntesis de voz:', err);
-        finalizar();
+      utterance.onstart = () => {
+        // Si onstart se dispara, el navegador sí permite síntesis — desbloquear flag
+        _speechBlocked = false;
       };
 
-      // Timeout de seguridad de 3.5 s (una locución de 6 palabras toma ~1.5s).
-      // Si tras 3.5s no termina, continuar sin bloquear la pantalla TV.
+      utterance.onend  = () => finalizar(false);
+      utterance.onerror = (err) => {
+        // 'not-allowed': el navegador bloqueó la síntesis por falta de gesto del usuario
+        if (err && err.error !== 'canceled') {
+          console.warn('[SPEECH] Error o interrupción en síntesis de voz:', err.error || err);
+        }
+        finalizar(err && err.error === 'not-allowed');
+      };
+
+      // Timeout de seguridad de 3.5 s — cubre voces lentas (~2-3 s) sin congelar la cola.
       const timeoutSeguridad = setTimeout(() => {
-        finalizar();
+        // Si después de 6 s el speechSynthesis sigue sin hablar, es señal de bloqueo.
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          const ss = window.speechSynthesis;
+          if (!ss.speaking && !ss.pending) {
+            _speechBlocked = true;
+          }
+        }
+        finalizar(false);
       }, 3500);
 
       window.speechSynthesis.speak(utterance);
+
+      // Chrome bug: en pestañas recién abiertas sin interacción, speak() encola
+      // silenciosamente pero nunca empieza a hablar. Detectarlo comprobando speaking tras 500 ms.
+      setTimeout(() => {
+        if (finalizado) return;
+        const ss = window.speechSynthesis;
+        if (!ss.speaking && !ss.pending) {
+          // No está hablando ni en cola — probablemente bloqueado por el navegador
+          _speechBlocked = true;
+          finalizar(false);
+        }
+      }, 500);
+
     } catch (err) {
       console.warn('[SPEECH] Excepción en speakCall:', err);
       _activeUtterance = null;

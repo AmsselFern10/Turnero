@@ -232,7 +232,7 @@ async function enviarSnapshot (ws, fastify, user) {
               FROM lotes_voucher WHERE estado = 'activo' LIMIT 1
             ) l) AS lote,
            (SELECT numero FROM turnos
-            WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = CURRENT_DATE
+            WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()
             ORDER BY numero ASC LIMIT 1
            ) AS proximo_kiosko,
            (SELECT json_agg(h) FROM (
@@ -295,20 +295,20 @@ async function enviarSnapshot (ws, fastify, user) {
              (SELECT row_to_json(t) FROM (
                 SELECT id, numero, llamado_en, estado
                 FROM turnos
-                WHERE mesa_id = $1 AND estado = 'en_atencion' AND llamado_en >= CURRENT_DATE
+                WHERE mesa_id = $1 AND estado = 'en_atencion' AND fecha_turno = fn_fecha_hoy()
                 LIMIT 1
               ) t) AS turno_actual,
              (SELECT COUNT(*)::int
               FROM turnos
-              WHERE mesa_id = $1 AND estado = 'atendido' AND llamado_en >= CURRENT_DATE
+              WHERE mesa_id = $1 AND estado = 'atendido' AND fecha_turno = fn_fecha_hoy()
              ) AS atendidos_hoy,
              (SELECT COUNT(*)::int
               FROM turnos
-              WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = CURRENT_DATE
+              WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()
              ) AS turnos_en_espera,
              (SELECT numero
               FROM turnos
-              WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = CURRENT_DATE
+              WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()
               ORDER BY numero ASC LIMIT 1
              ) AS proximo_kiosko`,
           [user.mesa_id]
@@ -359,7 +359,7 @@ async function enviarSnapshot (ws, fastify, user) {
         ),
         fastify.db.query(
           `SELECT COUNT(*)::int AS count FROM turnos
-           WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = CURRENT_DATE`
+           WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()`
         )
       ])
 
@@ -406,8 +406,8 @@ async function enviarSnapshot (ws, fastify, user) {
               LIMIT 10
             ) h) AS ultimos_llamados,
            (SELECT COUNT(*)::int FROM mesas WHERE estado = 'activa') AS mesas_activas,
-           (SELECT COUNT(*)::int FROM turnos WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = CURRENT_DATE) AS turnos_esperando,
-           (SELECT numero FROM turnos WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = CURRENT_DATE ORDER BY numero ASC LIMIT 1) AS proximo_numero`
+           (SELECT COUNT(*)::int FROM turnos WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()) AS turnos_esperando,
+           (SELECT numero FROM turnos WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy() ORDER BY numero ASC LIMIT 1) AS proximo_numero`
       )
       const data = rows[0] || {}
       const ultimosLlamados = data.ultimos_llamados || []

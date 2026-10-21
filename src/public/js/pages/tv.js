@@ -30,7 +30,7 @@
 
 import { TurneroWSClient } from '../ws-client.js';
 import { playCallChime, aplicarFondoPersonalizado } from '../utils.js';
-import { speakCall, setSpeechEnabled, initSpeech } from '../audio/speech.js';
+import { speakCall, setSpeechEnabled, initSpeech, isSpeechBlocked } from '../audio/speech.js';
 
 // ── Configuración central de tiempos (ms) ────────────────────────────────────
 const CFG = {
@@ -39,14 +39,17 @@ const CFG = {
   rellamadoMinMs:    1800,
   antiguedadMaxMs:  60000,
   graciaBannerMs:    3000,
-  watchdogMs:        6000,
+  watchdogMs:       12000, // Cubre el timeout de 6s de speakCall + margen
   maxCola:             50,
   maxSeqVistos:       300,
+  staleCheckMs:     30000, // Intervalo de verificación anti-stale cuando visible
 };
 
-const STORAGE_KEY_ESCALA_PRINCIPAL  = 'turnero_tv_escala_principal';
-const STORAGE_KEY_ESCALA_SECUNDARIA = 'turnero_tv_escala_secundaria';
-const STORAGE_KEY_ESCALA_LEGACY     = 'turnero_tv_escala_turnos';
+const STORAGE_KEY_ESCALA_PRINCIPAL    = 'turnero_tv_escala_principal';
+const STORAGE_KEY_ESCALA_SECUNDARIA   = 'turnero_tv_escala_secundaria';
+const STORAGE_KEY_ESCALA_LEGACY       = 'turnero_tv_escala_turnos';
+const STORAGE_KEY_OPACIDAD_PRINCIPAL  = 'turnero_tv_opacidad_principal';
+const STORAGE_KEY_OPACIDAD_SECUNDARIA = 'turnero_tv_opacidad_secundaria';
 
 export function tvView() {
   return {
@@ -59,6 +62,8 @@ export function tvView() {
     escalaPrincipal:   100,
     escalaSecundaria:  100,
     escalaTurnos:      100, // Retrocompatibilidad
+    opacidadPrincipal:   100,
+    opacidadSecundaria:  100,
     mostrarHistorial:  true,
     modo:              'voucher_fisico', // 'voucher_fisico' | 'kiosko_web' | 'mixto'
 
@@ -75,6 +80,7 @@ export function tvView() {
     // Audio y configuración de voz
     audioSuspended: false,
     vozActiva:      true,
+    vozBloqueada:   false, // true si el navegador bloqueó la síntesis de voz
 
     // ── Propiedades privadas (control de máquina de estados y timers) ────────
     _ws:                null,
@@ -93,6 +99,7 @@ export function tvView() {
     _bannerTimer:       null,
     _clockTimer:        null,
     _relativoTimer:     null,
+    _staleCheckTimer:   null, // Verificación anti-stale periódica
     _onResizeHandler:      null,
     _onStorageHandler:     null,
     _onVisibilityHandler:  null,
@@ -110,20 +117,28 @@ export function tvView() {
       this._cola = [];
       this._colaRellamados = [];
 
-      // Aplicar escalas guardadas inmediatamente en offline/arranque
+      // Aplicar escalas y opacidades guardadas inmediatamente en offline/arranque
       let cachedPrincipal  = null;
       let cachedSecundaria = null;
       let cachedLegacy     = null;
+      let cachedOpPrincipal  = null;
+      let cachedOpSecundaria = null;
       try {
-        cachedPrincipal  = localStorage.getItem(STORAGE_KEY_ESCALA_PRINCIPAL);
-        cachedSecundaria = localStorage.getItem(STORAGE_KEY_ESCALA_SECUNDARIA);
-        cachedLegacy     = localStorage.getItem(STORAGE_KEY_ESCALA_LEGACY);
+        cachedPrincipal    = localStorage.getItem(STORAGE_KEY_ESCALA_PRINCIPAL);
+        cachedSecundaria   = localStorage.getItem(STORAGE_KEY_ESCALA_SECUNDARIA);
+        cachedLegacy       = localStorage.getItem(STORAGE_KEY_ESCALA_LEGACY);
+        cachedOpPrincipal  = localStorage.getItem(STORAGE_KEY_OPACIDAD_PRINCIPAL);
+        cachedOpSecundaria = localStorage.getItem(STORAGE_KEY_OPACIDAD_SECUNDARIA);
       } catch (_) {}
 
-      const pInit = cachedPrincipal || cachedLegacy || 100;
-      const sInit = cachedSecundaria || cachedLegacy || 100;
+      const pInit  = cachedPrincipal  || cachedLegacy || 100;
+      const sInit  = cachedSecundaria || cachedLegacy || 100;
+      const opInit = cachedOpPrincipal  || 100;
+      const osInit = cachedOpSecundaria || 100;
       this._aplicarEscalaPrincipal(pInit, false);
       this._aplicarEscalaSecundaria(sInit, false);
+      this._aplicarOpacidadPrincipal(opInit, false);
+      this._aplicarOpacidadSecundaria(osInit, false);
 
       // Cargar preferencia de visibilidad del historial
       let cachedHist = null;
@@ -151,6 +166,12 @@ export function tvView() {
             this._aplicarEscalaSecundaria(e.newValue, false);
           }
         }
+        if (e.key === STORAGE_KEY_OPACIDAD_PRINCIPAL && e.newValue) {
+          this._aplicarOpacidadPrincipal(e.newValue, false);
+        }
+        if (e.key === STORAGE_KEY_OPACIDAD_SECUNDARIA && e.newValue) {
+          this._aplicarOpacidadSecundaria(e.newValue, false);
+        }
         if (e.key === 'turnero_tv_mostrar_historial' && e.newValue !== null) {
           this.mostrarHistorial = e.newValue === 'true';
           this.$nextTick(() => {
@@ -164,6 +185,10 @@ export function tvView() {
       this._tickClock();
       this._clockTimer    = setInterval(() => this._tickClock(), 1000);
       this._relativoTimer = setInterval(() => this._refrescarTiemposRelativos(), 20000);
+
+      // Anti-stale: verifica cada 30 s si la TV tiene datos frescos mientras está visible.
+      // Si el WS está vivo pero la sesión de alguna forma perdió eventos, re-sincroniza.
+      this._staleCheckTimer = setInterval(() => this._verificarFrescura(), CFG.staleCheckMs);
 
       initSpeech();
       this._cargarConfiguracionPublica();
@@ -190,6 +215,12 @@ export function tvView() {
             this._aplicarEscalaSecundaria(data.tv_escala_secundaria, true);
           } else if (data.tv_escala_turnos !== undefined) {
             this._aplicarEscalaSecundaria(data.tv_escala_turnos, true);
+          }
+          if (data.tv_opacidad_principal !== undefined) {
+            this._aplicarOpacidadPrincipal(data.tv_opacidad_principal, true);
+          }
+          if (data.tv_opacidad_secundaria !== undefined) {
+            this._aplicarOpacidadSecundaria(data.tv_opacidad_secundaria, true);
           }
           if (data.fondo_imagen_url !== undefined && data.fondo_imagen_activa !== undefined) {
             aplicarFondoPersonalizado(data.fondo_imagen_url, data.fondo_imagen_activa);
@@ -235,6 +266,7 @@ export function tvView() {
         this._onVisibilityHandler = null;
       }
       if (this._ws)            { this._ws.disconnect();              this._ws            = null; }
+      if (this._staleCheckTimer) { clearInterval(this._staleCheckTimer); this._staleCheckTimer = null; }
     },
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -308,6 +340,54 @@ export function tvView() {
       this._aplicarEscalaSecundaria(val, guardarCache);
     },
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // OPACIDAD DE TARJETAS TV (Fondo con transparencia)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Aplica la opacidad del fondo de la tarjeta principal (hero).
+     * Escribe la variable CSS --tv-opacidad-principal (valor 0.0 a 1.0)
+     * tanto en :root como en #tv-root para máxima compatibilidad.
+     * @param {number|string} val - Porcentaje entero de 20 a 100
+     * @param {boolean} guardarCache - Si guardar en localStorage
+     */
+    _aplicarOpacidadPrincipal(val, guardarCache = true) {
+      const num = parseInt(val, 10);
+      if (Number.isNaN(num) || num < 20 || num > 100) return;
+      this.opacidadPrincipal = num;
+      if (guardarCache) {
+        try {
+          localStorage.setItem(STORAGE_KEY_OPACIDAD_PRINCIPAL, String(num));
+        } catch (_) {}
+      }
+      const factor = (num / 100).toFixed(2);
+      document.documentElement.style.setProperty('--tv-opacidad-principal', factor);
+      if (document.body) document.body.style.setProperty('--tv-opacidad-principal', factor);
+      const rootEl = document.getElementById('tv-root');
+      if (rootEl) rootEl.style.setProperty('--tv-opacidad-principal', factor);
+    },
+
+    /**
+     * Aplica la opacidad del fondo de las tarjetas de turnos anteriores.
+     * @param {number|string} val - Porcentaje entero de 20 a 100
+     * @param {boolean} guardarCache - Si guardar en localStorage
+     */
+    _aplicarOpacidadSecundaria(val, guardarCache = true) {
+      const num = parseInt(val, 10);
+      if (Number.isNaN(num) || num < 20 || num > 100) return;
+      this.opacidadSecundaria = num;
+      if (guardarCache) {
+        try {
+          localStorage.setItem(STORAGE_KEY_OPACIDAD_SECUNDARIA, String(num));
+        } catch (_) {}
+      }
+      const factor = (num / 100).toFixed(2);
+      document.documentElement.style.setProperty('--tv-opacidad-secundaria', factor);
+      if (document.body) document.body.style.setProperty('--tv-opacidad-secundaria', factor);
+      const rootEl = document.getElementById('tv-root');
+      if (rootEl) rootEl.style.setProperty('--tv-opacidad-secundaria', factor);
+    },
+
     _ajustarTamanoTicket() {
       // Usar requestAnimationFrame para garantizar medición tras render de layout
       requestAnimationFrame(() => {
@@ -375,6 +455,16 @@ export function tvView() {
         }
       });
 
+      // Vista previa de opacidad enviada desde el panel de administración
+      this._ws.on('preview_opacidad_tv', (p) => {
+        if (!p) return;
+        if (p.tipo === 'principal') {
+          this._aplicarOpacidadPrincipal(p.valor, true);
+        } else if (p.tipo === 'secundaria') {
+          this._aplicarOpacidadSecundaria(p.valor, true);
+        }
+      });
+
       this._ws.on('config_actualizada', (p) => {
         if (!p) return;
         if (p.clave === 'voz_anuncio_activa') {
@@ -390,6 +480,12 @@ export function tvView() {
         }
         if (p.clave === 'tv_escala_turnos') {
           this._aplicarEscalaTurnos(p.valor, true);
+        }
+        if (p.clave === 'tv_opacidad_principal') {
+          this._aplicarOpacidadPrincipal(p.valor, true);
+        }
+        if (p.clave === 'tv_opacidad_secundaria') {
+          this._aplicarOpacidadSecundaria(p.valor, true);
         }
         if (p.clave === 'modo_generacion_turnos') {
           this.modo = p.valor;
@@ -565,6 +661,18 @@ export function tvView() {
         llamado_en
       };
 
+      // ── Caso especial: el turno aún no había sido anunciado (estaba en _cola normal) ──
+      // Si T9 está esperando en posición 9 de la cola y el operador ya lanza un re-llamado,
+      // sacarlo de la cola normal para que no aparezca dos veces en pantalla:
+      // una como "SEGUNDO AVISO" (rellamado con prioridad) y otra después como llamada normal.
+      const idxEnCola = this._cola.findIndex(c => Number(c.numero) === numVal);
+      if (idxEnCola !== -1) {
+        // El turno nunca llegó a anunciarse — eliminarlo de la cola normal.
+        // El re-llamado actuará como su primera y única aparición, con prioridad.
+        this._cola.splice(idxEnCola, 1);
+        console.info(`[TV] Re-llamado de T${numVal}: eliminado de cola normal (pos ${idxEnCola + 1}) para evitar doble anuncio.`);
+      }
+
       // Entra con prioridad máxima en la cola de re-llamados (se ejecutará tras el anuncio en curso)
       this._colaRellamados.push(itemRellamado);
       this._actualizarContadorCola();
@@ -621,18 +729,14 @@ export function tvView() {
     async _ejecutarAnuncioNuevo(item) {
       this._reproduciendoTipo = 'nuevo';
 
-      // REGLA DE ORO: El turno actual pasa al historial exactamente antes de mostrar el nuevo,
-      // SI Y SOLO SI el nuevo turno tiene un número distinto al que ya está en el Hero
-      if (this.ultimoLlamado && this.ultimoLlamado.numero !== null && Number(this.ultimoLlamado.numero) !== Number(item.numero)) {
-        this._agregarAlHistorial({
-          numero:         this.ultimoLlamado.numero,
-          mesa_numero:    this.ultimoLlamado.mesa_numero,
-          llamado_en:     this.ultimoLlamado.llamado_en,
-          tiempoRelativo: 'Hace un instante'
-        });
-      }
+      // Guardar referencia al hero anterior ANTES de reemplazarlo.
+      // Esto es crítico: si se llama _agregarAlHistorial después de actualizar
+      // this.ultimoLlamado, la invariante interna bloquea el turno saliente.
+      const heroAnterior = (this.ultimoLlamado && this.ultimoLlamado.numero !== null)
+        ? { ...this.ultimoLlamado }
+        : null;
 
-      // UNA SOLA FUENTE DE VERDAD: Actualizar hero y próximo
+      // UNA SOLA FUENTE DE VERDAD: Actualizar hero y próximo PRIMERO
       let prox = item.proximo;
       if (prox === null) {
         if (!item.es_rezagado && this.modo !== 'kiosko_web') {
@@ -655,20 +759,20 @@ export function tvView() {
       // INVARIANTE: El turno que está en el Hero NUNCA puede aparecer en turnos anteriores
       this.historial = this.historial.filter(h => Number(h.numero) !== Number(item.numero));
 
+      // REGLA DE ORO: El hero anterior pasa al historial ahora que el hero YA está actualizado.
+      // La invariante de _agregarAlHistorial compara contra this.ultimoLlamado (el nuevo),
+      // por lo que el turno saliente pasa sin ser bloqueado.
+      if (heroAnterior && Number(heroAnterior.numero) !== Number(item.numero)) {
+        this._agregarAlHistorial({
+          numero:         heroAnterior.numero,
+          mesa_numero:    heroAnterior.mesa_numero,
+          llamado_en:     heroAnterior.llamado_en,
+          tiempoRelativo: 'Hace un instante'
+        });
+      }
+
       this.glowState = 'nuevo';
       this._ajustarTamanoTicket();
-
-      // Si la pestaña está oculta en segundo plano (ej: usuario operando en otra pestaña),
-      // no bloquear con timers ni audio: el modelo visual queda al día y avanzamos de inmediato
-      const isHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
-      if (isHidden) {
-        if (this._avanceTimer) clearTimeout(this._avanceTimer);
-        this._avanceTimer = null;
-        this.glowState    = 'idle';
-        if (this._watchdogTimer) { clearTimeout(this._watchdogTimer); this._watchdogTimer = null; }
-        this._reproducirSiguiente();
-        return;
-      }
 
       // Calcular duración mínima adaptativa según saturación de cola
       const pendientes = this._cola.length + this._colaRellamados.length;
@@ -719,19 +823,6 @@ export function tvView() {
       };
       this.glowState = 'rellamado';
       this._ajustarTamanoTicket();
-
-      // Si la pestaña está oculta en background, avanzar de inmediato
-      const isHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
-      if (isHidden) {
-        if (this._cola.length === 0 && this._ultimoLlamadoReal) {
-          this.ultimoLlamado = { ...this._ultimoLlamadoReal };
-          this.proximoNumero = this._ultimoLlamadoReal.proximo ?? null;
-        }
-        this.glowState = 'idle';
-        if (this._watchdogTimer) { clearTimeout(this._watchdogTimer); this._watchdogTimer = null; }
-        this._reproducirSiguiente();
-        return;
-      }
 
       const duracionMinima = CFG.rellamadoMinMs; // 1800 ms
       const inicio = Date.now();
@@ -962,20 +1053,36 @@ export function tvView() {
 
     _initVisibilityChange() {
       this._onVisibilityHandler = () => {
-        if (document.visibilityState !== 'visible') return;
-
-        // 1. Cancelar cualquier síntesis de voz o audio que haya quedado en pausa por Chromium
-        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-          try { window.speechSynthesis.cancel(); } catch (_) {}
+        if (document.visibilityState !== 'visible') {
+          // Al ir a background: pausar stale-check para ahorrar recursos
+          return;
         }
 
-        // 2. Limpiar timers de background atascados
-        if (this._watchdogTimer) { clearTimeout(this._watchdogTimer); this._watchdogTimer = null; }
-        if (this._avanceTimer)   { clearTimeout(this._avanceTimer);   this._avanceTimer   = null; }
+        // ── Al volver a estar visible ─────────────────────────────────────────
 
-        // 3. Si se acumularon turnos mientras la pestaña estaba oculta,
-        // archivar los antiguos al historial y dejar el último para anunciar de inmediato
-        if (this._cola.length > 1) {
+        // 1. Si Chrome pausó la síntesis en background (pestaña oculta), reanudarla.
+        // No cancelar: si estaba sonando en background, queremos que siga sin interrupción.
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          try {
+            const ss = window.speechSynthesis;
+            if (ss.paused) {
+              // Chrome pausó la voz al ir a background — reanudar para que termine
+              ss.resume();
+            }
+            // Si ss.speaking pero no paused: está sonando activamente, no interrumpir
+          } catch (_) {}
+        }
+
+        // 2. Limpiar timers SOLO si el reproductor no está activo (puede estar sonando en background)
+        if (!this._reproduciendo) {
+          if (this._watchdogTimer) { clearTimeout(this._watchdogTimer); this._watchdogTimer = null; }
+          if (this._avanceTimer)   { clearTimeout(this._avanceTimer);   this._avanceTimer   = null; }
+        }
+
+        // 3. Si hay varios turnos en espera que no pudieron anunciarse (background audio falla),
+        // archivar los antiguos y dejar solo el último para anunciar ahora.
+        // Solo comprimir si el reproductor está inactivo (no estaba procesando en background).
+        if (!this._reproduciendo && this._cola.length > 1) {
           const ultimoItem = this._cola.pop();
           while (this._cola.length > 0) {
             const des = this._cola.shift();
@@ -1003,10 +1110,42 @@ export function tvView() {
         if (this._cola.length > 0 || this._colaRellamados.length > 0) {
           this._despacharReproductor();
         } else {
+          // Siempre pedir snapshot al volver visible — si el WS está vivo lo atiende,
+          // si está muerto el ws-client iniciará reconexión y pedirá snapshot al reconectar.
           this._solicitarSnapshot();
+          // También verificar frescura vía HTTP en background por si el WS está caído silenciosamente
+          this._verificarFrescura();
         }
       };
       document.addEventListener('visibilitychange', this._onVisibilityHandler);
+    },
+
+    /**
+     * Verifica y corrige el estado de la TV cada CFG.staleCheckMs (30 s).
+     * Estrategia sin HTTP protegido:
+     *  - Si el WS está vivo: pide snapshot (actor más eficiente).
+     *  - Si el WS está caído: activa reconexión (el ws-client ya tiene backoff).
+     * En ambos casos actualiza vozBloqueada.
+     * Solo actúa si la pestaña está visible.
+     */
+    _verificarFrescura() {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+
+      if (this.wsConnected) {
+        // WS activo: pedir snapshot; la respuesta actualiza hero + historial + config
+        this._solicitarSnapshot();
+      } else if (this._ws) {
+        // WS caído silenciosamente: intentar reconectar
+        // (ws-client maneja el backoff exponencial internamente)
+        this._ws.connect();
+      }
+
+      // Actualizar indicador de voz bloqueada
+      if (this.vozActiva) {
+        this.vozBloqueada = isSpeechBlocked();
+      } else {
+        this.vozBloqueada = false;
+      }
     }
   };
 }
@@ -1023,4 +1162,3 @@ if (typeof window !== 'undefined' && window.Alpine) {
 } else if (typeof document !== 'undefined') {
   document.addEventListener('alpine:init', registerTvWithAlpine);
 }
-

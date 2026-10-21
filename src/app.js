@@ -97,6 +97,115 @@ async function buildApp (opts = {}) {
     }
   })
 
+  // Función generadora de pantalla limpia 403 sin exponer HTML del admin
+  function generarPantalla403 () {
+    return `<!DOCTYPE html>
+<html lang="es" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acceso Restringido (403) — Turnero 2026</title>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/css/tailwind.css">
+  <link rel="icon" href="data:,">
+</head>
+<body class="h-full flex items-center justify-center bg-[#EEF2F6] p-4 text-slate-800 antialiased font-sans">
+  <main class="w-full max-w-md bg-white border border-[#CBD5E1] rounded-2xl p-6 sm:p-8 shadow-sm text-center">
+    <div class="w-16 h-16 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto mb-4">
+      <svg class="w-8 h-8 stroke-[1.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+      </svg>
+    </div>
+    <div class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono-num font-bold bg-rose-100 text-rose-800 border border-rose-200 mb-3">
+      ERROR 403 • ACCESO PROHIBIDO
+    </div>
+    <h1 class="text-xl font-bold text-slate-900 tracking-tight mb-2">No tiene permiso para acceder a esta sección</h1>
+    <p class="text-xs text-slate-500 leading-relaxed mb-6">
+      Esta sección está reservada exclusivamente para administradores del sistema. Su cuenta no cuenta con permisos para ver ni gestionar este panel.
+    </p>
+    <div class="space-y-2.5">
+      <a href="/index.html?logout=1" style="background-color: #1D4ED8; color: #ffffff !important; text-decoration: none;" class="w-full h-11 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors hover:opacity-90">
+        <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+        </svg>
+        <span style="color: #ffffff;">Iniciar sesión con otra cuenta</span>
+      </a>
+      <a href="/panel_mesa.html" style="background-color: #f1f5f9; color: #334155; text-decoration: none;" class="w-full h-10 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors hover:bg-slate-200">
+        <svg class="w-4 h-4 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+        </svg>
+        <span>Volver a mi panel de ventanilla</span>
+      </a>
+    </div>
+  </main>
+</body>
+</html>`
+  }
+
+  // Protección estricta del panel de administración decidida por el servidor (401 / 403)
+  const handleAdminPageAccess = async (request, reply) => {
+    let token = request.cookies?.turnero_token
+    if (!token && request.headers.authorization?.startsWith('Bearer ')) {
+      token = request.headers.authorization.slice(7)
+    }
+
+    if (!token) {
+      if (request.headers.accept?.includes('application/json')) {
+        return reply.status(401).send({ error: 'No autenticado' })
+      }
+      return reply.redirect('/index.html')
+    }
+
+    let decoded
+    try {
+      decoded = app.jwt.verify(token)
+    } catch (_) {
+      reply.clearCookie('turnero_token', { path: '/' })
+      if (request.headers.accept?.includes('application/json')) {
+        return reply.status(401).send({ error: 'Token inválido o expirado' })
+      }
+      return reply.redirect('/index.html')
+    }
+
+    const isBlacklisted = await app.redis.get(`bl:${decoded.jti}`)
+    if (isBlacklisted) {
+      reply.clearCookie('turnero_token', { path: '/' })
+      if (request.headers.accept?.includes('application/json')) {
+        return reply.status(401).send({ error: 'Sesión cerrada' })
+      }
+      return reply.redirect('/index.html')
+    }
+
+    const { rows } = await app.db.query(
+      'SELECT id, username, rol, activo FROM usuarios WHERE id = $1 AND eliminado_en IS NULL',
+      [decoded.id]
+    )
+    const user = rows[0]
+    if (!user || !user.activo) {
+      reply.clearCookie('turnero_token', { path: '/' })
+      if (request.headers.accept?.includes('application/json')) {
+        return reply.status(401).send({ error: 'Usuario no encontrado o inactivo' })
+      }
+      return reply.redirect('/index.html')
+    }
+
+    if (user.rol !== 'admin') {
+      if (request.headers.accept?.includes('application/json')) {
+        return reply.status(403).send({ error: 'No tiene permiso para acceder a esta sección' })
+      }
+      return reply.status(403).type('text/html').send(generarPantalla403())
+    }
+
+    reply.header('Cache-Control', 'no-cache, no-store, must-revalidate')
+    reply.header('Pragma', 'no-cache')
+    reply.header('Expires', '0')
+    return reply.type('text/html').sendFile('admin.html')
+  }
+
+  app.get('/admin.html', handleAdminPageAccess)
+  app.get('/admin', handleAdminPageAccess)
+
   await app.register(require('@fastify/websocket'), {
     options: { maxPayload: 16384, perMessageDeflate: false }
   })

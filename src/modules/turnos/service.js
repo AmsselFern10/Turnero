@@ -98,6 +98,18 @@ async function llamarSiguiente (fastify, { mesaId, operadorId }) {
     if (msg.includes('No hay turnos en espera')) {
       throw Object.assign(new Error('No hay turnos en espera en este momento.'), { statusCode: 409, codigo: 'sin_turnos_en_espera' })
     }
+    if (err.code === '23505' || msg.includes('ux_turnos_lote_numero')) {
+      throw Object.assign(
+        new Error('Conflicto con la numeración del lote: el número de turno ya existe en la base de datos. Verifique el contador del lote en Configuración.'),
+        { statusCode: 409, codigo: 'turno_duplicado_lote' }
+      )
+    }
+    if (err.code === '23505' || msg.includes('ux_turnos_kiosko_dia_numero')) {
+      throw Object.assign(
+        new Error('Conflicto con la numeración de kiosko: el turno ya fue emitido hoy.'),
+        { statusCode: 409, codigo: 'turno_duplicado_kiosko' }
+      )
+    }
     if (msg.includes('Solo mesas activas') || msg.includes('lote activo') || msg.includes('agotado')) {
       throw Object.assign(new Error(msg), { statusCode: 409, codigo: 'lote_o_mesa_invalida' })
     }
@@ -184,7 +196,7 @@ async function atenderRezagado (fastify, { turnoId, mesaId, operadorId }) {
     if (msg.includes('no te esta asignada') || msg.includes('no te está asignada')) {
       throw Object.assign(new Error(msg), { statusCode: 403, codigo: 'mesa_no_asignada' })
     }
-    if (msg.includes('ya fue atendido') || msg.includes('no está disponible') || msg.includes('Solo mesas activas')) {
+    if (msg.includes('ya fue atendido') || msg.includes('no está disponible') || msg.includes('no esta disponible') || msg.includes('Solo mesas activas')) {
       throw Object.assign(new Error(msg), { statusCode: 409, codigo: 'turno_no_disponible' })
     }
     throw err

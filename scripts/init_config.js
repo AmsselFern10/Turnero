@@ -15,7 +15,7 @@ const pool = new Pool({
     `postgresql://${process.env.DB_USER || 'postgres'}:${encodeURIComponent(process.env.DB_PASSWORD || 'turnero')}@${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT_EXPOSED || 5432}/${process.env.DB_NAME || 'turnero'}`
 });
 
-// 19 claves sincronizadas con 001_tablas_datos.sql (migracion consolidada v2.1)
+// 21 claves sincronizadas con 001_tablas_datos.sql + 004_complementos.sql (migracion consolidada v2.1.2)
 const sql = `
 INSERT INTO configuracion (clave, valor, descripcion) VALUES
   ('alerta_vouchers_restantes',   '20',                                    'Umbral de vouchers restantes en el lote activo para emitir alerta al administrador (1 a 500).'),
@@ -36,7 +36,9 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
   ('kiosko_url_publica',          '',                                       'URL publica opcional para acceso de participantes al kiosko (vacio = red local LAN).'),
   ('kiosko_modo_uso',             'asistido',                               'Modalidad del kiosko: asistido (tablet con operador) / estudiante (autoservicio movil).'),
   ('fondo_imagen_url',            '',                                       'URL o ruta de la imagen institucional de fondo para las pantallas del sistema.'),
-  ('fondo_imagen_activa',         'false',                                  'Activar la imagen de fondo institucional en las pantallas del sistema.')
+  ('fondo_imagen_activa',         'false',                                  'Activar la imagen de fondo institucional en las pantallas del sistema.'),
+  ('tv_opacidad_principal',       '100',                                    'Opacidad del fondo de la tarjeta principal (turno en curso) en pantalla TV. Entero de 20 a 100; 100 = completamente opaco.'),
+  ('tv_opacidad_secundaria',      '100',                                    'Opacidad del fondo de las cuatro tarjetas de turnos anteriores en pantalla TV. Entero de 20 a 100; 100 = completamente opaco.')
 ON CONFLICT (clave) DO UPDATE
   SET valor       = EXCLUDED.valor,
       descripcion = EXCLUDED.descripcion,
@@ -45,7 +47,7 @@ ON CONFLICT (clave) DO UPDATE
 
 pool.query(sql)
   .then(() => {
-    console.log('[OK] CONFIGURACION INICIALIZADA EXITOSAMENTE (19 claves, kiosko desactivado)');
+    console.log('[OK] CONFIGURACION INICIALIZADA EXITOSAMENTE (21 claves, kiosko desactivado)');
     pool.end();
   })
   .catch(err => {

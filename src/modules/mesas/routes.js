@@ -81,10 +81,25 @@ module.exports = async function mesasRoutes (fastify) {
       }
     }
   }, async (request, reply) => {
-    const mesaId     = parseInt(request.params.id)
+    const mesaId = parseInt(request.params.id)
     const { operador_id } = request.body
-
     try {
+      // Validar si la mesa actual está siendo operada por un admin
+      const { rows: [mesaActual] } = await fastify.db.query(
+        `SELECT m.id, m.numero, m.operador_id, u.rol AS operador_rol, u.nombre_completo AS operador_nombre
+         FROM mesas m
+         LEFT JOIN usuarios u ON m.operador_id = u.id
+         WHERE m.id = $1`,
+        [mesaId]
+      )
+      if (!mesaActual) return reply.status(404).send({ error: 'Mesa no encontrada' })
+
+      if (mesaActual.operador_id && mesaActual.operador_rol === 'admin' && mesaActual.operador_id !== request.user.id) {
+        return reply.status(403).send({
+          error: `Esta mesa está siendo operada por el administrador ${mesaActual.operador_nombre}. Solo él puede liberar o reasignar su mesa.`
+        })
+      }
+
       // Validar que el operador no está ya asignado a otra mesa (RF-AUTH-07)
       if (operador_id) {
         const { rows } = await fastify.db.query(
@@ -181,17 +196,30 @@ module.exports = async function mesasRoutes (fastify) {
     const mesaId      = parseInt(request.params.id)
     const { estado }  = request.body
 
+    const { rows: [mesaActual] } = await fastify.db.query(
+      `SELECT m.id, m.numero, m.operador_id, u.rol AS operador_rol, u.nombre_completo AS operador_nombre
+       FROM mesas m
+       LEFT JOIN usuarios u ON m.operador_id = u.id
+       WHERE m.id = $1`,
+      [mesaId]
+    )
+    if (!mesaActual) return reply.status(404).send({ error: 'Mesa no encontrada' })
+
     // Operadores solo pueden pausar/activar su propia mesa (no inactivar)
     if (request.user.rol === 'operador') {
       if (estado === 'inactiva') {
         return reply.status(403).send({ error: 'Los operadores no pueden inactivar mesas.' })
       }
-      const { rows: [mesa] } = await fastify.db.query(
-        `SELECT operador_id FROM mesas WHERE id = $1`, [mesaId]
-      )
-      if (mesa?.operador_id !== request.user.id) {
+      if (mesaActual.operador_id !== request.user.id) {
         return reply.status(403).send({ error: 'Solo puedes cambiar el estado de tu propia mesa' })
       }
+    }
+
+    // Si un admin está operando la mesa, solo él puede modificar su estado
+    if (mesaActual.operador_id && mesaActual.operador_rol === 'admin' && mesaActual.operador_id !== request.user.id) {
+      return reply.status(403).send({
+        error: `Esta mesa está siendo operada por el administrador ${mesaActual.operador_nombre}. Solo él puede cambiar el estado de su mesa.`
+      })
     }
 
     // Al inactivar: si hay turno en atención, se cierra como cancelado (no concluido)
@@ -306,6 +334,22 @@ module.exports = async function mesasRoutes (fastify) {
     preHandler: [fastify.authorizeRol('admin')]
   }, async (request, reply) => {
     const mesaId = parseInt(request.params.id)
+
+    // Validar si la mesa está siendo operada por otro admin
+    const { rows: [mesaActual] } = await fastify.db.query(
+      `SELECT m.id, m.numero, m.operador_id, u.rol AS operador_rol, u.nombre_completo AS operador_nombre
+       FROM mesas m
+       LEFT JOIN usuarios u ON m.operador_id = u.id
+       WHERE m.id = $1`,
+      [mesaId]
+    )
+    if (!mesaActual) return reply.status(404).send({ error: 'Mesa no encontrada' })
+
+    if (mesaActual.operador_id && mesaActual.operador_rol === 'admin' && mesaActual.operador_id !== request.user.id) {
+      return reply.status(403).send({
+        error: `No se puede eliminar la mesa: está siendo operada por el administrador ${mesaActual.operador_nombre}.`
+      })
+    }
 
     // 1. Validar si tiene turno en atención con operador realmente asignado
     const { rows: turnosConOperador } = await fastify.db.query(

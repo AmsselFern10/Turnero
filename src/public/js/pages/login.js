@@ -63,11 +63,39 @@ export function loginView() {
     },
 
     async init() {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('logout') === '1' || urlParams.get('sesion_cerrada') === '1') {
+        const fueCerrada = urlParams.get('sesion_cerrada') === '1';
+        try {
+          if (!fueCerrada) {
+            await api.logout(false);
+          } else {
+            api.clearSession(false);
+          }
+        } catch (_) {
+          api.clearSession(false);
+        }
+        window.history.replaceState({}, document.title, window.location.pathname);
+        this.step = 'login';
+        this.currentUser = null;
+        this.mesaPreAsignada = null;
+        if (fueCerrada) {
+          this.errorMessage = 'Su sesión fue cerrada porque se inició sesión en otra ventana.';
+        }
+        this.verificarKioskoActivo();
+        this._conectarWSMesas();
+        initFondoPersonalizado(this._ws);
+        return;
+      }
+
       this.verificarKioskoActivo();
       this._conectarWSMesas();
       initFondoPersonalizado(this._ws);
 
-      const existingToken = api.getToken();
+      // En la pantalla de login (/index.html), solo reanudar sesión si ESTA pestaña
+      // ya tenía un token en su sessionStorage local. Si es una pestaña nueva o
+      // la sesión local fue limpiada, permanecer siempre en el formulario de login.
+      const existingToken = sessionStorage.getItem('token');
       if (!existingToken) return;
       try {
         const { usuario } = await api.get('/auth/me');
@@ -97,28 +125,21 @@ export function loginView() {
     },
 
     _decidirPasoPostLogin(usuario) {
-      const urlParams = new URLSearchParams(window.location.search);
-      const forzarSeleccion = urlParams.get('seleccionar_mesa') === '1' || urlParams.get('seleccionar_mesa') === 'true';
-
-      if (forzarSeleccion) {
-        this.step = 'mesas_grid';
-        this.cargarMesas();
-        this._conectarWSMesas();
-        return;
-      }
-
-      // Admin con mesa asignada: mostrar aviso con opciones (Mesa o Panel Admin)
+      // 1. Si el usuario ya tiene mesa asignada (operador o admin con mesa previa):
+      // NUNCA va a la grilla de selección de mesas.
       if (usuario.mesa_asignada) {
         this.mesaPreAsignada = usuario.mesa_asignada;
         this.step = 'mesa_asignada';
         return;
       }
-      // Admin sin mesa: pantalla de elección estándar
+
+      // 2. Admin sin mesa: pantalla de elección estándar
       if (usuario.rol === 'admin') {
         this.step = 'admin_choice';
         return;
       }
-      // Operador sin mesa: ir a la grilla
+
+      // 3. Operador sin mesa asignada: única situación donde puede ir a la grilla a tomar una disponible
       this.step = 'mesas_grid';
       this.cargarMesas();
       this._conectarWSMesas();

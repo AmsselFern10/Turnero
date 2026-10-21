@@ -169,39 +169,81 @@ module.exports = async function adminRoutes (fastify) {
         return reply.status(400).send({ error: 'No puede desactivar su propia cuenta mientras tiene la sesión activa.' })
       }
       if (request.body.rol && request.body.rol !== 'admin') {
-        return reply.status(400).send({ error: 'No puede degradar su propio rol de administrador.' })
+        return reply.status(400).send({ error: 'No puede quitarse a sí mismo el rol de administrador.' })
       }
     }
 
-    // Protección: no dejar al sistema sin ningún admin activo
-    if (request.body.activo === false) {
-      const { rows: [admCount] } = await fastify.db.query(
-        `SELECT COUNT(*) AS total FROM usuarios WHERE rol = 'admin' AND activo = true AND id != $1`,
-        [userId]
-      )
-      if (parseInt(admCount.total, 10) === 0) {
-        return reply.status(400).send({ error: 'No se puede desactivar al único administrador activo del sistema. Active otro administrador primero.' })
-      }
+    if (request.body.password) {
+      const bcrypt = require('bcrypt')
+      campos.push(`password_hash = $${i++}`)
+      vals.push(await bcrypt.hash(request.body.password, parseInt(process.env.BCRYPT_COST || '12')))
     }
 
     if (request.body.activo !== undefined) {
       campos.push(`activo = $${i++}`)
       vals.push(request.body.activo)
+    }
+
+    if (campos.length === 0) {
+      return reply.status(400).send({ error: 'No hay campos para actualizar' })
+    }
+
+    const client = await fastify.db.connect()
+    let usuarioActualizado = null
+    let mesasLiberadas = []
+    let uTargetRolPrevio = null
+
+    try {
+      await client.query('BEGIN')
+
+      // Bloquear filas de administradores activos para serializar operaciones concurrentes (Protección de último admin)
+      await client.query(
+        `SELECT id FROM usuarios WHERE rol = 'admin' AND activo = true AND eliminado_en IS NULL FOR UPDATE`
+      )
+
+      const { rows: [uTarget] } = await client.query(
+        'SELECT id, username, rol, activo FROM usuarios WHERE id = $1 AND eliminado_en IS NULL FOR UPDATE',
+        [userId]
+      )
+      if (!uTarget) {
+        await client.query('ROLLBACK')
+        return reply.status(404).send({ error: 'Usuario no encontrado' })
+      }
+
+      uTargetRolPrevio = uTarget.rol
+
+      // Si deja de ser admin activo (por desactivación o cambio de rol)
+      const dejaDeSerAdminActivo = (uTarget.rol === 'admin' && uTarget.activo === true) &&
+        (request.body.activo === false || (request.body.rol && request.body.rol !== 'admin'))
+
+      if (dejaDeSerAdminActivo) {
+        const { rows: [admCount] } = await client.query(
+          `SELECT COUNT(*) AS total FROM usuarios
+           WHERE rol = 'admin' AND activo = true AND eliminado_en IS NULL AND id != $1`,
+          [userId]
+        )
+        if (parseInt(admCount.total, 10) === 0) {
+          await client.query('ROLLBACK')
+          return reply.status(400).send({
+            error: 'No se puede desactivar ni cambiar el rol del único administrador activo del sistema.'
+          })
+        }
+      }
 
       // Si se desactiva el usuario, cancelar turnos en atención de sus mesas y liberarlas
       if (request.body.activo === false) {
-        const { rows: mesasUsuario } = await fastify.db.query(
+        const { rows: mesasUsuario } = await client.query(
           `SELECT id FROM mesas WHERE operador_id = $1`, [userId]
         )
         for (const m of mesasUsuario) {
-          const { rows: turnosCanc } = await fastify.db.query(
+          const { rows: turnosCanc } = await client.query(
             `UPDATE turnos SET estado = 'cancelado', finalizado_en = NOW()
              WHERE mesa_id = $1 AND estado = 'en_atencion'
              RETURNING id, numero`,
             [m.id]
           )
           for (const tc of turnosCanc) {
-            await fastify.db.query(
+            await client.query(
               `INSERT INTO audit_log (mesa_id, operador_id, turno_id, accion, ip_origen, metadata_json)
                VALUES ($1, $2, $3, 'TURNO_CANCELADO', $4, $5)`,
               [m.id, request.user.id, tc.id, request.ip, JSON.stringify({ motivo: 'usuario_desactivado_por_admin', turno_numero: tc.numero })]
@@ -210,128 +252,170 @@ module.exports = async function adminRoutes (fastify) {
             await fastify.broadcast('lote:activo', 'rezagados_actualizados', { accion: 'cancelado', turno_id: tc.id, turno_numero: tc.numero, mesa_id: m.id })
           }
         }
-        const { rows: mesasLiberadas } = await fastify.db.query(
+        const { rows: ml } = await client.query(
           `UPDATE mesas SET operador_id = NULL, estado = 'inactiva'
            WHERE operador_id = $1
            RETURNING id, numero, nombre, estado, operador_id`,
           [userId]
         )
-        for (const mesa of mesasLiberadas) {
-          await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
-          await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', { mesa, accion: 'liberada' })
-          // F-4a: notificar al panel del operador afectado para aviso inmediato
-          await fastify.broadcast(`mesa:${mesa.id}`, 'mesa_inactivada', { mesa, motivo: 'usuario_desactivado_por_admin' })
-        }
+        mesasLiberadas = ml
+      }
+
+      vals.push(userId)
+      const { rows: [usuario] } = await client.query(
+        `UPDATE usuarios SET ${campos.join(', ')} WHERE id = $${i}
+         RETURNING id, username, nombre_completo, rol, activo`,
+        vals
+      )
+      usuarioActualizado = usuario
+
+      await client.query(
+        `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
+         VALUES ($1, 'USUARIO_EDITADO', $2, $3)`,
+        [request.user.id, request.ip, JSON.stringify({ usuario_editado_id: userId, nuevo_rol: usuario.rol, activo: usuario.activo })]
+      )
+
+      await client.query('COMMIT')
+    } catch (err) {
+      await client.query('ROLLBACK')
+      throw err
+    } finally {
+      client.release()
+    }
+
+    for (const mesa of mesasLiberadas) {
+      await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
+      await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', { mesa, accion: 'liberada' })
+      await fastify.broadcast(`mesa:${mesa.id}`, 'mesa_inactivada', { mesa, motivo: 'usuario_desactivado_por_admin' })
+    }
+
+    // Notificar cambios de usuario
+    await fastify.broadcast('admin:all', 'usuario_actualizado', { usuario: usuarioActualizado })
+
+    // Si el usuario fue desactivado o se le quitó el rol de admin, desconectar su sesión en caliente
+    if (!usuarioActualizado.activo || (uTargetRolPrevio === 'admin' && usuarioActualizado.rol !== 'admin')) {
+      if (fastify.desconectarUsuario) {
+        fastify.desconectarUsuario(userId)
       }
     }
-    if (request.body.password) {
-      const bcrypt = require('bcrypt')
-      campos.push(`password_hash = $${i++}`)
-      vals.push(await bcrypt.hash(request.body.password, parseInt(process.env.BCRYPT_COST || '12')))
-    }
 
-    if (campos.length === 0) {
-      return reply.status(400).send({ error: 'No hay campos para actualizar' })
-    }
-
-    vals.push(userId)
-    const { rows: [usuario] } = await fastify.db.query(
-      `UPDATE usuarios SET ${campos.join(', ')} WHERE id = $${i}
-       RETURNING id, username, nombre_completo, rol, activo`,
-      vals
-    )
-
-    if (!usuario) return reply.status(404).send({ error: 'Usuario no encontrado' })
-
-    await fastify.db.query(
-      `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
-       VALUES ($1, 'USUARIO_EDITADO', $2, $3)`,
-      [request.user.id, request.ip, JSON.stringify({ usuario_editado_id: userId })]
-    )
-
-    return reply.send({ usuario })
+    return reply.send({ usuario: usuarioActualizado })
   })
 
-  // -- DELETE /admin/usuarios/:id -- Eliminar usuario (RF-ADM-06) ----------
+  // ── DELETE /admin/usuarios/:id ── Eliminar usuario (RF-ADM-06) ──────────
   fastify.delete('/usuarios/:id', {
     preHandler: [fastify.authorizeRol('admin')]
   }, async (request, reply) => {
     const userId = parseInt(request.params.id)
 
+    // 1. Nadie puede eliminar su propia cuenta
     if (userId === request.user.id) {
-      return reply.status(400).send({ error: 'No puede eliminar su propia cuenta mientras tiene la sesion activa.' })
+      return reply.status(400).send({ error: 'No puede eliminar su propia cuenta mientras tiene la sesión activa.' })
     }
 
-    // Proteccion: no eliminar al unico admin activo
-    const { rows: [uTarget] } = await fastify.db.query(
-      'SELECT rol FROM usuarios WHERE id = $1 AND eliminado_en IS NULL', [userId]
+    // 2. Comprobar actividad en curso (mesa asignada o turno en atención)
+    const { rows: [mesaAsignada] } = await fastify.db.query(
+      `SELECT id, numero, nombre FROM mesas
+       WHERE operador_id = $1 AND estado NOT IN ('inactiva', 'eliminada') AND eliminado_en IS NULL`,
+      [userId]
     )
-    if (!uTarget) return reply.status(404).send({ error: 'Usuario no encontrado o ya eliminado' })
+    if (mesaAsignada) {
+      return reply.status(409).send({
+        error: `No se puede eliminar al usuario porque tiene asignada la Mesa ${mesaAsignada.numero} (${mesaAsignada.nombre}). Debe liberar o reasignar la mesa antes de eliminarlo.`
+      })
+    }
 
-    if (uTarget.rol === 'admin') {
-      const { rows: [admCount] } = await fastify.db.query(
-        `SELECT COUNT(*) AS total FROM usuarios WHERE rol = 'admin' AND activo = true AND eliminado_en IS NULL AND id != $1`,
+    const { rows: [turnoActivo] } = await fastify.db.query(
+      `SELECT id, numero FROM turnos
+       WHERE operador_id = $1 AND estado = 'en_atencion'`,
+      [userId]
+    )
+    if (turnoActivo) {
+      return reply.status(409).send({
+        error: `No se puede eliminar al usuario porque tiene el turno #${turnoActivo.numero} en atención actualmente. Finalice la atención antes de eliminarlo.`
+      })
+    }
+
+    const client = await fastify.db.connect()
+    let usuarioEliminado = null
+    let mesasLiberadas = []
+
+    try {
+      await client.query('BEGIN')
+
+      // Bloquear filas de administradores activos para serializar operaciones concurrentes
+      await client.query(
+        `SELECT id FROM usuarios WHERE rol = 'admin' AND activo = true AND eliminado_en IS NULL FOR UPDATE`
+      )
+
+      const { rows: [uTarget] } = await client.query(
+        'SELECT id, username, rol, activo FROM usuarios WHERE id = $1 AND eliminado_en IS NULL FOR UPDATE',
         [userId]
       )
-      if (parseInt(admCount.total, 10) === 0) {
-        return reply.status(400).send({ error: 'No se puede eliminar al único administrador activo del sistema.' })
+      if (!uTarget) {
+        await client.query('ROLLBACK')
+        return reply.status(404).send({ error: 'Usuario no encontrado o ya eliminado' })
       }
-    }
 
-    // Si el usuario tenía mesas asignadas, cancelar turnos en atención y liberarlas
-    const { rows: mesasUsuario } = await fastify.db.query(
-      `SELECT id FROM mesas WHERE operador_id = $1`, [userId]
-    )
-    for (const m of mesasUsuario) {
-      const { rows: turnosCanc } = await fastify.db.query(
-        `UPDATE turnos SET estado = 'cancelado', finalizado_en = NOW()
-         WHERE mesa_id = $1 AND estado = 'en_atencion'
-         RETURNING id, numero`,
-        [m.id]
-      )
-      for (const tc of turnosCanc) {
-        await fastify.db.query(
-          `INSERT INTO audit_log (mesa_id, operador_id, turno_id, accion, ip_origen, metadata_json)
-           VALUES ($1, $2, $3, 'TURNO_CANCELADO', $4, $5)`,
-          [m.id, request.user.id, tc.id, request.ip, JSON.stringify({ motivo: 'usuario_eliminado_por_admin', turno_numero: tc.numero })]
+      // Protección del último administrador activo
+      if (uTarget.rol === 'admin' && uTarget.activo === true) {
+        const { rows: [admCount] } = await client.query(
+          `SELECT COUNT(*) AS total FROM usuarios
+           WHERE rol = 'admin' AND activo = true AND eliminado_en IS NULL AND id != $1`,
+          [userId]
         )
-        await fastify.broadcast('admin:all', 'turno_cancelado', { turno_id: tc.id, turno_numero: tc.numero, mesa_id: m.id })
-        await fastify.broadcast('lote:activo', 'rezagados_actualizados', { accion: 'cancelado', turno_id: tc.id, turno_numero: tc.numero, mesa_id: m.id })
+        if (parseInt(admCount.total, 10) === 0) {
+          await client.query('ROLLBACK')
+          return reply.status(400).send({
+            error: 'No se puede eliminar al único administrador activo del sistema.'
+          })
+        }
       }
+
+      // Desasignar mesas inactivas residuales si existieran
+      const { rows: ml } = await client.query(
+        `UPDATE mesas SET operador_id = NULL, estado = 'inactiva'
+         WHERE operador_id = $1
+         RETURNING id, numero, nombre, estado, operador_id`,
+        [userId]
+      )
+      mesasLiberadas = ml
+
+      // Borrado lógico permanente
+      const { rows: [uEliminado] } = await client.query(
+        `UPDATE usuarios
+         SET eliminado_en = NOW(), activo = false
+         WHERE id = $1 AND eliminado_en IS NULL
+         RETURNING id, username`,
+        [userId]
+      )
+      usuarioEliminado = uEliminado
+
+      await client.query(
+        `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
+         VALUES ($1, 'USUARIO_ELIMINADO', $2, $3)`,
+        [request.user.id, request.ip, JSON.stringify({ usuario_eliminado_id: userId, username: usuarioEliminado.username })]
+      )
+
+      await client.query('COMMIT')
+    } catch (err) {
+      await client.query('ROLLBACK')
+      throw err
+    } finally {
+      client.release()
     }
-
-    // Desasignar de cualquier mesa y guardar cuáles eran para broadcast WS
-    const { rows: mesasLiberadas } = await fastify.db.query(
-      `UPDATE mesas SET operador_id = NULL, estado = 'inactiva'
-       WHERE operador_id = $1
-       RETURNING id, numero, nombre, estado, operador_id`,
-      [userId]
-    )
-
-    // Borrado lógico permanente: libera el username para que pueda ser reusado si se crea de nuevo
-    const { rows: [usuario] } = await fastify.db.query(
-      `UPDATE usuarios
-       SET eliminado_en = NOW(), activo = false
-       WHERE id = $1 AND eliminado_en IS NULL
-       RETURNING id, username`,
-      [userId]
-    )
-    if (!usuario) return reply.status(404).send({ error: 'Usuario no encontrado' })
-
-    await fastify.db.query(
-      `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
-       VALUES ($1, 'ADMIN_ACTION', $2, $3)`,
-      [request.user.id, request.ip, JSON.stringify({ tipo: 'USUARIO_ELIMINADO', usuario_eliminado_id: userId, username: usuario.username })]
-    )
 
     for (const mesa of mesasLiberadas) {
       await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
       await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', { mesa, accion: 'liberada' })
-      // F-4b: notificar al panel del operador eliminado para aviso inmediato
       await fastify.broadcast(`mesa:${mesa.id}`, 'mesa_inactivada', { mesa, motivo: 'usuario_eliminado_por_admin' })
     }
 
-    await fastify.broadcast('admin:all', 'usuario_eliminado', { id: userId, username: usuario.username })
+    if (fastify.desconectarUsuario) {
+      fastify.desconectarUsuario(userId)
+    }
+
+    await fastify.broadcast('admin:all', 'usuario_eliminado', { id: userId, username: usuarioEliminado.username })
 
     return reply.send({ success: true, message: `Usuario ${usuario.username} eliminado exitosamente.` })
   })
@@ -904,6 +988,20 @@ module.exports = async function adminRoutes (fastify) {
           return 'El estado de la imagen de fondo debe ser "true" o "false".'
         }
         return null
+      },
+      tv_opacidad_principal: (v) => {
+        const n = parseInt(v, 10)
+        if (isNaN(n) || n < 20 || n > 100) {
+          return 'La opacidad del fondo de la tarjeta principal de TV debe ser un número entero entre 20 y 100.'
+        }
+        return null
+      },
+      tv_opacidad_secundaria: (v) => {
+        const n = parseInt(v, 10)
+        if (isNaN(n) || n < 20 || n > 100) {
+          return 'La opacidad del fondo de las tarjetas de turnos anteriores de TV debe ser un número entero entre 20 y 100.'
+        }
+        return null
       }
     }
 
@@ -991,6 +1089,23 @@ module.exports = async function adminRoutes (fastify) {
   }, async (request, reply) => {
     const fechaRes = await fastify.db.query('SELECT fn_fecha_hoy() AS fecha')
     const fechaHoy = fechaRes.rows[0]?.fecha
+
+    // Verificar si ya se han emitido turnos en kiosko hoy (regla de no colisión con ux_turnos_kiosko_dia_numero)
+    const { rows: [{ max_emitido }] } = await fastify.db.query(
+      `SELECT COALESCE(MAX(numero), 0) AS max_emitido
+       FROM turnos
+       WHERE fecha_turno = $1 AND origen = 'kiosko_web'`,
+      [fechaHoy]
+    )
+    const maxEmitidoNum = Number(max_emitido)
+    if (maxEmitidoNum > 0) {
+      return reply.status(400).send({
+        error: {
+          codigo: 'turnos_existentes_hoy',
+          mensaje: `No se puede reiniciar el contador a 0 porque hoy ya se emitieron turnos de kiosko (hasta el #${maxEmitidoNum}). La numeración de kiosko reinicia automáticamente cada día.`
+        }
+      })
+    }
 
     // 1. Resetear el contador correlativo diario de Kiosko a 0
     await fastify.db.query(

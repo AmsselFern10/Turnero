@@ -185,11 +185,6 @@ export function synthesizeInstitutionalChime() {
  */
 export async function playCallChime() {
   try {
-    // Si la pestaña está oculta en segundo plano, no esperar audio
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-      return;
-    }
-
     const ctx = _getAudioCtx();
     if (!ctx) return;
 

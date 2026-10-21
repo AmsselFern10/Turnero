@@ -17,6 +17,9 @@
   --tv-num-scale: 1;
   /* Factor de ajuste automático para evitar desbordes en resoluciones compactas */
   --tv-ticket-fit: 1;
+  /* Opacidad del fondo de tarjetas (defecto 1.0 = completamente opaco, sin cambio visual) */
+  --tv-opacidad-principal: 1;
+  --tv-opacidad-secundaria: 1;
 }
 
 /* ── 1. NÚMERO DE TURNO PRINCIPAL (Héroe colosal) ─────────────────────────── */

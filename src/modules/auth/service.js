@@ -124,15 +124,17 @@ async function logout (fastify, { userId, jti, exp, ip }) {
     }
   }
 
-  const { rows: mesasLiberadas } = await fastify.db.query(
-    `UPDATE mesas SET operador_id = NULL
-     WHERE operador_id = $1
-     RETURNING id, numero, nombre, estado`,
+  // Al hacer logout, NO se libera la mesa (operador_id se mantiene).
+  // Solo se pasa a estado 'pausada' si estaba activa.
+  const { rows: mesasPausadas } = await fastify.db.query(
+    `UPDATE mesas SET estado = 'pausada'
+     WHERE operador_id = $1 AND estado = 'activa'
+     RETURNING id, numero, nombre, estado, operador_id`,
     [userId]
   )
-  for (const mesa of mesasLiberadas) {
+  for (const mesa of mesasPausadas) {
     await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
-    await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', { mesa, accion: 'liberada' })
+    await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', { mesa, accion: 'pausada' })
   }
 
   await fastify.db.query(

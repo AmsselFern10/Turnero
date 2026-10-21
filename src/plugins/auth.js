@@ -28,9 +28,21 @@ async function authPlugin (fastify) {
    * Verifica que el request tenga un JWT válido y no esté en la blacklist.
    */
   fastify.decorate('authenticate', async function (request, reply) {
+    let verified = false
     try {
       await request.jwtVerify()
+      verified = true
     } catch (err) {
+      const cookieToken = request.cookies?.turnero_token
+      if (cookieToken) {
+        try {
+          request.user = fastify.jwt.verify(cookieToken)
+          verified = true
+        } catch (_) {}
+      }
+    }
+
+    if (!verified) {
       return reply.status(401).send({ error: 'Token inválido o expirado' })
     }
 
@@ -40,14 +52,16 @@ async function authPlugin (fastify) {
       return reply.status(401).send({ error: 'Sesión cerrada' })
     }
 
-    // Verificar que el usuario sigue activo
+    // Verificar que el usuario sigue activo y sincronizar rol actual desde la base de datos
     const { rows } = await fastify.db.query(
-      'SELECT activo FROM usuarios WHERE id = $1',
+      'SELECT activo, rol FROM usuarios WHERE id = $1',
       [request.user.id]
     )
     if (!rows[0]?.activo) {
       return reply.status(403).send({ error: 'Usuario desactivado' })
     }
+    // Mantener sincronizado el rol actual si fue modificado en caliente
+    request.user.rol = rows[0].rol
   })
 
   /**

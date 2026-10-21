@@ -21,7 +21,8 @@ module.exports = async function lotesRoutes (fastify) {
                 THEN ROUND((lv.ultimo_numero_llamado::numeric / lv.numero_hasta) * 100, 1)
                 ELSE 0
               END AS progreso_pct,
-              lv.numero_hasta - lv.ultimo_numero_llamado AS vouchers_restantes
+              lv.numero_hasta - lv.ultimo_numero_llamado AS vouchers_restantes,
+              (SELECT COALESCE(MAX(t.numero), 0) FROM turnos t WHERE t.lote_id = lv.id) AS max_emitido
        FROM lotes_voucher lv
        LEFT JOIN usuarios u ON lv.creado_por = u.id AND u.eliminado_en IS NULL
        WHERE lv.estado != 'eliminado' AND lv.eliminado_en IS NULL
@@ -38,7 +39,8 @@ module.exports = async function lotesRoutes (fastify) {
       `SELECT id, numero_lote, numero_desde, numero_hasta,
               ultimo_numero_llamado, estado,
               numero_hasta - ultimo_numero_llamado AS vouchers_restantes,
-              ROUND((ultimo_numero_llamado::numeric / numero_hasta) * 100, 1) AS progreso_pct
+              ROUND((ultimo_numero_llamado::numeric / numero_hasta) * 100, 1) AS progreso_pct,
+              (SELECT COALESCE(MAX(t.numero), 0) FROM turnos t WHERE t.lote_id = lotes_voucher.id) AS max_emitido
        FROM lotes_voucher
        WHERE estado IN ('activo', 'agotado') AND eliminado_en IS NULL
        ORDER BY (CASE WHEN estado = 'activo' THEN 1 ELSE 2 END), id DESC
@@ -449,13 +451,23 @@ module.exports = async function lotesRoutes (fastify) {
         })
       }
 
-      // Validar rango
-      if (nuevo_ultimo_llamado < lote.numero_desde - 1) {
+      // Consultar el número máximo de turno emitido en este lote
+      const { rows: [{ max_emitido }] } = await client.query(
+        `SELECT COALESCE(MAX(numero), 0) AS max_emitido FROM turnos WHERE lote_id = $1`,
+        [loteId]
+      )
+      const maxEmitidoNum = Number(max_emitido)
+      const minPermitido = Math.max(lote.numero_desde - 1, maxEmitidoNum)
+
+      // Validar rango contra el mínimo seguro según turnos emitidos
+      if (nuevo_ultimo_llamado < minPermitido) {
         await client.query('ROLLBACK')
         return reply.status(400).send({
           error: {
             codigo: 'fuera_de_rango',
-            mensaje: `El nuevo valor (${nuevo_ultimo_llamado}) no puede ser menor al inicio del lote (${lote.numero_desde})`
+            mensaje: maxEmitidoNum > 0
+              ? `No se puede ajustar el contador a ${nuevo_ultimo_llamado}. Ya se han emitido turnos hasta el número ${maxEmitidoNum} en este lote. Para reiniciar la numeración desde 1, cierre este lote y cree uno nuevo.`
+              : `El nuevo valor (${nuevo_ultimo_llamado}) no puede ser menor al inicio del lote (${lote.numero_desde - 1})`
           }
         })
       }

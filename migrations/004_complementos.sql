@@ -61,6 +61,24 @@ COMMENT ON COLUMN audit_log.accion
 --          CORRECCION H4: TURNO_FINALIZADO agregado al CHECK de audit_log.
 --          CORRECCION H5: kiosko_modo_uso insertado en configuracion inicial.
 --                         Descripciones de URL kiosko corregidas.
+-- v2.1.2 : + tv_opacidad_principal, tv_opacidad_secundaria (011)
+
+-- ---------------------------------------------------------------------------
+-- 5. Claves de configuracion TV: opacidad de tarjetas (v2.1.2)
+-- ---------------------------------------------------------------------------
+INSERT INTO configuracion (clave, valor, descripcion)
+VALUES
+  (
+    'tv_opacidad_principal',
+    '100',
+    'Opacidad del fondo de la tarjeta principal (turno en curso) en pantalla TV. Entero de 20 a 100; 100 = completamente opaco (sin cambio visual).'
+  ),
+  (
+    'tv_opacidad_secundaria',
+    '100',
+    'Opacidad del fondo de las cuatro tarjetas de turnos anteriores en pantalla TV. Entero de 20 a 100; 100 = completamente opaco (sin cambio visual).'
+  )
+ON CONFLICT (clave) DO NOTHING;
 
 -- =============================================================================
 -- FIN ARCHIVO 4/4

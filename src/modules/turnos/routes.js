@@ -588,32 +588,31 @@ module.exports = async function turnosRoutes (fastify) {
                SELECT id, numero, llamado_en, estado
                FROM turnos
                WHERE mesa_id = $1::int AND estado = 'en_atencion'
-                 AND llamado_en >= CURRENT_DATE
-                 AND llamado_en >= NOW() - INTERVAL '30 minutes'
+                 AND fecha_turno = fn_fecha_hoy()
                LIMIT 1
              ) t)
           ELSE NULL END) AS turno_actual,
          (CASE WHEN $1::int IS NOT NULL THEN
             (SELECT COUNT(*)::int
              FROM turnos
-             WHERE mesa_id = $1::int AND estado = 'atendido' AND llamado_en >= CURRENT_DATE
+             WHERE mesa_id = $1::int AND estado = 'atendido' AND fecha_turno = fn_fecha_hoy()
             )
           ELSE 0 END) AS atendidos_hoy,
          (SELECT numero
           FROM turnos
-          WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = CURRENT_DATE
+          WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()
           ORDER BY numero ASC LIMIT 1
          ) AS proximo_kiosko,
          (SELECT COUNT(*)::int
           FROM turnos
-          WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = CURRENT_DATE
+          WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()
          ) AS turnos_en_espera_kiosko,
          (SELECT json_agg(u) FROM (
             SELECT t.numero, m.numero AS mesa_numero, m.nombre AS mesa_nombre, t.llamado_en
             FROM turnos t
             JOIN mesas m ON t.mesa_id = m.id
             WHERE t.estado IN ('en_atencion', 'atendido')
-              AND t.creado_en >= CURRENT_DATE
+              AND t.fecha_turno = fn_fecha_hoy()
             ORDER BY t.llamado_en DESC
             LIMIT 10
           ) u) AS ultimos_turnos`,
@@ -790,7 +789,7 @@ module.exports = async function turnosRoutes (fastify) {
   // ── GET /turnos/configuracion-publica — Parámetros públicos para TV y Kiosko ──
   fastify.get('/configuracion-publica', async (request, reply) => {
     const { rows } = await fastify.db.query(
-      `SELECT clave, valor FROM configuracion WHERE clave IN ('voz_anuncio_activa', 'kiosko_web_activo', 'alerta_vouchers_restantes', 'tv_escala_turnos', 'tv_escala_principal', 'tv_escala_secundaria', 'fondo_imagen_url', 'fondo_imagen_activa')`
+      `SELECT clave, valor FROM configuracion WHERE clave IN ('voz_anuncio_activa', 'kiosko_web_activo', 'alerta_vouchers_restantes', 'tv_escala_turnos', 'tv_escala_principal', 'tv_escala_secundaria', 'fondo_imagen_url', 'fondo_imagen_activa', 'tv_opacidad_principal', 'tv_opacidad_secundaria')`
     )
     const configMap = {
       voz_anuncio_activa: true,
@@ -800,7 +799,9 @@ module.exports = async function turnosRoutes (fastify) {
       tv_escala_principal: 100,
       tv_escala_secundaria: 100,
       fondo_imagen_url: '',
-      fondo_imagen_activa: false
+      fondo_imagen_activa: false,
+      tv_opacidad_principal: 100,
+      tv_opacidad_secundaria: 100
     }
     for (const r of rows) {
       if (r.clave === 'voz_anuncio_activa') configMap.voz_anuncio_activa = r.valor !== 'false'
@@ -811,6 +812,8 @@ module.exports = async function turnosRoutes (fastify) {
       else if (r.clave === 'tv_escala_secundaria') configMap.tv_escala_secundaria = parseInt(r.valor, 10) || 100
       else if (r.clave === 'fondo_imagen_url') configMap.fondo_imagen_url = r.valor || ''
       else if (r.clave === 'fondo_imagen_activa') configMap.fondo_imagen_activa = r.valor === 'true'
+      else if (r.clave === 'tv_opacidad_principal') configMap.tv_opacidad_principal = parseInt(r.valor, 10) || 100
+      else if (r.clave === 'tv_opacidad_secundaria') configMap.tv_opacidad_secundaria = parseInt(r.valor, 10) || 100
     }
     if (!rows.some(r => r.clave === 'tv_escala_principal')) {
       configMap.tv_escala_principal = configMap.tv_escala_turnos

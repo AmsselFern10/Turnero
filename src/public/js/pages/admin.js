@@ -186,15 +186,21 @@ export function adminView() {
       tv_escala_principal:          100,
       tv_escala_secundaria:         100,
       tv_escala_turnos:             100,
+      tv_opacidad_principal:        100,
+      tv_opacidad_secundaria:       100,
       zona_horaria:                 'America/Tegucigalpa',
       fondo_imagen_url:             '',
       fondo_imagen_activa:          false
     },
-    avisoGuardadoPrincipal:  false,
-    avisoGuardadoSecundaria: false,
-    _debounceEscalaPrincipal: null,
-    _debounceEscalaSecundaria: null,
-    _debounceEscalaTv: null,
+    avisoGuardadoPrincipal:          false,
+    avisoGuardadoSecundaria:         false,
+    avisoGuardadoOpacidadPrincipal:  false,
+    avisoGuardadoOpacidadSecundaria: false,
+    _debounceEscalaPrincipal:    null,
+    _debounceEscalaSecundaria:   null,
+    _debounceEscalaTv:           null,
+    _debounceOpacidadPrincipal:  null,
+    _debounceOpacidadSecundaria: null,
     kioskoForm: {
       tope_diario:      0,
       modo_uso:         'asistido',
@@ -228,23 +234,97 @@ export function adminView() {
     cargandoDashboard: false,
 
     ws:          null,
-    wsConnected: false,
+    wsConnected: true,
+    accesoDenegado: false,
     loteAgotadoAlerta: false,
     _loading: false,
 
-    // Modal de confirmación propio (reemplaza confirm() nativo del navegador)
+    // Modal de confirmación propio y unificado (reemplaza confirm() nativo del navegador)
     _confirmModal: {
-      visible: false,
-      titulo:  '',
-      mensaje: '',
-      accion:  null,
-      botonTexto: 'Confirmar',
-      botonClase: 'btn-danger btn-sm',
-      tipo: 'peligro'
+      visible:        false,
+      titulo:         '',
+      subtitulo:      '',
+      mensaje:        '',
+      detalle:        '',
+      impacto:        '',
+      esIrreversible: false,
+      reforzada:      false,
+      textoEsperado:  '',
+      textoEscrito:   '',
+      accion:         null,
+      botonTexto:     'Confirmar',
+      botonClase:     'btn-danger btn-sm',
+      tipo:           'peligro',
+      cargando:       false,
+      error:          ''
     },
 
-    _pedirConfirmacion({ titulo, mensaje, accion, botonTexto = 'Confirmar', botonClase = 'btn-danger btn-sm', tipo = 'peligro' }) {
-      this._confirmModal = { visible: true, titulo, mensaje, accion, botonTexto, botonClase, tipo };
+    _pedirConfirmacion({
+      titulo,
+      subtitulo = '',
+      mensaje,
+      detalle = '',
+      impacto = '',
+      esIrreversible = false,
+      reforzada = false,
+      textoEsperado = '',
+      accion,
+      botonTexto = 'Confirmar',
+      botonClase = 'btn-danger btn-sm',
+      tipo = 'peligro'
+    }) {
+      this._confirmModal = {
+        visible:        true,
+        titulo:         titulo || 'Confirmar acción',
+        subtitulo:      subtitulo || '',
+        mensaje:        mensaje || '',
+        detalle:        detalle || '',
+        impacto:        impacto || '',
+        esIrreversible: Boolean(esIrreversible),
+        reforzada:      Boolean(reforzada),
+        textoEsperado:  String(textoEsperado || '').trim(),
+        textoEscrito:   '',
+        accion:         accion || null,
+        botonTexto:     botonTexto || 'Confirmar',
+        botonClase:     botonClase || 'btn-danger btn-sm',
+        tipo:           tipo || 'peligro',
+        cargando:       false,
+        error:          ''
+      };
+    },
+
+    async _ejecutarConfirmacion() {
+      if (!this.wsConnected) {
+        this._confirmModal.error = 'Sin conexión con el servidor. No se pueden ejecutar acciones.';
+        return;
+      }
+      if (this._confirmModal.reforzada) {
+        if (this._confirmModal.textoEscrito.trim() !== this._confirmModal.textoEsperado.trim()) {
+          this._confirmModal.error = `Debes escribir exactamente "${this._confirmModal.textoEsperado}" para confirmar.`;
+          return;
+        }
+      }
+      if (typeof this._confirmModal.accion !== 'function') {
+        this._confirmModal.visible = false;
+        return;
+      }
+      this._confirmModal.cargando = true;
+      this._confirmModal.error = '';
+      try {
+        await this._confirmModal.accion();
+        this._confirmModal.visible = false;
+      } catch (err) {
+        this._confirmModal.error = err.mensaje || err.message || 'Error al ejecutar la acción.';
+      } finally {
+        this._confirmModal.cargando = false;
+      }
+    },
+
+    cerrarConfirmacion() {
+      if (this._confirmModal.cargando) return;
+      this._confirmModal.visible = false;
+      this._confirmModal.error = '';
+      this._confirmModal.textoEscrito = '';
     },
 
     formatearFechaLote(fechaStr) {
@@ -324,13 +404,19 @@ export function adminView() {
       return true;
     },
 
+    get minValAjusteContador() {
+      const loteRef = this.loteActivo || this.lotePausado;
+      if (!loteRef) return 0;
+      return Math.max((loteRef.numero_desde ? loteRef.numero_desde - 1 : 0), Number(loteRef.max_emitido || 0));
+    },
+
     get ajusteContadorValido() {
       const loteRef = this.loteActivo || this.lotePausado;
       if (!loteRef) return false;
       const num = this.ajusteContador?.nuevoUltimo;
       const mot = (this.ajusteContador?.motivo || '').trim();
       if (num === null || num === undefined || isNaN(Number(num))) return false;
-      const minVal = (loteRef.numero_desde ?? 0);
+      const minVal = this.minValAjusteContador;
       const maxVal = (loteRef.numero_hasta ?? 99999);
       if (num < minVal || num > maxVal) return false;
       if (mot.length < 5) return false;
@@ -643,10 +729,14 @@ export function adminView() {
         this.erroresValidacion.ajusteContadorNumero = 'Ingrese un número válido.';
         return false;
       }
-      const minVal = (loteRef?.numero_desde ?? 0);
+      const minVal = this.minValAjusteContador;
       const maxVal = (loteRef?.numero_hasta ?? 99999);
       if (num < minVal || num > maxVal) {
-        this.erroresValidacion.ajusteContadorNumero = `El número debe estar entre ${minVal} y ${maxVal}.`;
+        if (loteRef?.max_emitido > 0 && num < minVal) {
+          this.erroresValidacion.ajusteContadorNumero = `No se puede ajustar por debajo de #${minVal} (turnos ya emitidos en este lote).`;
+        } else {
+          this.erroresValidacion.ajusteContadorNumero = `El número debe estar entre ${minVal} y ${maxVal}.`;
+        }
         return false;
       }
       this.erroresValidacion.ajusteContadorNumero = '';
@@ -832,12 +922,16 @@ export function adminView() {
 
       try {
         const { usuario } = await api.get('/auth/me');
-        if (!usuario || (usuario.rol !== 'admin' && usuario.rol !== 'admin')) {
-          api.clearSession(true);
+        if (!usuario || usuario.rol !== 'admin') {
+          this.accesoDenegado = true;
           return;
         }
         this.currentUser = usuario;
-      } catch (_) {
+      } catch (err) {
+        if (err?.status === 403) {
+          this.accesoDenegado = true;
+          return;
+        }
         api.clearSession(true);
         return;
       }
@@ -968,6 +1062,8 @@ export function adminView() {
         this.config.tv_escala_principal       = parseInt(c.tv_escala_principal || String(escalaBase), 10) || 100;
         this.config.tv_escala_secundaria      = parseInt(c.tv_escala_secundaria || String(escalaBase), 10) || 100;
         this.config.tv_escala_turnos          = this.config.tv_escala_principal;
+        this.config.tv_opacidad_principal     = parseInt(c.tv_opacidad_principal || '100', 10) || 100;
+        this.config.tv_opacidad_secundaria    = parseInt(c.tv_opacidad_secundaria || '100', 10) || 100;
         this.config.zona_horaria              = c.zona_horaria || 'America/Tegucigalpa';
         this.config.fondo_imagen_url          = c.fondo_imagen_url || '';
         this.config.fondo_imagen_activa       = c.fondo_imagen_activa === 'true' || c.fondo_imagen_activa === true;
@@ -1013,17 +1109,54 @@ export function adminView() {
     },
 
     async activarLote(loteId) {
-      const loteObjetivo = this.lotes.find(l => l.id === loteId) || { id: loteId, numero_lote: loteId };
-      // Si ya hay un lote activo distinto al que se quiere activar, abrir modal de confirmación
-      if (this.loteActivo && this.loteActivo.id !== loteId && this.loteActivo.estado === 'activo') {
-        this.lotePendienteActivar = loteObjetivo;
-        this.modalCambioLote = true;
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se pueden activar lotes.'
+        });
         return;
       }
-      await this._ejecutarActivacion(loteId);
+      const loteObjetivo = this.lotes.find(l => l.id === loteId) || { id: loteId, numero_lote: loteId };
+      const numObjetivo = loteObjetivo.numero_lote || loteId;
+
+      // Si ya hay un lote activo distinto al que se quiere activar, pedir confirmación de cambio
+      if (this.loteActivo && this.loteActivo.id !== loteId && this.loteActivo.estado === 'activo') {
+        const numActivo = this.loteActivo.numero_lote;
+        this._pedirConfirmacion({
+          titulo: `Cambiar y Activar Lote ${numObjetivo}`,
+          subtitulo: 'Solo un lote puede estar activo a la vez',
+          mensaje: `El Lote ${numActivo} pasará a estado pausado y el Lote ${numObjetivo} quedará activo para la atención en ventanillas.`,
+          impacto: `Las mesas comenzarán a llamar los turnos del Lote ${numObjetivo}.`,
+          botonTexto: `Cambiar y Activar Lote ${numObjetivo}`,
+          botonClase: 'btn-primary btn-sm',
+          tipo: 'aviso',
+          accion: async () => {
+            await this.pausarYActivarNuevo(loteObjetivo);
+          }
+        });
+        return;
+      }
+
+      this._pedirConfirmacion({
+        titulo: `Activar Lote ${numObjetivo}`,
+        subtitulo: 'Habilitar llamado de vouchers en sala',
+        mensaje: `¿Deseas activar el Lote ${numObjetivo} para la atención en ventanillas?`,
+        impacto: 'Las mesas podrán llamar los turnos correspondientes a este lote.',
+        botonTexto: 'Activar Lote',
+        botonClase: 'btn-primary btn-sm',
+        tipo: 'aviso',
+        accion: async () => {
+          await this._ejecutarActivacion(loteId);
+        }
+      });
     },
 
     async _ejecutarActivacion(loteId) {
+      if (!this.wsConnected) {
+        this.notificar({ tipo: 'warning', titulo: 'Sin conexión', mensaje: 'No hay conexión con el servidor.' });
+        return;
+      }
       if (this._loading) return;
       this._loading = true;
       try {
@@ -1206,31 +1339,72 @@ export function adminView() {
     },
 
     async pausarLote(loteId) {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se pueden pausar lotes.'
+        });
+        return;
+      }
       if (!this.loteActivo) return;
-      if (this._loading) return;
-      this._loading = true;
-      try {
-        await api.patch(`/lotes/${loteId}/pausar`);
-        showToast({ message: 'Lote pausado.', type: 'info' });
-        await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
-      } catch (err) {
-        showToast({ message: err.mensaje || 'Error al pausar lote', type: 'danger' });
-        await this.cargarLotes();
-      } finally { this._loading = false; }
+      const num = this.loteActivo.numero_lote || loteId;
+      this._pedirConfirmacion({
+        titulo: `Pausar Lote ${num}`,
+        subtitulo: 'Pausa operativa de emisión',
+        mensaje: `¿Deseas pausar el Lote ${num}? Las ventanillas no podrán llamar nuevos turnos mientras esté en pausa.`,
+        impacto: 'El avance actual del lote se mantiene intacto para cuando sea reanudado.',
+        botonTexto: 'Pausar Lote',
+        botonClase: 'btn-secondary btn-sm',
+        tipo: 'aviso',
+        accion: async () => {
+          if (this._loading) return;
+          this._loading = true;
+          try {
+            await api.patch(`/lotes/${loteId}/pausar`);
+            this.notificar({ tipo: 'info', titulo: 'Lote pausado', mensaje: `Lote ${num} pausado correctamente.` });
+            await Promise.allSettled([this.cargarLotes(), this.cargarKPIs()]);
+          } catch (err) {
+            this.notificar({ tipo: 'error', titulo: 'Error al pausar lote', mensaje: err.mensaje || err.message || 'Error al pausar lote' });
+            await this.cargarLotes();
+          } finally { this._loading = false; }
+        }
+      });
     },
 
     async extenderLote(loteId) {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se pueden extender lotes.'
+        });
+        return;
+      }
       this.abrirModalExtender();
     },
 
     async cerrarLote(loteId, numeroLote = null) {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se pueden cerrar lotes.'
+        });
+        return;
+      }
       const num = numeroLote || (this.lotes.find(l => l.id === loteId)?.numero_lote) || (this.loteActivo?.numero_lote) || loteId;
       this._pedirConfirmacion({
         titulo: `Cerrar Lote ${num}`,
-        mensaje: `¿Está seguro de cerrar definitivamente el Lote ${num}? Una vez cerrado no podrá ser reactivado.`,
-        botonTexto: 'Cerrar Lote',
-        botonClase: 'btn-warning btn-sm',
-        tipo: 'aviso',
+        subtitulo: 'Acción definitiva e irreversible',
+        mensaje: `¿Estás seguro de cerrar definitivamente el Lote ${num}? Una vez cerrado no podrá ser reactivado ni llamado.`,
+        impacto: 'Esta acción es irreversible y finalizará la vida útil de este lote.',
+        esIrreversible: true,
+        reforzada: true,
+        textoEsperado: String(num).trim(),
+        botonTexto: 'Cerrar Lote Definitivamente',
+        botonClase: 'btn-danger btn-sm',
+        tipo: 'peligro',
         accion: async () => {
           if (this._loading) return;
           this._loading = true;
@@ -1253,10 +1427,23 @@ export function adminView() {
     },
 
     async eliminarLote(loteId, numeroLote) {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se pueden eliminar lotes.'
+        });
+        return;
+      }
       this._pedirConfirmacion({
-        titulo:  `Eliminar Lote ${numeroLote}`,
-        mensaje: '¿Está seguro de eliminar este lote? Esta acción no se puede deshacer.',
-        botonTexto: 'Eliminar',
+        titulo: `Eliminar Lote ${numeroLote}`,
+        subtitulo: 'Acción destructiva permanente',
+        mensaje: `¿Estás seguro de eliminar el Lote ${numeroLote}?`,
+        impacto: 'Esta acción es irreversible y eliminará el registro del lote.',
+        esIrreversible: true,
+        reforzada: true,
+        textoEsperado: String(numeroLote).trim(),
+        botonTexto: 'Eliminar Lote Definitivamente',
         botonClase: 'btn-danger btn-sm',
         tipo: 'peligro',
         accion: async () => {
@@ -1280,18 +1467,75 @@ export function adminView() {
     // =========================================================================
 
     async asignarOperador(mesaId, operadorIdStr) {
-      const operadorId = operadorIdStr ? parseInt(operadorIdStr, 10) : null;
-      try {
-        await api.patch(`/mesas/${mesaId}/asignar`, { operador_id: operadorId });
-        showToast({ message: 'Asignacion actualizada', type: 'success' });
-        await Promise.allSettled([this.cargarMesas(), this.cargarUsuarios()]);
-      } catch (err) {
-        showToast({ message: err.mensaje || 'Error en asignacion', type: err.status === 409 ? 'warning' : 'danger' });
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se pueden reasignar operadores.'
+        });
         await this.cargarMesas();
+        return;
+      }
+      const mesa = this.mesas.find(m => m.id === mesaId);
+      if (mesa && mesa.operador_rol === 'admin' && mesa.operador_id !== this.currentUser?.id) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Acción restringida',
+          mensaje: `Esta mesa está siendo operada por el administrador ${mesa.operador_nombre || ''}. Solo él puede reasignarla o liberarla.`
+        });
+        await this.cargarMesas();
+        return;
+      }
+      const operadorId = operadorIdStr ? parseInt(operadorIdStr, 10) : null;
+      const opNuevo = this.operadoresDisponibles.find(o => o.id === operadorId);
+      const label = mesa ? `Mesa ${mesa.numero}` : 'la ventanilla';
+
+      const ejecutar = async () => {
+        try {
+          await api.patch(`/mesas/${mesaId}/asignar`, { operador_id: operadorId });
+          this.notificar({
+            tipo: 'success',
+            titulo: 'Asignación actualizada',
+            mensaje: operadorId ? `${label} asignada a ${opNuevo?.nombre_completo || 'operador'}.` : `${label} liberada de operador.`
+          });
+          await Promise.allSettled([this.cargarMesas(), this.cargarUsuarios()]);
+        } catch (err) {
+          this.notificar({
+            tipo: err.status === 409 ? 'warning' : 'error',
+            titulo: 'Error en asignación',
+            mensaje: err.mensaje || err.message || 'No se pudo actualizar la asignación.'
+          });
+          await this.cargarMesas();
+        }
+      };
+
+      if (mesa && mesa.operador_id && mesa.operador_id !== operadorId) {
+        this._pedirConfirmacion({
+          titulo: operadorId ? `Cambiar operador en ${label}` : `Liberar ${label}`,
+          subtitulo: 'Reasignación de ventanilla',
+          mensaje: operadorId
+            ? `¿Deseas asignar ${label} a ${opNuevo?.nombre_completo || 'otro operador'}? Reemplazará al operador actual.`
+            : `¿Deseas desasignar al operador actual de ${label}? La ventanilla quedará libre.`,
+          impacto: 'El operador anterior quedará sin puesto asignado.',
+          botonTexto: operadorId ? 'Confirmar cambio' : 'Liberar mesa',
+          botonClase: 'btn-primary btn-sm',
+          tipo: 'aviso',
+          accion: ejecutar
+        });
+      } else {
+        await ejecutar();
       }
     },
 
     async activarMesaAdmin(mesaId) {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se pueden activar mesas.'
+        });
+        return;
+      }
       if (this._loading) return;
       this._loading = true;
       try {
@@ -1305,28 +1549,78 @@ export function adminView() {
     },
 
     async pausarMesaAdmin(mesaId) {
-      if (this._loading) return;
-      this._loading = true;
-      try {
-        await api.patch(`/mesas/${mesaId}/estado`, { estado: 'pausada' });
-        this.notificar({ tipo: 'info', titulo: 'Mesa pausada', mensaje: 'La mesa quedó en pausa. El operador sigue asignado.' });
-        await Promise.allSettled([this.cargarMesas(), this.cargarKPIs()]);
-      } catch (err) {
+      if (!this.wsConnected) {
         this.notificar({
-          tipo: err.status === 409 ? 'warning' : 'error',
-          titulo: 'No se puede pausar',
-          mensaje: err.mensaje || err.message || 'Error al pausar la mesa.'
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se pueden pausar mesas.'
         });
-        await this.cargarMesas();
-      } finally { this._loading = false; }
+        return;
+      }
+      const mesa = this.mesas.find(m => m.id === mesaId);
+      if (mesa && mesa.operador_rol === 'admin' && mesa.operador_id !== this.currentUser?.id) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Acción restringida',
+          mensaje: `Esta mesa está siendo operada por el administrador ${mesa.operador_nombre || ''}. Solo él puede pausarla.`
+        });
+        return;
+      }
+      const label = mesa ? `Mesa ${mesa.numero}` : 'la mesa';
+      this._pedirConfirmacion({
+        titulo: `Pausar ${label}`,
+        subtitulo: 'Pausa operativa de ventanilla',
+        mensaje: `¿Deseas poner en pausa ${label}? El operador asignado no podrá llamar nuevos turnos hasta reactivarla.`,
+        impacto: 'El operador se mantiene asignado al puesto.',
+        botonTexto: 'Pausar Mesa',
+        botonClase: 'btn-secondary btn-sm',
+        tipo: 'aviso',
+        accion: async () => {
+          if (this._loading) return;
+          this._loading = true;
+          try {
+            await api.patch(`/mesas/${mesaId}/estado`, { estado: 'pausada' });
+            this.notificar({ tipo: 'info', titulo: 'Mesa pausada', mensaje: `${label} quedó en pausa. El operador sigue asignado.` });
+            await Promise.allSettled([this.cargarMesas(), this.cargarKPIs()]);
+          } catch (err) {
+            this.notificar({
+              tipo: err.status === 409 ? 'warning' : 'error',
+              titulo: 'No se puede pausar',
+              mensaje: err.mensaje || err.message || 'Error al pausar la mesa.'
+            });
+            await this.cargarMesas();
+          } finally { this._loading = false; }
+        }
+      });
     },
 
     async inactivarMesaAdmin(mesaId) {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se pueden inactivar mesas.'
+        });
+        return;
+      }
       const mesa = this.mesas.find(m => m.id === mesaId);
+      if (mesa && mesa.operador_rol === 'admin' && mesa.operador_id !== this.currentUser?.id) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Acción restringida',
+          mensaje: `Esta mesa está siendo operada por el administrador ${mesa.operador_nombre || ''}. Solo él puede inactivarla.`
+        });
+        return;
+      }
       const label = mesa ? `Mesa ${mesa.numero}` : 'la mesa';
       this._pedirConfirmacion({
         titulo: `Inactivar ${label}`,
-        mensaje: 'La mesa quedará inactiva y su operador será liberado. Esta acción no afecta el historial de turnos.',
+        subtitulo: 'Inactivación y liberación de operador',
+        mensaje: `¿Deseas inactivar ${label}? La ventanilla quedará inactiva y su operador será liberado.`,
+        impacto: 'La mesa no podrá operar hasta ser activada de nuevo. Los turnos históricos se preservan.',
+        botonTexto: 'Inactivar Mesa',
+        botonClase: 'btn-danger btn-sm',
+        tipo: 'peligro',
         accion: async () => {
           if (this._loading) return;
           this._loading = true;
@@ -1360,6 +1654,14 @@ export function adminView() {
     },
 
     async crearMesaSubmit() {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se pueden crear mesas.'
+        });
+        return;
+      }
       const numOk = this.validarNuevaMesaNumero();
       const nomOk = this.validarNuevaMesaNombre();
       if (!numOk || !nomOk || !this.nuevaMesaValida) return;
@@ -1403,6 +1705,14 @@ export function adminView() {
     },
 
     async editarMesaSubmit() {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se pueden modificar mesas.'
+        });
+        return;
+      }
       if (!this.mesaEditando.id) return;
       const numOk = this.validarEditMesaNumero();
       const nomOk = this.validarEditMesaNombre();
@@ -1434,10 +1744,32 @@ export function adminView() {
     },
 
     async eliminarMesa(mesaId, mesaNumero) {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se pueden eliminar mesas.'
+        });
+        return;
+      }
+      const mesa = this.mesas.find(m => m.id === mesaId);
+      if (mesa && mesa.operador_rol === 'admin' && mesa.operador_id !== this.currentUser?.id) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Acción restringida',
+          mensaje: `Esta mesa está siendo operada por el administrador ${mesa.operador_nombre || ''}. Solo él puede eliminarla.`
+        });
+        return;
+      }
       this._pedirConfirmacion({
-        titulo:  `Eliminar Mesa ${mesaNumero}`,
-        mensaje: '¿Está seguro de eliminar esta ventanilla? Esta acción la ocultará del sistema y liberará su número.',
-        botonTexto: 'Eliminar',
+        titulo: `Eliminar Mesa ${mesaNumero}`,
+        subtitulo: 'Acción destructiva permanente',
+        mensaje: `¿Estás seguro de eliminar permanentemente la Mesa ${mesaNumero}?`,
+        impacto: 'Esta acción es irreversible y liberará el número de ventanilla.',
+        esIrreversible: true,
+        reforzada: true,
+        textoEsperado: String(mesaNumero).trim(),
+        botonTexto: 'Eliminar Mesa Definitivamente',
         botonClase: 'btn-danger btn-sm',
         tipo: 'peligro',
         accion: async () => {
@@ -1490,6 +1822,14 @@ export function adminView() {
     // =========================================================================
 
     async crearUsuarioSubmit() {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se pueden crear usuarios.'
+        });
+        return;
+      }
       const nomOk = this.validarNuevoUsrNombre();
       const usrOk = this.validarNuevoUsrUsername();
       const pwdOk = this.validarNuevoUsrPassword();
@@ -1537,7 +1877,25 @@ export function adminView() {
     },
 
     async editarUsuarioSubmit() {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se pueden modificar usuarios.'
+        });
+        return;
+      }
       if (!this.usuarioEditando.id) return;
+      if (this.currentUser && (this.usuarioEditando.id === this.currentUser.id || String(this.usuarioEditando.id) === String(this.currentUser.id))) {
+        if (this.usuarioEditando.rol !== 'admin') {
+          this.notificar({ tipo: 'error', titulo: 'Acción bloqueada', mensaje: 'No puedes revocar tu propio rol de administrador.' });
+          return;
+        }
+        if (!this.usuarioEditando.activo) {
+          this.notificar({ tipo: 'error', titulo: 'Acción bloqueada', mensaje: 'No puedes desactivar tu propia cuenta de administrador.' });
+          return;
+        }
+      }
       const nomOk = this.validarEditUsrNombre();
       const usrOk = this.validarEditUsrUsername();
       const pwdOk = this.validarEditUsrPassword();
@@ -1574,25 +1932,59 @@ export function adminView() {
     },
 
     async toggleActivoUsuario(usr) {
-      if (this._loading) return;
-      this._loading = true;
-      const nuevoEstado = !usr.activo;
-      try {
-        await api.patch(`/admin/usuarios/${usr.id}`, { activo: nuevoEstado });
+      if (!this.wsConnected) {
         this.notificar({
-          tipo: nuevoEstado ? 'success' : 'warning',
-          titulo: nuevoEstado ? 'Usuario activado' : 'Usuario desactivado',
-          mensaje: `${usr.username} fue ${nuevoEstado ? 'activado' : 'desactivado'} correctamente.`
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se pueden modificar usuarios.'
         });
-        await Promise.allSettled([this.cargarUsuarios(), this.cargarMesas()]);
-      } catch (err) {
+        return;
+      }
+      if (this.currentUser && (usr.id === this.currentUser.id || String(usr.id) === String(this.currentUser.id))) {
         this.notificar({
           tipo: 'error',
-          titulo: 'Error al cambiar estado',
-          mensaje: err.mensaje || err.message || 'No se pudo cambiar el estado del usuario.'
+          titulo: 'Acción bloqueada',
+          mensaje: 'No puedes desactivar tu propia cuenta de administrador.'
         });
-      } finally {
-        this._loading = false;
+        return;
+      }
+      const nuevoEstado = !usr.activo;
+
+      const ejecutar = async () => {
+        if (this._loading) return;
+        this._loading = true;
+        try {
+          await api.patch(`/admin/usuarios/${usr.id}`, { activo: nuevoEstado });
+          this.notificar({
+            tipo: nuevoEstado ? 'success' : 'warning',
+            titulo: nuevoEstado ? 'Usuario activado' : 'Usuario desactivado',
+            mensaje: `${usr.username} fue ${nuevoEstado ? 'activado' : 'desactivado'} correctamente.`
+          });
+          await Promise.allSettled([this.cargarUsuarios(), this.cargarMesas()]);
+        } catch (err) {
+          this.notificar({
+            tipo: 'error',
+            titulo: 'Error al cambiar estado',
+            mensaje: err.mensaje || err.message || 'No se pudo cambiar el estado del usuario.'
+          });
+        } finally {
+          this._loading = false;
+        }
+      };
+
+      if (!nuevoEstado) {
+        this._pedirConfirmacion({
+          titulo: `Desactivar a ${usr.username}`,
+          subtitulo: 'Suspensión de acceso',
+          mensaje: `¿Deseas desactivar la cuenta de ${usr.nombre_completo || usr.username}? El usuario no podrá iniciar sesión.`,
+          impacto: 'Se cerrará cualquier sesión activa y no podrá operar hasta ser reactivado.',
+          botonTexto: 'Desactivar Usuario',
+          botonClase: 'btn-danger btn-sm',
+          tipo: 'peligro',
+          accion: ejecutar
+        });
+      } else {
+        await ejecutar();
       }
     },
 
@@ -1655,9 +2047,33 @@ export function adminView() {
     },
 
     async eliminarUsuario(usrId, username) {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se pueden eliminar usuarios.'
+        });
+        return;
+      }
+      if (this.currentUser && (usrId === this.currentUser.id || String(usrId) === String(this.currentUser.id))) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Acción bloqueada',
+          mensaje: 'No puedes eliminar tu propia cuenta de administrador.'
+        });
+        return;
+      }
       this._pedirConfirmacion({
-        titulo:  `Eliminar usuario ${username}`,
-        mensaje: '¿Está seguro de eliminar este usuario? Esta acción no se puede deshacer.',
+        titulo: `Eliminar usuario ${username}`,
+        subtitulo: 'Acción destructiva permanente',
+        mensaje: `¿Estás seguro de eliminar permanentemente al usuario ${username}?`,
+        impacto: 'Esta acción es irreversible. Se revocarán todas sus sesiones de trabajo.',
+        esIrreversible: true,
+        reforzada: true,
+        textoEsperado: String(username).trim(),
+        botonTexto: 'Eliminar Usuario Definitivamente',
+        botonClase: 'btn-danger btn-sm',
+        tipo: 'peligro',
         accion: async () => {
           if (this._loading) return;
           this._loading = true;
@@ -1815,11 +2231,24 @@ export function adminView() {
      * Solicita confirmación y reinicia el contador diario de turnos del Kiosko a 0
      */
     confirmarReinicioContadorKiosko() {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se puede reiniciar el contador.'
+        });
+        return;
+      }
       if (this._reiniciandoContadorKiosko) return;
       this._pedirConfirmacion({
-        titulo: '¿Reiniciar Conteo de Kiosko a 0?',
-        mensaje: `El contador diario de turnos del Kiosko se restablecerá a 0 (turno actual: ${this.ultimoNumeroKioskoDisplay}). El próximo turno emitido —tanto en modalidad asistida como estudiante— comenzará desde el #1 y se cancelarán turnos en espera previos.`,
-        botonTexto: 'Sí, Reiniciar a 0',
+        titulo: 'Reiniciar Conteo de Kiosko a 0',
+        subtitulo: 'Acción irreversible sobre turnos de hoy',
+        mensaje: `El contador diario de turnos del Kiosko se restablecerá a 0 (turno actual: ${this.ultimoNumeroKioskoDisplay}). El próximo turno emitido comenzará desde el #1 y se cancelarán turnos en espera previos.`,
+        impacto: 'Esta acción es irreversible y afectará a los turnos emitidos por Kiosko.',
+        esIrreversible: true,
+        reforzada: true,
+        textoEsperado: 'REINICIAR',
+        botonTexto: 'Reiniciar Contador a 0',
         botonClase: 'btn-danger btn-sm',
         tipo: 'peligro',
         accion: async () => {
@@ -2566,6 +2995,108 @@ export function adminView() {
     },
 
     // =========================================================================
+    // OPACIDAD DE TARJETAS TV (Fondo con transparencia)
+    // Patrón idéntico a las escalas: debounce en input, guardado en change.
+    // =========================================================================
+
+    cambiarOpacidadPrincipal(delta) {
+      const actual = parseInt(this.config.tv_opacidad_principal, 10) || 100;
+      const nuevo  = Math.min(100, Math.max(20, actual + delta));
+      if (nuevo !== this.config.tv_opacidad_principal) {
+        this.config.tv_opacidad_principal = nuevo;
+        this._guardarOpacidadPrincipalInmediata(nuevo);
+      }
+    },
+
+    restablecerOpacidadPrincipal() {
+      if (this.config.tv_opacidad_principal !== 100) {
+        this.config.tv_opacidad_principal = 100;
+        this._guardarOpacidadPrincipalInmediata(100);
+      }
+    },
+
+    onInputOpacidadPrincipal() {
+      const val = parseInt(this.config.tv_opacidad_principal, 10) || 100;
+      this.config.tv_opacidad_principal = Math.min(100, Math.max(20, val));
+      try {
+        localStorage.setItem('turnero_tv_opacidad_principal', String(this.config.tv_opacidad_principal));
+      } catch (_) {}
+      this._emitirOpacidadEnVivo('tv_opacidad_principal', this.config.tv_opacidad_principal);
+    },
+
+    async _guardarOpacidadPrincipalInmediata(val) {
+      if (!this.wsConnected) {
+        showToast({ message: 'Sin conexión con el servidor. No se puede guardar la opacidad.', type: 'danger' });
+        return;
+      }
+      try {
+        localStorage.setItem('turnero_tv_opacidad_principal', String(val));
+      } catch (_) {}
+      try {
+        await api.patch('/admin/configuracion/tv_opacidad_principal', { valor: String(val) });
+        showToast({ message: `Opacidad principal guardada (${val}%)`, type: 'info' });
+        this.avisoGuardadoOpacidadPrincipal = true;
+        setTimeout(() => { this.avisoGuardadoOpacidadPrincipal = false; }, 2500);
+      } catch (err) {
+        showToast({ message: err.mensaje || 'Error al guardar opacidad principal', type: 'danger' });
+      }
+    },
+
+    cambiarOpacidadSecundaria(delta) {
+      const actual = parseInt(this.config.tv_opacidad_secundaria, 10) || 100;
+      const nuevo  = Math.min(100, Math.max(20, actual + delta));
+      if (nuevo !== this.config.tv_opacidad_secundaria) {
+        this.config.tv_opacidad_secundaria = nuevo;
+        this._guardarOpacidadSecundariaInmediata(nuevo);
+      }
+    },
+
+    restablecerOpacidadSecundaria() {
+      if (this.config.tv_opacidad_secundaria !== 100) {
+        this.config.tv_opacidad_secundaria = 100;
+        this._guardarOpacidadSecundariaInmediata(100);
+      }
+    },
+
+    onInputOpacidadSecundaria() {
+      const val = parseInt(this.config.tv_opacidad_secundaria, 10) || 100;
+      this.config.tv_opacidad_secundaria = Math.min(100, Math.max(20, val));
+      try {
+        localStorage.setItem('turnero_tv_opacidad_secundaria', String(this.config.tv_opacidad_secundaria));
+      } catch (_) {}
+      this._emitirOpacidadEnVivo('tv_opacidad_secundaria', this.config.tv_opacidad_secundaria);
+    },
+
+    async _guardarOpacidadSecundariaInmediata(val) {
+      if (!this.wsConnected) {
+        showToast({ message: 'Sin conexión con el servidor. No se puede guardar la opacidad.', type: 'danger' });
+        return;
+      }
+      try {
+        localStorage.setItem('turnero_tv_opacidad_secundaria', String(val));
+      } catch (_) {}
+      try {
+        await api.patch('/admin/configuracion/tv_opacidad_secundaria', { valor: String(val) });
+        showToast({ message: `Opacidad de turnos anteriores guardada (${val}%)`, type: 'info' });
+        this.avisoGuardadoOpacidadSecundaria = true;
+        setTimeout(() => { this.avisoGuardadoOpacidadSecundaria = false; }, 2500);
+      } catch (err) {
+        showToast({ message: err.mensaje || 'Error al guardar opacidad de turnos anteriores', type: 'danger' });
+      }
+    },
+
+    _emitirOpacidadEnVivo(clave, valor) {
+      if (this._ws && typeof this._ws.send === 'function') {
+        try {
+          this._ws.send('preview_opacidad_tv', {
+            tipo: clave === 'tv_opacidad_principal' ? 'principal' : 'secundaria',
+            valor
+          });
+        } catch (_) {}
+      }
+    },
+
+    // =========================================================================
     // REPORTES Y EXPORTACIÓN XLS
     // =========================================================================
 
@@ -2778,6 +3309,14 @@ export function adminView() {
     },
 
     async submitAjustarContador() {
+      if (!this.wsConnected) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Sin conexión',
+          mensaje: 'No hay conexión con el servidor. No se puede ajustar el contador.'
+        });
+        return;
+      }
       const loteRef = this.loteActivo || this.lotePausado;
       if (!loteRef || this.ajusteContador.cargando) return;
       const numOk = this.validarAjusteNumero();
@@ -2787,41 +3326,59 @@ export function adminView() {
       const esRetroceso = this.ajusteContador.nuevoUltimo < (loteRef.ultimo_numero_llamado ?? 0);
       if (esRetroceso && !this.ajusteContador.confirmarRetroceso) return;
 
-      this.ajusteContador.cargando = true;
-      try {
-        const res = await api.patch(`/lotes/${loteRef.id}/ajustar-contador`, {
-          nuevo_ultimo_llamado:   this.ajusteContador.nuevoUltimo,
-          motivo:                 this.ajusteContador.motivo.trim(),
-          confirmacion_retroceso: this.ajusteContador.confirmarRetroceso
-        });
+      const nuevoNum = this.ajusteContador.nuevoUltimo;
+      const motivoTxt = this.ajusteContador.motivo.trim();
 
-        // Actualizar el lote en el estado local
-        const loteActualizado = res.lote;
-        if (this.loteActivo && this.loteActivo.id === loteActualizado.id) {
-          this.loteActivo = { ...this.loteActivo, ...loteActualizado };
-        }
-        if (this.lotePausado && this.lotePausado.id === loteActualizado.id) {
-          this.lotePausado = { ...this.lotePausado, ...loteActualizado };
-        }
-        // Actualizar tambien en el array de lotes
-        const idx = this.lotes.findIndex(l => l.id === loteActualizado.id);
-        if (idx !== -1) this.lotes[idx] = { ...this.lotes[idx], ...loteActualizado };
+      this.cerrarModalAjustarContador();
+      this._pedirConfirmacion({
+        titulo: 'Ajustar Contador de Lote',
+        subtitulo: 'Plan B — Modificación manual de secuencia',
+        mensaje: `¿Deseas cambiar el último voucher llamado a #${nuevoNum}? Motivo: ${motivoTxt}`,
+        impacto: 'Modifica el punto de partida de los próximos llamados en todas las mesas.',
+        esIrreversible: false,
+        reforzada: true,
+        textoEsperado: 'CONFIRMAR',
+        botonTexto: 'Ajustar Contador',
+        botonClase: 'btn-danger btn-sm',
+        tipo: 'peligro',
+        accion: async () => {
+          this.ajusteContador.cargando = true;
+          try {
+            const res = await api.patch(`/lotes/${loteRef.id}/ajustar-contador`, {
+              nuevo_ultimo_llamado:   nuevoNum,
+              motivo:                 motivoTxt,
+              confirmacion_retroceso: this.ajusteContador.confirmarRetroceso
+            });
 
-        this.notificar({
-          tipo: 'success',
-          titulo: 'Contador ajustado',
-          mensaje: res.message || 'Contador del lote ajustado correctamente'
-        });
-        this.cerrarModalAjustarContador();
-      } catch (err) {
-        this.notificar({
-          tipo: 'error',
-          titulo: 'Error al ajustar contador',
-          mensaje: err.mensaje || err.message || 'No se pudo ajustar el contador'
-        });
-      } finally {
-        this.ajusteContador.cargando = false;
-      }
+            // Actualizar el lote en el estado local
+            const loteActualizado = res.lote;
+            if (this.loteActivo && this.loteActivo.id === loteActualizado.id) {
+              this.loteActivo = { ...this.loteActivo, ...loteActualizado };
+            }
+            if (this.lotePausado && this.lotePausado.id === loteActualizado.id) {
+              this.lotePausado = { ...this.lotePausado, ...loteActualizado };
+            }
+            // Actualizar también en el array de lotes
+            const idx = this.lotes.findIndex(l => l.id === loteActualizado.id);
+            if (idx !== -1) this.lotes[idx] = { ...this.lotes[idx], ...loteActualizado };
+
+            this.notificar({
+              tipo: 'success',
+              titulo: 'Contador ajustado',
+              mensaje: res.message || 'Contador del lote ajustado correctamente'
+            });
+            this.cerrarModalAjustarContador();
+          } catch (err) {
+            this.notificar({
+              tipo: 'error',
+              titulo: 'Error al ajustar contador',
+              mensaje: err.mensaje || err.message || 'No se pudo ajustar el contador'
+            });
+          } finally {
+            this.ajusteContador.cargando = false;
+          }
+        }
+      });
     },
 
     // =========================================================================
@@ -2839,7 +3396,7 @@ export function adminView() {
           window.location.href = '/panel_mesa.html';
         } else {
           sessionStorage.removeItem('turnero_mesa');
-          window.location.href = '/index.html?seleccionar_mesa=1';
+          window.location.href = '/index.html';
         }
       } catch (_) {
         if (this.currentUser?.mesa_asignada) {
@@ -2847,7 +3404,7 @@ export function adminView() {
           window.location.href = '/panel_mesa.html';
         } else {
           sessionStorage.removeItem('turnero_mesa');
-          window.location.href = '/index.html?seleccionar_mesa=1';
+          window.location.href = '/index.html';
         }
       }
     },

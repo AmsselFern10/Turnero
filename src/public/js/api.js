@@ -13,28 +13,135 @@
 class ApiClient {
   constructor() {
     this.refreshPromise = null; // Previene múltiples llamados concurrentes a /auth/refresh
+    this._authChannel = null;
+    this._initSessionSync();
   }
 
   /**
-   * Obtiene el token JWT actual desde sessionStorage.
+   * Sincronización proactiva de sesión entre pestañas del mismo navegador/dispositivo.
+   * Si otra pestaña inicia sesión como otro usuario o cierra sesión, invalida inmediatamente
+   * la sesión actual para evitar colisiones y estados inconsistentes.
+   * @private
+   */
+  _initSessionSync() {
+    if (typeof window === 'undefined') return;
+
+    const procesarCambioRemoto = (nuevaSesion) => {
+      // Pantallas públicas (TV o Kiosko no autenticado) no se ven afectadas
+      const pathname = window.location.pathname;
+      if (pathname.includes('tv.html') || pathname.includes('kiosko.html')) {
+        return;
+      }
+
+      const currentToken = this.getToken();
+      const currentUser = this.getUser();
+
+      // Si no hay sesión local activa en esta pestaña, no hay nada que invalidar
+      if (!currentToken && !currentUser) return;
+
+      if (!nuevaSesion) {
+        // Otra pestaña ejecutó un logout explícito
+        console.warn('[API-SYNC] Sesión cerrada explícitamente en otra pestaña. Limpiando sesión local...');
+        this.clearSession(true);
+        return;
+      }
+
+      // Si es el MISMO usuario actualizando sesión o abriendo otra pestaña, sincronizar token
+      if (currentUser && nuevaSesion.userId && Number(nuevaSesion.userId) === Number(currentUser.id)) {
+        if (nuevaSesion.token && nuevaSesion.token !== currentToken) {
+          sessionStorage.setItem('token', nuevaSesion.token);
+        }
+        return;
+      }
+
+      // Si inició sesión otro usuario DISTINTO en otra pestaña del mismo navegador
+      if (currentUser && nuevaSesion.userId && Number(nuevaSesion.userId) !== Number(currentUser.id)) {
+        console.warn(`[API-SYNC] Se detectó inicio de sesión de otro usuario (${nuevaSesion.username || nuevaSesion.userId}). Invalidando sesión anterior...`);
+        this.clearSession(false);
+        if (window.location.pathname !== '/index.html' && window.location.pathname !== '/') {
+          window.location.href = '/index.html?sesion_cerrada=1';
+        }
+      }
+    };
+
+    // Canal 1: evento de storage en localStorage (funciona entre todas las pestañas)
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'turnero_active_session') {
+        try {
+          const val = e.newValue ? JSON.parse(e.newValue) : null;
+          procesarCambioRemoto(val);
+        } catch (_) {}
+      }
+    });
+
+    // Canal 2: BroadcastChannel (comunicación instantánea sin retrasos en navegadores modernos)
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        this._authChannel = new BroadcastChannel('turnero_auth_sync');
+        this._authChannel.onmessage = (msg) => {
+          if (msg.data?.type === 'LOGOUT') {
+            procesarCambioRemoto(null);
+          } else if (msg.data?.type === 'LOGIN') {
+            procesarCambioRemoto(msg.data.payload);
+          }
+        };
+      } catch (_) {}
+    }
+  }
+
+  /**
+   * Obtiene el token JWT actual desde sessionStorage o localStorage (sesión activa compartida).
    * @returns {string|null}
    */
   getToken() {
     try {
-      return sessionStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
+      if (token) return token;
+
+      // Fallback a localStorage para pestañas nuevas del mismo usuario en este navegador
+      const raw = localStorage.getItem('turnero_active_session');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.token) {
+          sessionStorage.setItem('token', parsed.token);
+          if (parsed.usuario) {
+            sessionStorage.setItem('usuario', JSON.stringify(parsed.usuario));
+          }
+          return parsed.token;
+        }
+      }
+      return null;
     } catch {
       return null;
     }
   }
 
   /**
-   * Almacena o actualiza la sesión en sessionStorage.
+   * Almacena o actualiza la sesión en sessionStorage y la sincroniza entre pestañas.
    * @param {string} token - JWT emitido por Fastify
    * @param {Object} [usuario] - Datos de perfil del usuario
    */
   setSession(token, usuario = null) {
     if (token) sessionStorage.setItem('token', token);
     if (usuario) sessionStorage.setItem('usuario', JSON.stringify(usuario));
+
+    if (token) {
+      try {
+        const userObj = usuario || this.getUser();
+        const payload = {
+          userId: userObj?.id,
+          username: userObj?.username,
+          rol: userObj?.rol,
+          token: token,
+          usuario: userObj,
+          timestamp: Date.now()
+        };
+        localStorage.setItem('turnero_active_session', JSON.stringify(payload));
+        if (this._authChannel) {
+          this._authChannel.postMessage({ type: 'LOGIN', payload });
+        }
+      } catch (_) {}
+    }
   }
 
   /**
@@ -44,15 +151,27 @@ class ApiClient {
   getUser() {
     try {
       const data = sessionStorage.getItem('usuario');
-      return data ? JSON.parse(data) : null;
+      if (data) return JSON.parse(data);
+
+      // Fallback a localStorage para pestañas nuevas del mismo usuario en este navegador
+      const raw = localStorage.getItem('turnero_active_session');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.usuario) {
+          sessionStorage.setItem('usuario', JSON.stringify(parsed.usuario));
+          if (parsed.token) sessionStorage.setItem('token', parsed.token);
+          return parsed.usuario;
+        }
+      }
+      return null;
     } catch {
       return null;
     }
   }
 
   /**
-   * Limpia la sesion actual y opcionalmente redirige a la pantalla de acceso.
-   * Elimina todas las claves de sesion para evitar fugas en PCs compartidas.
+   * Limpia la sesión local de esta pestaña y opcionalmente redirige a la pantalla de acceso.
+   * NO transmite LOGOUT a otras pestañas (eso solo lo hace logout() explícito).
    */
   clearSession(redirect = true) {
     sessionStorage.removeItem('token');
@@ -61,22 +180,28 @@ class ApiClient {
     sessionStorage.removeItem('turnero_mesa');
     sessionStorage.removeItem('turnero_jwt');
     sessionStorage.removeItem('turnero_user');
+
     if (redirect && window.location.pathname !== '/index.html' && window.location.pathname !== '/') {
       window.location.href = '/index.html';
     }
   }
 
   /**
-   * Cierra sesion del lado servidor (blacklist JWT en Redis) y limpia sessionStorage.
-   * Siempre intentar el logout remoto; si falla la red, limpiar igual.
+   * Cierra sesión explícitamente en el servidor y notifica a todas las pestañas de este navegador.
    * @param {boolean} [redirect=true] - Si redirigir a /index.html tras limpiar
    */
   async logout(redirect = true) {
     try {
       await this.request('/auth/logout', { method: 'POST' });
     } catch (_) {
-      // Silencioso: si el servidor no responde, igual limpiamos la sesion local
+      // Silencioso: si el servidor no responde, igual limpiamos la sesión
     } finally {
+      try {
+        localStorage.removeItem('turnero_active_session');
+        if (this._authChannel) {
+          this._authChannel.postMessage({ type: 'LOGOUT' });
+        }
+      } catch (_) {}
       this.clearSession(redirect);
     }
   }

@@ -304,6 +304,11 @@ export function kioskoView () {
       const esModoAsistido = this.kioskoModoUso === 'asistido' || this.kioskoModoUso === 'empleado';
       if (this.isGenerating || !this.kioskoActivo || this.topeAlcanzado || (!this.esTablet && esModoAsistido)) return;
 
+      if (!this.wsConectado) {
+        this.errorMessage = 'Sin conexión con el servidor. Emisión de turnos pausada temporalmente.';
+        return;
+      }
+
       this.isGenerating = true;
       this.errorMessage = '';
       this.mostrarBotonReintentar = false;

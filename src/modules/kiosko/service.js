@@ -339,6 +339,12 @@ async function generarTurno (fastify, { ip, idempotencyKey, deviceId, esTablet, 
         return armarRespuestaTurno(fastify, dup, reqHost, reqProtocol, (cfg.kiosko_url_base || '').trim() || (cfg.kiosko_url_publica || '').trim())
       }
     }
+    if (err.code === '23505' && (err.constraint === 'ux_turnos_kiosko_dia_numero' || (err.message && err.message.includes('ux_turnos_kiosko_dia_numero')))) {
+      throw Object.assign(
+        new Error(`El turno #${nuevoNumero} ya fue emitido hoy. El contador de kiosko debe sincronizarse.`),
+        { statusCode: 409, codigo: 'turno_kiosko_duplicado' }
+      )
+    }
     throw err
   }
 

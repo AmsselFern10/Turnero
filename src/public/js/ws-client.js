@@ -151,16 +151,26 @@ export class TurneroWSClient {
           'Authorization': `Bearer ${this.token}`,
           'Content-Type': 'application/json'
         },
-        body: '{}'
+        body: JSON.stringify({
+          canal: this.canal,
+          mesa_id: this.mesaId
+        })
       });
       if (resp.ok) {
         const data = await resp.json();
         if (data.ticket) {
           this.ticket = data.ticket;
         }
+      } else if (resp.status === 401 || resp.status === 403) {
+        console.error(`[WS] Ticket rechazado con código ${resp.status}. Acceso denegado o sesión expirada.`);
+        this.isForcedClosed = true;
+        if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+        this._notifyStatus('DESCONECTADO');
+        this._dispatchAuthError(resp.status, 'Acceso no autorizado al canal o sesión inválida');
+        return false;
       }
     } catch (_) {
-      // Si falla obtener ticket, continúa con fallback de query token
+      // Si falla por desconexión física de red (offline), continúa el flujo normal de reconexión
     }
   }
 
@@ -177,10 +187,10 @@ export class TurneroWSClient {
     this._notifyStatus(this.reconnectAttempts === 0 ? 'CONECTANDO' : 'RECONECTANDO');
 
     // Intentar obtener ticket efímero para no exponer JWT en logs
-    await this._prepareTicket();
+    const ticketResult = await this._prepareTicket();
 
-    // Si otra llamada a connect() o disconnect() ocurrió mientras preparaba el ticket, abortar
-    if (currentGen !== this.connectionGeneration || this.isForcedClosed) return;
+    // Si otra llamada a connect() o disconnect() ocurrió, o si el ticket fue rechazado (401/403), abortar
+    if (currentGen !== this.connectionGeneration || this.isForcedClosed || ticketResult === false) return;
 
     try {
       const fullUrl = this._buildUrl();
@@ -249,6 +259,7 @@ export class TurneroWSClient {
         if (event.code === 4403) {
           console.error('[WS] Error 4403: Acceso denegado al canal solicitado.');
           this._notifyStatus('DESCONECTADO');
+          this._dispatchAuthError(4403, event.reason);
           return;
         }
 
