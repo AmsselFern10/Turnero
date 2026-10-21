@@ -34,10 +34,16 @@ import { speakCall, setSpeechEnabled, initSpeech, isSpeechBlocked } from '../aud
 
 // ── Configuración central de tiempos (ms) ────────────────────────────────────
 const CFG = {
-  anuncioBaseMs:    2800,  // Duración fija por anuncio — se respeta siempre, sin excepciones
+  // Tiempo FIJO de visualización de cada tarjeta en pantalla.
+  // Independiente del audio: la tarjeta siempre dura exactamente estos ms.
+  // Garantiza sincronía entre múltiples pantallas y evita tarjetas que "vuelan".
+  tiempoVisualizacionMs: 4000,
+  // Duración mínima heredada (ahora alias de tiempoVisualizacionMs, no se usa para acortar).
+  anuncioBaseMs:    4000,
   antiguedadMaxMs: 60000,
   graciaBannerMs:   3000,
-  watchdogMs:      12000,  // Cubre el timeout de speakCall (3.5s) + margen holgado
+  // Watchdog: 15 s cubre tiempoVisualizacionMs (4 s) + speakCall timeout (3.5 s) + margen.
+  watchdogMs:      15000,
   maxCola:            50,
   maxSeqVistos:      300,
   staleCheckMs:    30000,
@@ -108,6 +114,10 @@ export function tvView() {
     _reproduciendo:    false,
     _lastSeqAnunciado: 0,
     _lastSeqRecibido:  0,
+
+    // Último turno LEGÍTIMO convocado (no re-llamados).
+    // Se usa para restaurar el hero tras un re-llamado transitorio.
+    _ultimoLlamadoReal: null,
 
     // Timers y listeners
     _watchdogTimer:     null,
@@ -672,13 +682,18 @@ export function tvView() {
       const llamado_en  = payload.llamado_en ?? new Date().toISOString();
       const eventoId    = payload.evento_id || `rellamado_${Date.now()}_${numero}`;
 
+      // Actualizar el contador de secuencia WS también aquí (no solo en _onNuevoLlamado)
+      const wsSeq = (rawMsg && typeof rawMsg.seq === 'number') ? rawMsg.seq : null;
+      if (wsSeq !== null) {
+        this._lastSeqRecibido = Math.max(this._lastSeqRecibido, wsSeq);
+      }
+
       if (!this._seqVistos) this._seqVistos = new Set();
       if (this._seqVistos.has(eventoId)) return;
 
       // Deduplicación de re-llamados en cola:
-      // Si el operador presiona dos veces o el servidor reenvía dos eventos distintos,
-      // limitar a 1 re-llamado/rezagado pendiente por número de turno en la cola activa.
-      // (Ojo: se pueden hacer más re-llamados después de reproducirse, pero no duplicados en la misma cola simultáneamente).
+      // Limitar a 1 re-llamado/rezagado pendiente por número de turno en la cola activa.
+      // (Después de reproducirse, se puede volver a re-llamar sin restricción.)
       if (this._cola.some(c => (c.tipo === 'rellamado' || c.es_rezagado) && c.numero === Number(numero))) {
         return;
       }
@@ -689,7 +704,7 @@ export function tvView() {
       this._cola.push({
         tipo:        'rellamado',
         eventoId,
-        seq:         Date.now(),
+        seq:         wsSeq ?? Date.now(),
         numero:      Number(numero),
         mesa_numero,
         llamado_en
@@ -731,7 +746,7 @@ export function tvView() {
       // el watchdog avanza la cola tras 12 s para que no quede congelada.
       if (this._watchdogTimer) clearTimeout(this._watchdogTimer);
       this._watchdogTimer = setTimeout(() => {
-        console.warn('[TV] Watchdog activado (> 12 s sin terminar). Forzando avance.');
+        console.warn('[TV] Watchdog activado (> 15 s sin terminar). Forzando avance.');
         this._forzarAvanceWatchdog();
       }, CFG.watchdogMs);
 
@@ -741,69 +756,106 @@ export function tvView() {
       await this._ejecutarAnuncio(item);
     },
 
-    async _ejecutarAnuncio(item) {
-      // Guardar referencia al hero anterior ANTES de reemplazarlo.
-      const heroAnterior = (this.ultimoLlamado && this.ultimoLlamado.numero !== null)
-        ? { ...this.ultimoLlamado }
-        : null;
+    _ejecutarAnuncio(item) {
+      // Devuelve una Promise que resuelve solo cuando el temporizador FIJO de visualización
+      // expira. El audio (campana + voz) se reproduce en paralelo; si termina antes del
+      // tiempo fijo, la tarjeta sigue visible hasta completar CFG.tiempoVisualizacionMs.
+      // Esto garantiza:
+      //   1. Tiempo de exhibición uniforme en TODAS las pantallas TV.
+      //   2. La tarjeta nunca pasa volando si el audio fue rápido o falló.
+      //   3. El audio nunca se corta (la Promise de speakCall sigue en vuelo aunque
+      //      el temporizador de exhibición ya terminó).
+      return new Promise((resolve) => {
+        const esRellamado = item.tipo === 'rellamado';
 
-      // Actualizar hero con el nuevo item
-      let prox = item.proximo ?? null;
-      if (prox === null) {
-        if (!item.es_rezagado && item.tipo !== 'rellamado' && this.modo !== 'kiosko_web') {
-          prox = Number(item.numero) + 1;
+        if (esRellamado) {
+          // ── RE-LLAMADO (SEGUNDO AVISO) ────────────────────────────────────
+          // Comportamiento esperado:
+          //  · Muestra el turno en el Hero con estilo ámbar transitoriamente.
+          //  · NO expulsa el último turno legítimo (_ultimoLlamadoReal) al historial.
+          //  · NO entra al historial al terminar.
+          //  · Al terminar: si la cola queda vacía, restaura _ultimoLlamadoReal en el Hero.
+          this.ultimoLlamado = {
+            eventoId:    item.eventoId,
+            numero:      item.numero,
+            mesa_numero: item.mesa_numero,
+            // El proximo sigue siendo el del último turno legítimo (no del re-llamado)
+            proximo:     this._ultimoLlamadoReal ? this._ultimoLlamadoReal.proximo : this.proximoNumero,
+            llamado_en:  item.llamado_en
+          };
+          this.glowState = 'rellamado';
         } else {
-          prox = this.proximoNumero;
+          // ── TURNO NORMAL O REZAGADO ───────────────────────────────────────
+          // El hero anterior (legítimo) pasa al historial solo en turnos no-rellamado.
+          const heroAnterior = (this.ultimoLlamado && this.ultimoLlamado.numero !== null)
+            ? { ...this.ultimoLlamado }
+            : null;
+
+          let prox = item.proximo ?? null;
+          if (prox === null) {
+            if (!item.es_rezagado && this.modo !== 'kiosko_web') {
+              prox = Number(item.numero) + 1;
+            } else {
+              prox = this.proximoNumero;
+            }
+          }
+
+          this.ultimoLlamado = {
+            eventoId:    item.eventoId,
+            numero:      item.numero,
+            mesa_numero: item.mesa_numero,
+            proximo:     prox,
+            llamado_en:  item.llamado_en
+          };
+
+          // Guardar como último turno legítimo (no re-llamados)
+          this._ultimoLlamadoReal = { ...this.ultimoLlamado };
+          this.proximoNumero = prox !== null && prox !== undefined ? Number(prox) : null;
+
+          // El turno del hero nunca aparece en el historial
+          this.historial = this.historial.filter(h => Number(h.numero) !== Number(item.numero));
+
+          // El hero anterior legítimo pasa al historial
+          if (heroAnterior && Number(heroAnterior.numero) !== Number(item.numero)) {
+            this._agregarAlHistorial({
+              numero:         heroAnterior.numero,
+              mesa_numero:    heroAnterior.mesa_numero,
+              llamado_en:     heroAnterior.llamado_en,
+              tiempoRelativo: 'Hace un instante'
+            });
+          }
+
+          this.glowState = 'nuevo';
         }
-      }
-      this.ultimoLlamado = {
-        eventoId:    item.eventoId,
-        numero:      item.numero,
-        mesa_numero: item.mesa_numero,
-        proximo:     prox,
-        llamado_en:  item.llamado_en
-      };
-      this.proximoNumero     = prox !== null && prox !== undefined ? Number(prox) : null;
-      this._lastSeqAnunciado = Math.max(this._lastSeqAnunciado, item.seq ?? 0);
 
-      // El turno del hero nunca aparece en el historial
-      this.historial = this.historial.filter(h => Number(h.numero) !== Number(item.numero));
+        this._lastSeqAnunciado = Math.max(this._lastSeqAnunciado, item.seq ?? 0);
+        this._ajustarTamanoTicket();
 
-      // El hero anterior pasa al historial
-      if (heroAnterior && Number(heroAnterior.numero) !== Number(item.numero)) {
-        this._agregarAlHistorial({
-          numero:         heroAnterior.numero,
-          mesa_numero:    heroAnterior.mesa_numero,
-          llamado_en:     heroAnterior.llamado_en,
-          tiempoRelativo: 'Hace un instante'
-        });
-      }
+        // ── AUDIO (campana + voz) en paralelo al temporizador de exhibición ──
+        // Se lanzan sin await: el temporizador fijo es la única señal de avance.
+        playCallChime()
+          .then(() => speakCall({ numero: item.numero, mesa_numero: item.mesa_numero }))
+          .catch(err => console.warn('[TV] Error en anuncio multimedia:', err));
 
-      // glowState según tipo de item: 'rellamado' para re-llamados y rezagados, 'nuevo' para el resto
-      this.glowState = (item.tipo === 'rellamado') ? 'rellamado' : 'nuevo';
-      this._ajustarTamanoTicket();
+        // ── TEMPORIZADOR FIJO DE EXHIBICIÓN ──────────────────────────────────
+        // La tarjeta dura exactamente CFG.tiempoVisualizacionMs en pantalla,
+        // sin importar cuánto tardó el audio.
+        if (this._avanceTimer) clearTimeout(this._avanceTimer);
+        this._avanceTimer = setTimeout(() => {
+          this._avanceTimer = null;
+          if (this._watchdogTimer) { clearTimeout(this._watchdogTimer); this._watchdogTimer = null; }
 
-      const inicio = Date.now();
+          // Si era un re-llamado y la cola ya quedó vacía, restaurar el hero legítimo
+          if (esRellamado && this._cola.length === 0 && this._ultimoLlamadoReal) {
+            this.ultimoLlamado = { ...this._ultimoLlamadoReal };
+            this.proximoNumero = this._ultimoLlamadoReal.proximo ?? null;
+          }
 
-      // Secuencia: campana → voz. La voz NUNCA se corta.
-      try {
-        await playCallChime();
-        await speakCall({ numero: item.numero, mesa_numero: item.mesa_numero });
-      } catch (err) {
-        console.warn('[TV] Error en anuncio multimedia:', err);
-      }
-
-      // Duración mínima fija: garantiza que el número sea visible incluso si la voz fue corta
-      const transcurrido = Date.now() - inicio;
-      const remanente    = Math.max(0, CFG.anuncioBaseMs - transcurrido);
-
-      if (this._avanceTimer) clearTimeout(this._avanceTimer);
-      this._avanceTimer = setTimeout(() => {
-        this._avanceTimer = null;
-        if (this._watchdogTimer) { clearTimeout(this._watchdogTimer); this._watchdogTimer = null; }
-        this.glowState = 'idle';
-        this._reproducirSiguiente();
-      }, remanente);
+          this.glowState = 'idle';
+          resolve();
+          this._reproducirSiguiente();
+        }, CFG.tiempoVisualizacionMs);
+      });
     },
 
     _forzarAvanceWatchdog() {
@@ -999,68 +1051,37 @@ export function tvView() {
     _initVisibilityChange() {
       this._onVisibilityHandler = () => {
         if (document.visibilityState !== 'visible') {
-          // Al ir a background: pausar stale-check para ahorrar recursos
+          // Al ir a background: no hacer nada — la cola se preserva íntegra.
           return;
         }
 
         // ── Al volver a estar visible ─────────────────────────────────────────
 
         // 1. Si Chrome pausó la síntesis en background (pestaña oculta), reanudarla.
-        // No cancelar: si estaba sonando en background, queremos que siga sin interrupción.
         if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
           try {
             const ss = window.speechSynthesis;
-            if (ss.paused) {
-              // Chrome pausó la voz al ir a background — reanudar para que termine
-              ss.resume();
-            }
-            // Si ss.speaking pero no paused: está sonando activamente, no interrumpir
+            if (ss.paused) ss.resume();
           } catch (_) {}
         }
 
-        // 2. Limpiar timers SOLO si el reproductor no está activo (puede estar sonando en background)
+        // 2. INVARIANTE: NUNCA purgar la cola ni resetear _reproduciendo aquí.
+        // El reproductor puede estar procesando en background. Si se fuerza
+        // _reproduciendo = false, se generaría una segunda instancia concurrente
+        // del reproductor. La cola FIFO debe preservarse completa y continuar
+        // desde donde estaba. Solo se despacha si el reproductor quedó en reposo.
         if (!this._reproduciendo) {
-          if (this._watchdogTimer) { clearTimeout(this._watchdogTimer); this._watchdogTimer = null; }
-          if (this._avanceTimer)   { clearTimeout(this._avanceTimer);   this._avanceTimer   = null; }
-        }
-
-        // 3. Si hay varios turnos en espera que no pudieron anunciarse (background audio falla),
-        // archivar los antiguos y dejar solo el último para anunciar ahora.
-        // Solo comprimir si el reproductor está inactivo (no estaba procesando en background).
-        if (!this._reproduciendo && this._cola.length > 1) {
-          const ultimoItem = this._cola.pop();
-          while (this._cola.length > 0) {
-            const des = this._cola.shift();
-            if (des) {
-              this._agregarAlHistorial({
-                numero: des.numero,
-                mesa_numero: des.mesa_numero,
-                llamado_en: des.llamado_en
-              });
-            }
+          if (this._cola.length > 0) {
+            // Hay turnos esperando que no se pudieron procesar → despachar ahora
+            this._despacharReproductor();
+          } else {
+            // Cola vacía: pedir snapshot al volver visible para sincronizar estado
+            this._solicitarSnapshot();
+            this._verificarFrescura();
           }
-          this._cola.push(ultimoItem);
         }
-
-        this._reproduciendo = false;
-        this.glowState      = 'idle';
-        this._actualizarContadorCola();
-
-        // Garantizar que ningún turno del historial coincida con el hero
-        if (this.ultimoLlamado && this.ultimoLlamado.numero !== null) {
-          this.historial = this.historial.filter(h => Number(h.numero) !== Number(this.ultimoLlamado.numero));
-        }
-
-        // 4. Despachar el turno pendiente si hay, o sincronizar snapshot fresco
-        if (this._cola.length > 0 || this._colaRellamados.length > 0) {
-          this._despacharReproductor();
-        } else {
-          // Siempre pedir snapshot al volver visible — si el WS está vivo lo atiende,
-          // si está muerto el ws-client iniciará reconexión y pedirá snapshot al reconectar.
-          this._solicitarSnapshot();
-          // También verificar frescura vía HTTP en background por si el WS está caído silenciosamente
-          this._verificarFrescura();
-        }
+        // Si _reproduciendo === true: el reproductor ya está corriendo y terminará
+        // naturalmente. No hay que hacer nada más.
       };
       document.addEventListener('visibilitychange', this._onVisibilityHandler);
     },

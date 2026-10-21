@@ -200,19 +200,12 @@ export function speakCall({ numero, mesa_numero }) {
         finalizar(false);
       }, 3500);
 
+      // NOTA: Intencionalmente NO hay setTimeout de 500 ms de resolución prematura aquí.
+      // tv.js usa un temporizador fijo de visualización (CFG.tiempoVisualizacionMs = 4000 ms)
+      // que avanza la cola independientemente del audio. Por eso speakCall solo necesita
+      // señalar el fin real de la voz (onend/onerror) o el timeout de 3.5 s.
+      // Un setTimeout corto here desfasaría la voz de la tarjeta visual.
       window.speechSynthesis.speak(utterance);
-
-      // Chrome bug: en pestañas recién abiertas sin interacción, speak() encola
-      // silenciosamente pero nunca empieza a hablar. Detectarlo comprobando speaking tras 500 ms.
-      setTimeout(() => {
-        if (finalizado) return;
-        const ss = window.speechSynthesis;
-        if (!ss.speaking && !ss.pending) {
-          // No está hablando ni en cola — probablemente bloqueado por el navegador
-          _speechBlocked = true;
-          finalizar(false);
-        }
-      }, 500);
 
     } catch (err) {
       console.warn('[SPEECH] Excepción en speakCall:', err);
