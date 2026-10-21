@@ -10,20 +10,51 @@
  * - 5 Operadores: op1 a op5 / Operador2026!
  * - 10 Mesas: Mesa 1 a Mesa 10 (estado: inactiva)
  * - 1 Lote de Vouchers: 1 a 500 (estado: activo)
- * - Configuracion del sistema (19 claves, kiosko desactivado, modo voucher_fisico)
+ * - Configuracion del sistema (21 claves, kiosko desactivado, modo voucher_fisico)
  */
 
 const fs = require('fs')
 const path = require('path')
-const bcrypt = require('bcrypt')
-const { Pool } = require('pg')
 
 const envPath = fs.existsSync(path.resolve(__dirname, '../.env'))
   ? path.resolve(__dirname, '../.env')
   : path.resolve(__dirname, '../.env.development')
 
 if (fs.existsSync(envPath)) {
-  require('dotenv').config({ path: envPath })
+  try {
+    require('dotenv').config({ path: envPath })
+  } catch (e) {
+    // Fallback nativo: cargar variables si dotenv no esta instalado aun
+    try {
+      const envContent = fs.readFileSync(envPath, 'utf8')
+      for (const line of envContent.split(/\r?\n/)) {
+        const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/)
+        if (match && !process.env[match[1]]) {
+          let val = (match[2] || '').trim()
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1)
+          }
+          process.env[match[1]] = val
+        }
+      }
+    } catch (_) {}
+  }
+}
+
+let bcrypt, Pool
+try {
+  bcrypt = require('bcrypt')
+  Pool = require('pg').Pool
+} catch (err) {
+  console.error('\n[ERROR] Faltan dependencias de Node.js en este equipo: ' + err.message)
+  console.error('----------------------------------------------------------------------')
+  console.error('Si clonaste el repositorio recientemente, debes instalar sus modulos:')
+  console.error('    npm install')
+  console.error('')
+  console.error('O si estas ejecutando con Docker Desktop:')
+  console.error('    docker compose exec app node scripts/seed.js')
+  console.error('----------------------------------------------------------------------\n')
+  process.exit(1)
 }
 
 const pool = new Pool({
@@ -101,7 +132,7 @@ async function seed() {
     `, [adminId])
     console.log('[OK] 1 Lote creado: Lote 1 (1-500, activo).')
 
-    // 6. Configuracion del sistema (19 claves - sincronizado con 001_tablas_datos.sql)
+    // 6. Configuracion del sistema (21 claves - sincronizado con 001_tablas_datos.sql y 004_complementos.sql)
     const configuraciones = [
       ['alerta_vouchers_restantes',   '20',                                    'Umbral de vouchers restantes en el lote activo para emitir alerta al administrador (1 a 500).'],
       ['modo_generacion_turnos',      'voucher_fisico',                         'Modo operativo activo del sistema: voucher_fisico (papel) o kiosko_web (digital).'],
@@ -121,7 +152,9 @@ async function seed() {
       ['kiosko_url_publica',          '',                                       'URL publica opcional para acceso de participantes al kiosko (vacio = red local LAN).'],
       ['kiosko_modo_uso',             'asistido',                               'Modalidad del kiosko: asistido (tablet con operador) / estudiante (autoservicio movil).'],
       ['fondo_imagen_url',            '',                                       'URL o ruta de la imagen institucional de fondo para las pantallas del sistema.'],
-      ['fondo_imagen_activa',         'false',                                  'Activar la imagen de fondo institucional en las pantallas del sistema.']
+      ['fondo_imagen_activa',         'false',                                  'Activar la imagen de fondo institucional en las pantallas del sistema.'],
+      ['tv_opacidad_principal',       '100',                                    'Opacidad del fondo de la tarjeta principal (turno en curso) en pantalla TV. Entero de 20 a 100; 100 = completamente opaco.'],
+      ['tv_opacidad_secundaria',      '100',                                    'Opacidad del fondo de las cuatro tarjetas de turnos anteriores en pantalla TV. Entero de 20 a 100; 100 = completamente opaco.']
     ]
 
     for (const [clave, valor, descripcion] of configuraciones) {
@@ -134,7 +167,7 @@ async function seed() {
               actualizado_en = NOW()
       `, [clave, valor, descripcion])
     }
-    console.log('[OK] 19 parametros de configuracion actualizados.')
+    console.log('[OK] 21 parametros de configuracion actualizados.')
 
     await client.query('COMMIT')
 

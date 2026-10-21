@@ -53,6 +53,33 @@ if %errorLevel% equ 0 (
 )
 
 :: Opcion C: Inicio directo mediante Node.js
+where node >nul 2>&1
+if %errorLevel% neq 0 (
+    echo.
+    echo ======================================================================
+    echo  [ERROR] NO SE ENCONTRO NODE.JS NI DOCKER DESKTOP EN ESTE EQUIPO
+    echo ======================================================================
+    echo  Para ejecutar el Turnero necesitas una de las siguientes opciones:
+    echo    1. Instalar Docker Desktop (recomendado): https://www.docker.com
+    echo    2. O instalar Node.js LTS (v20 o superior): https://nodejs.org
+    echo ======================================================================
+    echo.
+    pause
+    exit /b 1
+)
+
+if not exist "node_modules\" (
+    echo   [INFO] Repositorio recien clonado: 'node_modules' no existe.
+    echo   [INFO] Instalando dependencias con npm install...
+    call npm install
+    if %errorLevel% neq 0 (
+        echo   [ERROR] Fallo al ejecutar npm install.
+        pause
+        exit /b 1
+    )
+    echo   [OK] Dependencias instaladas exitosamente.
+)
+
 echo   [INFO] Iniciando servidor con Node.js en esta consola...
 echo   [INFO] Para detener el servidor presiona Ctrl + C o ejecuta 'detener_sistema.bat'.
 echo.

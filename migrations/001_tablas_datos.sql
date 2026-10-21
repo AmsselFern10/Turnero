@@ -260,7 +260,11 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
     ('fondo_imagen_url',           '',
      'URL o ruta de la imagen institucional de fondo para las pantallas del sistema.'),
     ('fondo_imagen_activa',        'false',
-     'Activar la imagen de fondo institucional en las pantallas del sistema.')
+     'Activar la imagen de fondo institucional en las pantallas del sistema.'),
+    ('tv_opacidad_principal',       '100',
+     'Opacidad del fondo de la tarjeta principal (turno en curso) en pantalla TV. Entero de 20 a 100; 100 = completamente opaco.'),
+    ('tv_opacidad_secundaria',      '100',
+     'Opacidad del fondo de las cuatro tarjetas de turnos anteriores en pantalla TV. Entero de 20 a 100; 100 = completamente opaco.')
 ON CONFLICT (clave) DO NOTHING;
 
 -- =============================================================================

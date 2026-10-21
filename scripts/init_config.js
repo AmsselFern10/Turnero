@@ -1,13 +1,41 @@
 const fs = require('fs');
 const path = require('path');
-const { Pool } = require('pg');
 
 const envPath = fs.existsSync(path.resolve(__dirname, '../.env'))
   ? path.resolve(__dirname, '../.env')
   : path.resolve(__dirname, '../.env.development');
 
 if (fs.existsSync(envPath)) {
-  require('dotenv').config({ path: envPath });
+  try {
+    require('dotenv').config({ path: envPath });
+  } catch (e) {
+    // Fallback nativo: cargar variables si dotenv no esta instalado
+    try {
+      const envContent = fs.readFileSync(envPath, 'utf8');
+      for (const line of envContent.split(/\r?\n/)) {
+        const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+        if (match && !process.env[match[1]]) {
+          let val = (match[2] || '').trim();
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+          }
+          process.env[match[1]] = val;
+        }
+      }
+    } catch (_) {}
+  }
+}
+
+let Pool;
+try {
+  Pool = require('pg').Pool;
+} catch (err) {
+  console.error('\n[ERROR] Faltan dependencias de Node.js en este equipo: ' + err.message);
+  console.error('----------------------------------------------------------------------');
+  console.error('Si clonaste el repositorio recientemente, ejecuta primero:');
+  console.error('    npm install');
+  console.error('----------------------------------------------------------------------\n');
+  process.exit(1);
 }
 
 const pool = new Pool({
