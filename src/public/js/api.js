@@ -181,8 +181,12 @@ class ApiClient {
     sessionStorage.removeItem('turnero_jwt');
     sessionStorage.removeItem('turnero_user');
 
-    if (redirect && window.location.pathname !== '/index.html' && window.location.pathname !== '/') {
-      window.location.href = '/index.html';
+    if (redirect) {
+      if (window.location.pathname !== '/index.html' && window.location.pathname !== '/') {
+        window.location.href = '/index.html';
+      } else {
+        window.location.reload();
+      }
     }
   }
 

@@ -977,17 +977,14 @@ export function panelMesaView() {
     },
 
     /**
-     * Ejecución interna de logout: desconecta WS, libera mesa y limpia sesión.
+     * Ejecución interna de logout: desconecta WS y limpia sesión en todas las pestañas.
+     * La mesa NO se libera al cerrar sesión; permanece asignada al operador.
      */
     async _ejecutarLogout() {
       try {
         if (this.ws) this.ws.disconnect();
-        await api.post('/auth/liberar-mesa');
       } catch (_) {}
-      try {
-        await api.post('/auth/logout');
-      } catch (_) {}
-      api.clearSession(true);
+      await api.logout(true);
     },
 
     /**
@@ -1180,6 +1177,11 @@ export function panelMesaView() {
       // Si el servidor rechaza el canal por discrepancia de mesa, resincronizar
       this.ws.on('auth_error', async ({ code, reason }) => {
         console.warn('[MESA] WebSocket error de autorización:', code, reason);
+        if (code === 4401 || code === 1008) {
+          // Sesión cerrada en el servidor (logout en otra pestaña)
+          api.clearSession(true);
+          return;
+        }
         try {
           const me = await api.get('/auth/me');
           if (me?.usuario?.mesa_asignada) {
@@ -1207,7 +1209,9 @@ export function panelMesaView() {
             }, 1200);
             return;
           }
-        } catch (_) {}
+        } catch (_) {
+          api.clearSession(true);
+        }
       });
 
       // Evento de turno llamado para esta mesa (idempotente)
