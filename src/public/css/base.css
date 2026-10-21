@@ -298,11 +298,9 @@ body.has-custom-bg {
   background-attachment: fixed !important;
 }
 
-/* Las tarjetas centrales y héroe SIEMPRE conservan fondo blanco sólido e impenetrable */
-body.has-custom-bg .card,
-body.has-custom-bg .card-hero {
-  background-color: #FFFFFF !important;
-}
+/* Las tarjetas respetan la opacidad configurada desde el admin (Alpine inline style).
+   El fondo blanco ya no se fuerza con !important cuando hay imagen de fondo activa:
+   la opacidad (rgba(255,255,255, N/100)) permite ver el fondo a través de las tarjetas. */
 
 @media (max-width: 768px) {
   body.has-custom-bg {

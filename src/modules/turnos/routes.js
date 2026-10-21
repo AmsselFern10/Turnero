@@ -601,7 +601,7 @@ module.exports = async function turnosRoutes (fastify) {
          (SELECT numero
           FROM turnos
           WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()
-          ORDER BY numero ASC LIMIT 1
+          ORDER BY sesion ASC, numero ASC LIMIT 1
          ) AS proximo_kiosko,
          (SELECT COUNT(*)::int
           FROM turnos
@@ -684,7 +684,7 @@ module.exports = async function turnosRoutes (fastify) {
         const { rows: [proximoRow] } = await fastify.db.query(
           `SELECT numero FROM turnos
            WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()
-           ORDER BY numero ASC LIMIT 1`
+           ORDER BY sesion ASC, numero ASC LIMIT 1`
         )
         const proximo = proximoRow ? proximoRow.numero : null
         await Promise.allSettled([

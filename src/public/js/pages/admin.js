@@ -2254,12 +2254,12 @@ export function adminView() {
         accion: async () => {
           this._reiniciandoContadorKiosko = true;
           try {
-            await api.post('/admin/kiosko/reiniciar-contador', {});
+            const res = await api.post('/admin/kiosko/reiniciar-contador', {});
             this.kioskoUltimoNumero = 0;
             this.notificar({
               tipo: 'success',
               titulo: 'Contador Reiniciado',
-              mensaje: 'El contador de turnos del Kiosko fue reiniciado a 0. El próximo turno será el #1.'
+              mensaje: res?.mensaje || 'El contador de turnos del Kiosko fue reiniciado a 0. El próximo turno será el #1.'
             });
             await this.cargarDashboard();
           } catch (err) {

@@ -65,9 +65,9 @@ CREATE UNIQUE INDEX ux_turnos_mesa_activa
     ON turnos (mesa_id)
     WHERE estado = 'en_atencion';
 
--- Garantiza unicidad de numero de turno kiosko por dia.
+-- Garantiza unicidad de numero de turno kiosko por dia y sesion.
 CREATE UNIQUE INDEX ux_turnos_kiosko_dia_numero
-    ON turnos (fecha_turno, numero)
+    ON turnos (fecha_turno, sesion, numero)
     WHERE origen = 'kiosko_web';
 
 -- Idempotencia: evita crear dos turnos con la misma clave de idempotencia.

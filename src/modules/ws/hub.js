@@ -233,7 +233,7 @@ async function enviarSnapshot (ws, fastify, user) {
             ) l) AS lote,
            (SELECT numero FROM turnos
             WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()
-            ORDER BY numero ASC LIMIT 1
+            ORDER BY sesion ASC, numero ASC LIMIT 1
            ) AS proximo_kiosko,
            (SELECT json_agg(h) FROM (
               SELECT t.numero, m.numero AS mesa_numero, m.nombre AS mesa_nombre, t.llamado_en
@@ -309,7 +309,7 @@ async function enviarSnapshot (ws, fastify, user) {
              (SELECT numero
               FROM turnos
               WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()
-              ORDER BY numero ASC LIMIT 1
+              ORDER BY sesion ASC, numero ASC LIMIT 1
              ) AS proximo_kiosko`,
           [user.mesa_id]
         )
@@ -407,7 +407,7 @@ async function enviarSnapshot (ws, fastify, user) {
             ) h) AS ultimos_llamados,
            (SELECT COUNT(*)::int FROM mesas WHERE estado = 'activa') AS mesas_activas,
            (SELECT COUNT(*)::int FROM turnos WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()) AS turnos_esperando,
-           (SELECT numero FROM turnos WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy() ORDER BY numero ASC LIMIT 1) AS proximo_numero`
+           (SELECT numero FROM turnos WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy() ORDER BY sesion ASC, numero ASC LIMIT 1) AS proximo_numero`
       )
       const data = rows[0] || {}
       const ultimosLlamados = data.ultimos_llamados || []

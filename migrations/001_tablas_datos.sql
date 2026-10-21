@@ -123,6 +123,7 @@ COMMENT ON TABLE lotes_voucher IS 'Contador central correlativo multi-dia para v
 CREATE TABLE kiosko_contador_diario (
     fecha          DATE        PRIMARY KEY,
     ultimo_numero  INTEGER     NOT NULL DEFAULT 0,
+    sesion         INTEGER     NOT NULL DEFAULT 1,
     actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 COMMENT ON TABLE kiosko_contador_diario IS 'Contador diario correlativo independiente para el autoservicio Kiosko Web.';
@@ -132,6 +133,7 @@ CREATE TABLE turnos (
     id                    BIGSERIAL    PRIMARY KEY,
     numero                INTEGER      NOT NULL,
     fecha_turno           DATE         NOT NULL DEFAULT fn_fecha_hoy(),
+    sesion                INTEGER      NOT NULL DEFAULT 1,
     lote_id               BIGINT       REFERENCES lotes_voucher(id),
     estado                VARCHAR(20)  NOT NULL DEFAULT 'esperando'
                               CONSTRAINT ck_turnos_estado CHECK (estado IN (

@@ -75,7 +75,7 @@ module.exports = async function kioskoRoutes (fastify) {
           const { rows: [proximoRow] } = await fastify.db.query(
             `SELECT numero FROM turnos
              WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()
-             ORDER BY numero ASC LIMIT 1`
+             ORDER BY sesion ASC, numero ASC LIMIT 1`
           )
           const proximo = proximoRow ? proximoRow.numero : null
           await Promise.allSettled([

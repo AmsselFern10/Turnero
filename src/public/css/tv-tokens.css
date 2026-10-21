@@ -105,6 +105,12 @@
 .tv-main-grid.solo-hero .tv-col-hero {
   grid-column: span 12 / span 12;
   width: 100%;
+  /* Limitar ancho máximo en modo solo-hero para evitar expansión excesiva.
+     La tarjeta se centra horizontalmente y nunca supera el 70% del viewport,
+     salvo en pantallas angostas donde el responsive media-query toma el mando. */
+  max-width: min(70%, 900px);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .tv-main-grid.solo-hero .tv-ticket {

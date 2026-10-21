@@ -80,6 +80,17 @@ VALUES
   )
 ON CONFLICT (clave) DO NOTHING;
 
+-- ---------------------------------------------------------------------------
+-- 6. Soporte de sesiones en Kiosko (reinicio en caliente durante el dia)
+-- ---------------------------------------------------------------------------
+ALTER TABLE kiosko_contador_diario ADD COLUMN IF NOT EXISTS sesion INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE turnos ADD COLUMN IF NOT EXISTS sesion INTEGER NOT NULL DEFAULT 1;
+
+DROP INDEX IF EXISTS ux_turnos_kiosko_dia_numero;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_turnos_kiosko_dia_numero
+    ON turnos (fecha_turno, sesion, numero)
+    WHERE (origen = 'kiosko_web');
+
 -- =============================================================================
 -- FIN ARCHIVO 4/4
 -- =============================================================================

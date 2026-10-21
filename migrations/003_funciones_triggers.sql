@@ -289,7 +289,7 @@ BEGIN
         WHERE t.estado = 'esperando'
           AND t.origen = 'kiosko_web'
           AND t.fecha_turno = v_fecha_hoy
-        ORDER BY t.numero ASC
+        ORDER BY t.sesion ASC, t.numero ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED;
 
@@ -311,7 +311,7 @@ BEGIN
 
         SELECT numero INTO v_proximo
         FROM turnos WHERE turnos.estado = 'esperando' AND turnos.origen = 'kiosko_web' AND turnos.fecha_turno = v_fecha_hoy
-        ORDER BY numero ASC LIMIT 1;
+        ORDER BY sesion ASC, numero ASC LIMIT 1;
 
         RETURN QUERY SELECT
             v_turno_kiosko.id, v_turno_kiosko.numero, v_llamado_en,
@@ -462,7 +462,7 @@ BEGIN
         SELECT turnos.numero INTO v_proximo
         FROM turnos
         WHERE turnos.estado = 'esperando' AND turnos.origen = 'kiosko_web' AND turnos.fecha_turno = v_fecha_hoy
-        ORDER BY turnos.numero ASC LIMIT 1;
+        ORDER BY turnos.sesion ASC, turnos.numero ASC LIMIT 1;
     ELSE
         SELECT lv.numero_lote, lv.numero_hasta, lv.ultimo_numero_llamado
         INTO v_lote FROM lotes_voucher lv WHERE lv.id = v_turno.lote_id;

@@ -1090,31 +1090,19 @@ module.exports = async function adminRoutes (fastify) {
     const fechaRes = await fastify.db.query('SELECT fn_fecha_hoy() AS fecha')
     const fechaHoy = fechaRes.rows[0]?.fecha
 
-    // Verificar si ya se han emitido turnos en kiosko hoy (regla de no colisión con ux_turnos_kiosko_dia_numero)
-    const { rows: [{ max_emitido }] } = await fastify.db.query(
-      `SELECT COALESCE(MAX(numero), 0) AS max_emitido
-       FROM turnos
-       WHERE fecha_turno = $1 AND origen = 'kiosko_web'`,
-      [fechaHoy]
-    )
-    const maxEmitidoNum = Number(max_emitido)
-    if (maxEmitidoNum > 0) {
-      return reply.status(400).send({
-        error: {
-          codigo: 'turnos_existentes_hoy',
-          mensaje: `No se puede reiniciar el contador a 0 porque hoy ya se emitieron turnos de kiosko (hasta el #${maxEmitidoNum}). La numeración de kiosko reinicia automáticamente cada día.`
-        }
-      })
-    }
-
-    // 1. Resetear el contador correlativo diario de Kiosko a 0
-    await fastify.db.query(
-      `INSERT INTO kiosko_contador_diario (fecha, ultimo_numero, actualizado_en)
-       VALUES ($1, 0, NOW())
+    // 1. Resetear contador a 0 y avanzar correlativo de sesion para permitir iniciar desde el #1 sin colisiones
+    const { rows: [contadorRes] } = await fastify.db.query(
+      `INSERT INTO kiosko_contador_diario (fecha, ultimo_numero, sesion, actualizado_en)
+       VALUES ($1, 0, 1, NOW())
        ON CONFLICT (fecha)
-       DO UPDATE SET ultimo_numero = 0, actualizado_en = NOW()`,
+       DO UPDATE SET
+         ultimo_numero = 0,
+         sesion = COALESCE(kiosko_contador_diario.sesion, 1) + 1,
+         actualizado_en = NOW()
+       RETURNING sesion`,
       [fechaHoy]
     )
+    const nuevaSesion = contadorRes?.sesion || 1
 
     // 2. Cancelar turnos 'esperando' de kiosko de hoy para vaciar la cola previa
     const { rowCount: turnosCancelados } = await fastify.db.query(
@@ -1128,7 +1116,7 @@ module.exports = async function adminRoutes (fastify) {
     await fastify.db.query(
       `INSERT INTO audit_log (operador_id, accion, ip_origen, metadata_json)
        VALUES ($1, 'CONFIG_MODIFICADA', $2, $3)`,
-      [request.user.id, request.ip, JSON.stringify({ clave: 'kiosko_contador_diario', accion_detalle: 'KIOSKO_CONTADOR_REINICIADO', fecha: fechaHoy, turnosCancelados })]
+      [request.user.id, request.ip, JSON.stringify({ clave: 'kiosko_contador_diario', accion_detalle: 'KIOSKO_CONTADOR_REINICIADO', fecha: fechaHoy, sesion: nuevaSesion, turnosCancelados })]
     )
 
     // 4. Invalidar caché interna del servicio kiosko
@@ -1141,11 +1129,13 @@ module.exports = async function adminRoutes (fastify) {
     await Promise.all([
       fastify.broadcast('admin:all', 'contador_kiosko_reiniciado', {
         ultimo_numero: 0,
+        sesion: nuevaSesion,
         turnos_en_espera: 0,
         turnos_cancelados: turnosCancelados
       }),
       fastify.broadcast('kiosko:publico', 'contador_reiniciado', {
         ultimo_numero: 0,
+        sesion: nuevaSesion,
         turnos_en_espera: 0
       }),
       fastify.broadcast('lote:activo', 'proximo_actualizado', {
@@ -1162,8 +1152,9 @@ module.exports = async function adminRoutes (fastify) {
 
     return reply.send({
       ok: true,
-      mensaje: 'Contador de turnos del Kiosko reiniciado a 0 exitosamente.',
+      mensaje: `Contador de turnos del Kiosko reiniciado a 0 exitosamente (Sesión ${nuevaSesion}). El próximo turno comenzará desde el #1.`,
       ultimo_numero: 0,
+      sesion: nuevaSesion,
       turnos_cancelados: turnosCancelados
     })
   })

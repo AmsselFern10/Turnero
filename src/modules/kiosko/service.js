@@ -274,17 +274,18 @@ async function generarTurno (fastify, { ip, idempotencyKey, deviceId, esTablet, 
 
   // 6. Asignación atómica de número correlativo diario (1 a N)
   let nuevoNumero = null
+  let sesionActual = 1
 
   if (topeDiario > 0) {
     const { rows: contadorRows } = await fastify.db.query(
-      `INSERT INTO kiosko_contador_diario (fecha, ultimo_numero, actualizado_en)
-       VALUES ($1, 1, NOW())
+      `INSERT INTO kiosko_contador_diario (fecha, ultimo_numero, sesion, actualizado_en)
+       VALUES ($1, 1, 1, NOW())
        ON CONFLICT (fecha)
        DO UPDATE SET
          ultimo_numero = kiosko_contador_diario.ultimo_numero + 1,
          actualizado_en = NOW()
        WHERE kiosko_contador_diario.ultimo_numero < $2
-       RETURNING ultimo_numero`,
+       RETURNING ultimo_numero, sesion`,
       [fechaHoy, topeDiario]
     )
 
@@ -295,18 +296,20 @@ async function generarTurno (fastify, { ip, idempotencyKey, deviceId, esTablet, 
       })
     }
     nuevoNumero = contadorRows[0].ultimo_numero
+    sesionActual = contadorRows[0].sesion || 1
   } else {
     const { rows: contadorRows } = await fastify.db.query(
-      `INSERT INTO kiosko_contador_diario (fecha, ultimo_numero, actualizado_en)
-       VALUES ($1, 1, NOW())
+      `INSERT INTO kiosko_contador_diario (fecha, ultimo_numero, sesion, actualizado_en)
+       VALUES ($1, 1, 1, NOW())
        ON CONFLICT (fecha)
        DO UPDATE SET
          ultimo_numero = kiosko_contador_diario.ultimo_numero + 1,
          actualizado_en = NOW()
-       RETURNING ultimo_numero`,
+       RETURNING ultimo_numero, sesion`,
       [fechaHoy]
     )
     nuevoNumero = contadorRows[0].ultimo_numero
+    sesionActual = contadorRows[0].sesion || 1
   }
 
   // 7. Generar token criptográfico efímero de 64 caracteres hex
@@ -318,14 +321,14 @@ async function generarTurno (fastify, { ip, idempotencyKey, deviceId, esTablet, 
   try {
     const resInsert = await fastify.db.query(
       `INSERT INTO turnos (
-         numero, fecha_turno, lote_id, estado, origen, token_consulta,
+         numero, fecha_turno, sesion, lote_id, estado, origen, token_consulta,
          idempotency_key, device_id, creado_en
        ) VALUES (
-         $1, $2, NULL, 'esperando', 'kiosko_web', $3,
-         $4, $5, NOW()
+         $1, $2, $3, NULL, 'esperando', 'kiosko_web', $4,
+         $5, $6, NOW()
        )
-       RETURNING id, numero, token_consulta, creado_en, estado, fecha_turno`,
-      [nuevoNumero, fechaHoy, token, idempotencyKey || null, deviceIdGuardar]
+       RETURNING id, numero, token_consulta, creado_en, estado, fecha_turno, sesion`,
+      [nuevoNumero, fechaHoy, sesionActual, token, idempotencyKey || null, deviceIdGuardar]
     )
     turnoCreado = resInsert.rows[0]
   } catch (err) {
