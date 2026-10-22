@@ -259,24 +259,34 @@ module.exports = async function mesasRoutes (fastify) {
 
     if (!mesa) return reply.status(404).send({ error: 'Mesa no encontrada' })
 
-    const accionLog = estado === 'activa' ? 'MESA_ACTIVADA' : estado === 'pausada' ? 'MESA_PAUSADA' : 'MESA_INACTIVADA'
-    await fastify.db.query(
-      `INSERT INTO audit_log (mesa_id, operador_id, accion, ip_origen)
-       VALUES ($1, $2, $3, $4)`,
-      [mesaId, request.user.id, accionLog, request.ip]
-    )
+    // Auditoría y difusiones WebSocket post-commit (desacopladas)
+    setImmediate(async () => {
+      try {
+        const accionLog = estado === 'activa' ? 'MESA_ACTIVADA' : estado === 'pausada' ? 'MESA_PAUSADA' : 'MESA_INACTIVADA'
+        await fastify.db.query(
+          `INSERT INTO audit_log (mesa_id, operador_id, accion, ip_origen)
+           VALUES ($1, $2, $3, $4)`,
+          [mesaId, request.user.id, accionLog, request.ip]
+        )
 
-    // Notificar al panel del operador en esa mesa para que reaccione en tiempo real
-    const eventoMesa = estado === 'activa' ? 'mesa_activada' : estado === 'pausada' ? 'mesa_pausada' : 'mesa_inactivada'
-    await fastify.broadcast(`mesa:${mesaId}`, eventoMesa, { mesa })
-    await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
-    await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', { mesa, accion: estado === 'inactiva' ? 'eliminada' : 'actualizada' })
-    if (estado === 'inactiva' && mesaActual.operador_id) {
-      await fastify.broadcast('tv:global', 'operador_desasignado_por_admin', {
-        operador_id: Number(mesaActual.operador_id),
-        mesa_id: mesaId
-      })
-    }
+        // Notificar al panel del operador en esa mesa para que reaccione en tiempo real
+        const eventoMesa = estado === 'activa' ? 'mesa_activada' : estado === 'pausada' ? 'mesa_pausada' : 'mesa_inactivada'
+        await Promise.allSettled([
+          fastify.broadcast(`mesa:${mesaId}`, eventoMesa, { mesa }),
+          fastify.broadcast('admin:all', 'mesa_actualizada', { mesa }),
+          fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', { mesa, accion: estado === 'inactiva' ? 'eliminada' : 'actualizada' })
+        ])
+
+        if (estado === 'inactiva' && mesaActual.operador_id) {
+          await fastify.broadcast('tv:global', 'operador_desasignado_por_admin', {
+            operador_id: Number(mesaActual.operador_id),
+            mesa_id: mesaId
+          })
+        }
+      } catch (err) {
+        fastify.log.error({ err, mesaId }, 'Error en broadcast de estado de mesa')
+      }
+    })
 
     return reply.send({ mesa })
   })

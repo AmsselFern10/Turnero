@@ -50,27 +50,6 @@ async function llamarSiguiente (fastify, { mesaId, operadorId }) {
       throw Object.assign(new Error('Error inesperado al llamar turno'), { statusCode: 500 })
     }
 
-    // Alertas WS al admin post-commit
-    if (r.es_lote_agotado) {
-      await fastify.broadcast('admin:all', 'lote_agotado', {
-        lote_id:        r.lote_id,
-        numero_lote:    r.lote_numero,
-        numero_hasta:   r.numero_hasta,
-        ultimo_llamado: r.ultimo_llamado
-      })
-    } else {
-      // Alerta preventiva cuando restan <= N vouchers (RF-LOTE-07 / WS-018: edge-triggered)
-      const alertaUmbral = await _getAlertaUmbral(fastify)
-      if (r.vouchers_restantes === alertaUmbral) {
-        await fastify.broadcast('admin:all', 'alerta_vouchers_restantes', {
-          lote_id:            r.lote_id,
-          numero_lote:        r.lote_numero,
-          vouchers_restantes: r.vouchers_restantes,
-          umbral:             alertaUmbral
-        })
-      }
-    }
-
     return {
       turno: {
         id:          r.turno_id,
@@ -85,6 +64,11 @@ async function llamarSiguiente (fastify, { mesaId, operadorId }) {
       vouchers_restantes: r.vouchers_restantes,
       proximo_numero:     r.proximo_numero,
       es_idempotente:     r.es_idempotente,
+      es_lote_agotado:    Boolean(r.es_lote_agotado),
+      lote_id:            r.lote_id,
+      lote_numero:        r.lote_numero,
+      numero_hasta:       r.numero_hasta,
+      ultimo_llamado:     r.ultimo_llamado,
       modo:               r.modo || 'voucher_fisico'
     }
   } catch (err) {

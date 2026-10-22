@@ -142,6 +142,15 @@ module.exports = async function turnosRoutes (fastify) {
               })
             ])
 
+            if (resultado.es_lote_agotado) {
+              fastify.broadcast('admin:all', 'lote_agotado', {
+                lote_id:        resultado.lote_id,
+                numero_lote:    resultado.lote_numero,
+                numero_hasta:   resultado.numero_hasta,
+                ultimo_llamado: resultado.ultimo_llamado
+              })
+            }
+
             if (turno.origen === 'kiosko_web') {
               try {
                 const { rows: [tkRow] } = await fastify.db.query(
@@ -226,20 +235,26 @@ module.exports = async function turnosRoutes (fastify) {
       try { if (fastify.redis?.del) await fastify.redis.del(`mi_turno:${turno.token_consulta}`) } catch (_) {}
     }
 
-    // Notificar al admin y actualizar listas de rezagados en operadores
-    await Promise.allSettled([
-      fastify.broadcast('admin:all', 'turno_cancelado', {
-        turno_id:    turno.id,
-        turno_numero: turno.numero,
-        mesa_id
-      }),
-      fastify.broadcast('lote:activo', 'rezagados_actualizados', {
-        accion:       'cancelado',
-        turno_id:     turno.id,
-        turno_numero: turno.numero,
-        mesa_id
-      })
-    ])
+    // Notificar al admin y actualizar listas de rezagados en operadores post-commit (desacoplado)
+    setImmediate(async () => {
+      try {
+        await Promise.allSettled([
+          fastify.broadcast('admin:all', 'turno_cancelado', {
+            turno_id:    turno.id,
+            turno_numero: turno.numero,
+            mesa_id
+          }),
+          fastify.broadcast('lote:activo', 'rezagados_actualizados', {
+            accion:       'cancelado',
+            turno_id:     turno.id,
+            turno_numero: turno.numero,
+            mesa_id
+          })
+        ])
+      } catch (err) {
+        fastify.log.error({ err, turnoId }, 'Error en broadcast de cancelación')
+      }
+    })
 
     return reply.status(200).send({ message: 'Turno cancelado', turno })
   })
@@ -528,31 +543,37 @@ module.exports = async function turnosRoutes (fastify) {
       llamado_en:  new Date().toISOString()
     }
 
-    // Re-anunciar a la TV pública y canal de Kiosko con evento oficial 'turno_rellamado'
-    const broadcastPromises = [
-      fastify.broadcast('tv:global', 'turno_rellamado', payloadRellamado),
-      fastify.broadcast('kiosko:publico', 'turno_rellamado', payloadRellamado),
-      fastify.db.query(
-        `INSERT INTO audit_log (mesa_id, turno_id, operador_id, accion, metadata_json, ip_origen)
-         VALUES ($1, $2, $3, 'TURNO_RELLAMADO', $4, $5)`,
-        [mesa_id, turno.id, operadorId, JSON.stringify({ numero: turno.numero, evento_id }), request.ip]
-      )
-    ]
+    // Re-anunciar a la TV pública y canal de Kiosko de forma desacoplada post-respuesta
+    setImmediate(async () => {
+      try {
+        const broadcastPromises = [
+          fastify.broadcast('tv:global', 'turno_rellamado', payloadRellamado),
+          fastify.broadcast('kiosko:publico', 'turno_rellamado', payloadRellamado),
+          fastify.db.query(
+            `INSERT INTO audit_log (mesa_id, turno_id, operador_id, accion, metadata_json, ip_origen)
+             VALUES ($1, $2, $3, 'TURNO_RELLAMADO', $4, $5)`,
+            [mesa_id, turno.id, operadorId, JSON.stringify({ numero: turno.numero, evento_id }), request.ip]
+          )
+        ]
 
-    if (turno.token_consulta) {
-      broadcastPromises.push(
-        fastify.broadcast(`kiosko:${turno.token_consulta}`, 'tu_turno_llamado', {
-          turno_id:    turno.id,
-          numero:      turno.numero,
-          mesa_numero: turno.mesa_numero,
-          mesa_nombre: turno.mesa_nombre,
-          llamado_en:  payloadRellamado.llamado_en,
-          es_rellamado: true
-        })
-      )
-    }
+        if (turno.token_consulta) {
+          broadcastPromises.push(
+            fastify.broadcast(`kiosko:${turno.token_consulta}`, 'tu_turno_llamado', {
+              turno_id:    turno.id,
+              numero:      turno.numero,
+              mesa_numero: turno.mesa_numero,
+              mesa_nombre: turno.mesa_nombre,
+              llamado_en:  payloadRellamado.llamado_en,
+              es_rellamado: true
+            })
+          )
+        }
 
-    await Promise.all(broadcastPromises)
+        await Promise.allSettled(broadcastPromises)
+      } catch (err) {
+        fastify.log.error({ err, mesa_id, turno_id: turno.id }, 'Error en broadcast de re-llamado')
+      }
+    })
 
     return reply.status(200).send({ message: 'Turno re-llamado con éxito', turno })
   })
