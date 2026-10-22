@@ -34,9 +34,10 @@ export class TurneroWSClient {
     this.canal = options.canal || 'tv:global';
     this.mesaId = options.mesaId || null;
     this.baseDelay = options.baseDelay || 1000;
-    this.maxDelay = options.maxDelay || 30000;
-    this.heartbeatInterval = options.heartbeatInterval || 30000;
-    this.silenceTimeout = options.silenceTimeout || 60000;
+    this.maxDelay = options.maxDelay || 15000;
+    this.heartbeatInterval = options.heartbeatInterval || 3000;
+    this.silenceTimeout = options.silenceTimeout || 6000;
+    this.pingTimeout = options.pingTimeout || 3000;
 
     // Determinar URL del WebSocket
     if (options.url) {
@@ -54,6 +55,8 @@ export class TurneroWSClient {
     this.heartbeatTimer = null;
     this.stabilityTimer = null;
     this.lastActivityTime = Date.now();
+    this._awaitingPong = false;
+    this._lastPingTime = 0;
     this.isForcedClosed = false;
 
     // Control de secuencia de eventos monotónicos (Invariante 1)
@@ -207,6 +210,16 @@ export class TurneroWSClient {
     if (currentGen !== this.connectionGeneration || this.isForcedClosed || ticketResult === false) return;
 
     try {
+      // Limpiar y desasociar completamente cualquier socket anterior para evitar oyentes zombi
+      if (this.ws) {
+        this.ws.onopen = null;
+        this.ws.onmessage = null;
+        this.ws.onclose = null;
+        this.ws.onerror = null;
+        try { this.ws.close(1000, 'reemplazado'); } catch (_) {}
+        this.ws = null;
+      }
+
       const fullUrl = this._buildUrl();
       const socket = new WebSocket(fullUrl);
       this.ws = socket;
@@ -302,6 +315,8 @@ export class TurneroWSClient {
 
       // Resetear intentos de reconexión al recibir primer mensaje válido
       this.reconnectAttempts = 0;
+      this._awaitingPong = false;
+      this.lastActivityTime = Date.now();
 
       // Control de secuencia monotónica: detectar posibles huecos
       if (seq !== undefined && seq !== null) {
@@ -385,23 +400,37 @@ export class TurneroWSClient {
   }
 
   /**
-   * Inicia el latido simétrico (Heartbeat) de 30s y monitoreo de silencio de red (60s).
+   * Inicia el latido simétrico (Heartbeat) de 3s y monitoreo de silencio de red (6s).
    * @private
    */
   _startHeartbeat() {
     this._stopHeartbeat();
     this.heartbeatTimer = setInterval(() => {
-      // 1. Detectar corte silencioso: si han pasado más de 60s sin actividad, forzar reconexión
+      // 1. Detectar corte silencioso: si han pasado más de 6s sin actividad de ningún tipo
       const elapsedSilence = Date.now() - this.lastActivityTime;
       if (elapsedSilence > this.silenceTimeout) {
-        console.warn(`[WS] Corte silencioso detectado (${(elapsedSilence / 1000).toFixed(0)}s sin tráfico). Reiniciando socket...`);
+        console.warn(`[WS] Corte silencioso detectado (${(elapsedSilence / 1000).toFixed(1)}s sin tráfico). Declarando pérdida de red...`);
+        this._notifyStatus('RECONECTANDO');
         if (this.ws) {
           try { this.ws.close(1001, 'silencio_detectado'); } catch (_) {}
         }
         return;
       }
 
-      // 2. Enviar ping proactivo cada 30 segundos
+      // 2. Si enviamos un ping previo y no hubo respuesta tras pingTimeout (3s)
+      if (this._awaitingPong && (Date.now() - this._lastPingTime > this.pingTimeout)) {
+        console.warn(`[WS] Servidor no respondió a ping en ${this.pingTimeout}ms. Declarando desconexión inmediata...`);
+        this._awaitingPong = false;
+        this._notifyStatus('RECONECTANDO');
+        if (this.ws) {
+          try { this.ws.close(1001, 'ping_timeout'); } catch (_) {}
+        }
+        return;
+      }
+
+      // 3. Enviar ping proactivo y monitorear respuesta inmediata
+      this._awaitingPong = true;
+      this._lastPingTime = Date.now();
       this.send('ping', { heartbeat: true });
     }, this.heartbeatInterval);
   }
@@ -415,6 +444,7 @@ export class TurneroWSClient {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+    this._awaitingPong = false;
   }
 
   /**
@@ -517,6 +547,10 @@ export class TurneroWSClient {
       this.reconnectTimer = null;
     }
     if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
       try {
         this.ws.close(1000, 'Cliente cerró sesión');
       } catch (_) {}

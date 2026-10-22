@@ -55,7 +55,16 @@ const STORAGE_KEY_ESCALA_LEGACY       = 'turnero_tv_escala_turnos';
 const STORAGE_KEY_OPACIDAD_PRINCIPAL  = 'turnero_tv_opacidad_principal';
 const STORAGE_KEY_OPACIDAD_SECUNDARIA = 'turnero_tv_opacidad_secundaria';
 
+let _activeTvInstance = null;
+
 export function tvView() {
+  if (_activeTvInstance) {
+    try {
+      _activeTvInstance.destroy();
+    } catch (_) {}
+    _activeTvInstance = null;
+  }
+
   return {
     // ── Estado reactivo público para Alpine ──────────────────────────────────
     ultimoLlamado: { numero: null, mesa_numero: null, proximo: null, llamado_en: null },
@@ -138,6 +147,7 @@ export function tvView() {
     init() {
       // Idempotencia: un solo WebSocket por instancia (evita duplicación)
       if (this._ws) return;
+      _activeTvInstance = this;
 
       this._seqVistos = new Set();
       this._cola = [];
@@ -278,6 +288,9 @@ export function tvView() {
     },
 
     destroy() {
+      if (_activeTvInstance === this) {
+        _activeTvInstance = null;
+      }
       if (this._clockTimer)    { clearInterval(this._clockTimer);    this._clockTimer    = null; }
       if (this._relativoTimer) { clearInterval(this._relativoTimer); this._relativoTimer = null; }
       if (this._watchdogTimer) { clearTimeout(this._watchdogTimer);  this._watchdogTimer = null; }
@@ -295,7 +308,11 @@ export function tvView() {
         document.removeEventListener('visibilitychange', this._onVisibilityHandler);
         this._onVisibilityHandler = null;
       }
-      if (this._ws)            { this._ws.disconnect();              this._ws            = null; }
+      if (this._ws) {
+        this._ws.removeAllListeners();
+        this._ws.disconnect();
+        this._ws = null;
+      }
       if (this._staleCheckTimer) { clearInterval(this._staleCheckTimer); this._staleCheckTimer = null; }
     },
 
@@ -452,7 +469,13 @@ export function tvView() {
         this._ws.connect();
         return;
       }
-      this._ws = new TurneroWSClient({ canal: 'tv:global' });
+      this._ws = new TurneroWSClient({
+        canal: 'tv:global',
+        heartbeatInterval: 3000,
+        silenceTimeout: 6000
+      });
+      // Asegurar que no existan oyentes acumulados en el cliente
+      this._ws.removeAllListeners();
 
       this._ws.onStatusChange(({ status, attempt, nextDelay }) => {
         if (status === 'CONECTADO') {
@@ -888,6 +911,7 @@ export function tvView() {
       if (this._watchdogTimer) { clearTimeout(this._watchdogTimer); this._watchdogTimer = null; }
       if (this._avanceTimer)   { clearTimeout(this._avanceTimer);   this._avanceTimer   = null; }
       this.glowState = 'idle';
+      this._reproduciendo = false;
       this._reproducirSiguiente();
     },
 
