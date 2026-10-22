@@ -493,6 +493,52 @@ BEGIN
 END;
 $$;
 
+
+-- ---------------------------------------------------------------------------
+-- H. Proteccion estricta del ultimo administrador en base de datos
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_proteger_ultimo_admin()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+    v_otros_admins INTEGER;
+BEGIN
+    -- Solo verificar si la fila afectada es o era un admin activo no eliminado
+    IF OLD.rol = 'admin' AND OLD.activo = TRUE AND OLD.eliminado_en IS NULL THEN
+        -- Si es DELETE, o borrado logico, o se desactiva, o se cambia el rol a algo distinto de admin:
+        IF (TG_OP = 'DELETE') OR
+           (TG_OP = 'UPDATE' AND (
+               NEW.eliminado_en IS NOT NULL OR
+               NEW.activo = FALSE OR
+               NEW.rol IS DISTINCT FROM 'admin'
+           )) THEN
+            
+            SELECT COUNT(*) INTO v_otros_admins
+            FROM usuarios
+            WHERE rol = 'admin'
+              AND activo = TRUE
+              AND eliminado_en IS NULL
+              AND id <> OLD.id;
+
+            IF v_otros_admins = 0 THEN
+                RAISE EXCEPTION 'Operacion rechazada: No se puede eliminar, desactivar ni degradar al unico administrador activo del sistema'
+                    USING ERRCODE = 'P0001';
+            END IF;
+        END IF;
+    END IF;
+
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    ELSE
+        RETURN NEW;
+    END IF;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_usuarios_proteger_ultimo_admin ON usuarios;
+CREATE TRIGGER trg_usuarios_proteger_ultimo_admin
+    BEFORE UPDATE OR DELETE ON usuarios
+    FOR EACH ROW EXECUTE FUNCTION fn_proteger_ultimo_admin();
+
 -- =============================================================================
 -- FIN ARCHIVO 3/4
 -- =============================================================================

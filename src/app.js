@@ -97,6 +97,82 @@ async function buildApp (opts = {}) {
     }
   })
 
+  // ── Aislamiento estricto de acceso por túnel público ────────────────────────
+  // Por la dirección pública (túnel) solo se alcanza el kiosko; la TV y el admin no se exponen.
+  let _cachedPublicHost = null
+  let _lastHostCheck = 0
+
+  app.addHook('onRequest', async (request, reply) => {
+    const rawHeader = request.headers['x-forwarded-host'] || request.headers.host || ''
+    const rawHost = rawHeader.split(',')[0].trim().split(':')[0].toLowerCase()
+    if (!rawHost) return
+
+    // Comprobar si es un túnel público conocido o la URL pública configurada
+    const esTunelConocido = rawHost.includes('loca.lt') ||
+      rawHost.includes('ngrok') ||
+      rawHost.includes('trycloudflare.com')
+
+    let esHostPublico = esTunelConocido
+
+    if (!esHostPublico) {
+      const now = Date.now()
+      if (now - _lastHostCheck > 30000) {
+        _lastHostCheck = now
+        try {
+          const { rows } = await app.db.query(
+            "SELECT valor FROM configuracion WHERE clave = 'kiosko_url_publica' LIMIT 1"
+          )
+          const val = rows[0]?.valor
+          if (val) {
+            try {
+              _cachedPublicHost = new URL(val).hostname.toLowerCase()
+            } catch (_) {
+              _cachedPublicHost = val.split('/')[0].split(':')[0].toLowerCase()
+            }
+          } else {
+            _cachedPublicHost = null
+          }
+        } catch (_) {}
+      }
+      if (_cachedPublicHost && rawHost === _cachedPublicHost) {
+        esHostPublico = true
+      }
+    }
+
+    if (esHostPublico) {
+      const path = request.url.split('?')[0]
+      // Si entra a la raíz en el túnel público, redirigir directo al kiosko
+      if (path === '/' || path === '/index.html') {
+        return reply.redirect('/kiosko.html')
+      }
+
+      // Permitir únicamente rutas del ecosistema de kiosko y assets estáticos
+      const esRutaPermitida = path.startsWith('/kiosko') ||
+        path.startsWith('/turnos/generar') ||
+        path.startsWith('/turnos/mi-turno') ||
+        path.startsWith('/turnos/posicion') ||
+        path.startsWith('/turnos/estado-kiosko') ||
+        path.startsWith('/css/') ||
+        path.startsWith('/js/') ||
+        path.startsWith('/vendor/') ||
+        path.startsWith('/assets/') ||
+        path === '/favicon.ico'
+
+      // Para WebSockets en el túnel público, solo permitir canales de kiosko
+      if (path === '/ws') {
+        const canal = request.query?.canal || ''
+        if (!canal.startsWith('kiosko:')) {
+          return reply.status(403).send({ error: 'Acceso no permitido por este canal en la red pública' })
+        }
+        return
+      }
+
+      if (!esRutaPermitida) {
+        return reply.status(404).send({ error: 'Ruta no encontrada' })
+      }
+    }
+  })
+
   // Función generadora de pantalla limpia 403 sin exponer HTML del admin
   function generarPantalla403 () {
     return `<!DOCTYPE html>

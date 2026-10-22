@@ -48,6 +48,18 @@ async function login (fastify, { username, password, ip }) {
     jti
   })
 
+  // 3.1 Sesión única por cuenta (Opción A): la sesión nueva reemplaza a la anterior
+  try {
+    const sesionPreviaJti = await fastify.redis.get(`user_active_session:${usuario.id}`)
+    if (sesionPreviaJti && sesionPreviaJti !== jti) {
+      await fastify.redis.setex(`bl:${sesionPreviaJti}`, 7200, '1')
+      if (fastify.desconectarUsuario) {
+        fastify.desconectarUsuario(usuario.id, 'Sesión iniciada en otro dispositivo')
+      }
+    }
+    await fastify.redis.setex(`user_active_session:${usuario.id}`, 7200, jti)
+  } catch (_) {}
+
   // 4. Generar refresh token (7d) — guardado en cookie HttpOnly
   const refreshJti   = require('crypto').randomUUID()
   const refreshToken = require('jsonwebtoken').sign(
@@ -101,6 +113,11 @@ async function logout (fastify, { userId, jti, exp, ip }) {
   if (ttl > 0) {
     await fastify.redis.setex(`bl:${jti}`, ttl, '1')
   }
+
+  // Limpiar sesión activa en Redis
+  try {
+    await fastify.redis.del(`user_active_session:${userId}`)
+  } catch (_) {}
 
   // Si el usuario tenía una mesa asignada, cancelar turnos en atención y liberar la mesa
   const { rows: mesasUsuario } = await fastify.db.query(

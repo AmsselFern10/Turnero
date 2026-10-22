@@ -52,13 +52,25 @@ async function authPlugin (fastify) {
       return reply.status(401).send({ error: 'Sesión cerrada' })
     }
 
+    // Verificar si la sesión fue reemplazada por un inicio de sesión más reciente en otro dispositivo (Opción A)
+    const sesionActivaJti = await fastify.redis.get(`user_active_session:${request.user.id}`)
+    if (sesionActivaJti && sesionActivaJti !== request.user.jti) {
+      return reply.status(401).send({ error: 'Su sesión fue cerrada porque se inició sesión en otro dispositivo', codigo: 'sesion_reemplazada' })
+    }
+
+    // Verificar si la contraseña fue cambiada con posterioridad a la emisión del token
+    const pwdChangedAt = await fastify.redis.get(`pwd_changed:${request.user.id}`)
+    if (pwdChangedAt && request.user.iat && Number(pwdChangedAt) > request.user.iat) {
+      return reply.status(401).send({ error: 'Contraseña modificada. Inicie sesión nuevamente.', codigo: 'password_cambiada' })
+    }
+
     // Verificar que el usuario sigue activo y sincronizar rol actual desde la base de datos
     const { rows } = await fastify.db.query(
-      'SELECT activo, rol FROM usuarios WHERE id = $1',
+      'SELECT activo, rol FROM usuarios WHERE id = $1 AND eliminado_en IS NULL',
       [request.user.id]
     )
-    if (!rows[0]?.activo) {
-      return reply.status(403).send({ error: 'Usuario desactivado' })
+    if (!rows[0] || !rows[0].activo) {
+      return reply.status(403).send({ error: 'Usuario desactivado o no encontrado' })
     }
     // Mantener sincronizado el rol actual si fue modificado en caliente
     request.user.rol = rows[0].rol

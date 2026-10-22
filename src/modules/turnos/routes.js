@@ -225,6 +225,17 @@ module.exports = async function turnosRoutes (fastify) {
     const { mesa_id } = request.body
     const operadorId   = request.user.id
 
+    // Seguridad: Un operador solo puede actuar sobre su propia mesa asignada
+    if (request.user.rol === 'operador') {
+      const { rows: [mAsignada] } = await fastify.db.query(
+        'SELECT id FROM mesas WHERE id = $1 AND operador_id = $2 AND estado != \'eliminada\'',
+        [mesa_id, operadorId]
+      )
+      if (!mAsignada) {
+        return reply.status(403).send({ error: 'Esta mesa no te está asignada' })
+      }
+    }
+
     const turno = await cancelarTurno(fastify, {
       turnoId,
       operadorId,
@@ -502,6 +513,17 @@ module.exports = async function turnosRoutes (fastify) {
   }, async (request, reply) => {
     const mesa_id = parseInt(request.body.mesa_id)
     const operadorId  = request.user.id
+
+    // Seguridad: Un operador solo puede actuar sobre su propia mesa asignada
+    if (request.user.rol === 'operador') {
+      const { rows: [mAsignada] } = await fastify.db.query(
+        'SELECT id FROM mesas WHERE id = $1 AND operador_id = $2 AND estado != \'eliminada\'',
+        [mesa_id, operadorId]
+      )
+      if (!mAsignada) {
+        return reply.status(403).send({ error: 'Esta mesa no te está asignada' })
+      }
+    }
 
     // Cooldown de 3 s por mesa para evitar re-llamados espurios o saturación de TV
     if (!fastify._cooldownsRellamado) {

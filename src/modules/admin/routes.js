@@ -292,10 +292,18 @@ module.exports = async function adminRoutes (fastify) {
     // Notificar cambios de usuario
     await fastify.broadcast('admin:all', 'usuario_actualizado', { usuario: usuarioActualizado })
 
-    // Si el usuario fue desactivado o se le quitó el rol de admin, desconectar su sesión en caliente
-    if (!usuarioActualizado.activo || (uTargetRolPrevio === 'admin' && usuarioActualizado.rol !== 'admin')) {
+    // Si el usuario fue desactivado, se le cambió el password o se le quitó el rol de admin, desconectar su sesión en caliente
+    if (request.body.password) {
+      try {
+        await fastify.redis.setex(`pwd_changed:${userId}`, 86400, Math.floor(Date.now() / 1000).toString())
+        await fastify.redis.del(`user_active_session:${userId}`)
+      } catch (_) {}
       if (fastify.desconectarUsuario) {
-        fastify.desconectarUsuario(userId)
+        fastify.desconectarUsuario(userId, 'Contraseña modificada')
+      }
+    } else if (!usuarioActualizado.activo || (uTargetRolPrevio === 'admin' && usuarioActualizado.rol !== 'admin')) {
+      if (fastify.desconectarUsuario) {
+        fastify.desconectarUsuario(userId, 'Rol modificado o cuenta desactivada')
       }
     }
 
