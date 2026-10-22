@@ -536,6 +536,12 @@ async function hubPlugin (fastify) {
     ws.userId = user.id
     ws.isAlive = true
 
+    // Garantizar UNA SOLA CONEXIÓN activa por usuario: si ya tenía sockets abiertos,
+    // terminarlos de inmediato antes de suscribir el nuevo socket.
+    if (user.id && user.id !== 0) {
+      fastify.desconectarUsuario(user.id, 'Sesión reemplazada por nueva conexión')
+    }
+
     // Suscribir socket al canal verificado
     suscribir(canal, ws)
     if (canal.startsWith('mesa:')) {
@@ -671,13 +677,20 @@ async function hubPlugin (fastify) {
   })
 
   // ── Helper para desconectar sockets por usuario en Logout (WS-008) ────────
-  fastify.decorate('desconectarUsuario', function (userId) {
+  fastify.decorate('desconectarUsuario', function (userId, motivo = 'Sesión cerrada') {
     const uid = String(userId)
     const conns = userSockets.get(uid)
     if (conns) {
-      for (const ws of conns) {
+      for (const ws of Array.from(conns)) {
         try {
-          ws.close(4401, 'Sesión cerrada')
+          ws.close(4401, motivo)
+          // Desuscribir de inmediato de todos los canales para evitar sockets zombis en memoria
+          desuscribir(ws)
+          if (typeof ws.terminate === 'function') {
+            setImmediate(() => {
+              try { ws.terminate() } catch (_) {}
+            })
+          }
         } catch (_) {}
       }
       userSockets.delete(uid)

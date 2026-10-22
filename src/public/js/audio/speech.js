@@ -112,6 +112,8 @@ export function cancelSpeech() {
   _activeUtterance = null;
 }
 
+let _ultimoAudio = { texto: '', timestamp: 0 };
+
 /**
  * Anuncia verbalmente un turno a una ventanilla.
  * Formato conciso: "Turno {numero}, Mesa {mesa}"
@@ -136,8 +138,20 @@ export function speakCall({ numero, mesa_numero }) {
     const mesaLimpia = !Number.isNaN(Number(mesa_numero)) ? Number(mesa_numero) : mesa_numero;
     const texto = `Turno ${numLimpio}, Mesa ${mesaLimpia}`;
 
+    const ahora = Date.now();
+    // Guardia anti-duplicación: si el mismo anuncio fue emitido hace menos de 3.5 s,
+    // descartar la emisión repetida para evitar que suene dos veces
+    if (_ultimoAudio.texto === texto && (ahora - _ultimoAudio.timestamp < 3500)) {
+      console.warn(`[SPEECH] Ignorando locución duplicada para "${texto}" (${ahora - _ultimoAudio.timestamp}ms transcurridos)`);
+      return resolve();
+    }
+    _ultimoAudio = { texto, timestamp: ahora };
+
     try {
       const ss = window.speechSynthesis;
+
+      // Cancelar cualquier audio anterior acumulado para que nunca se encimen dos voces
+      try { ss.cancel(); } catch (_) {}
 
       if (!_cachedVoice) {
         _seleccionarVozEspanola();

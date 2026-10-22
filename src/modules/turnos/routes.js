@@ -553,7 +553,9 @@ module.exports = async function turnosRoutes (fastify) {
     // Registrar cooldown
     fastify._cooldownsRellamado.set(mesa_id, ahora)
 
-    const evento_id = crypto.randomUUID()
+    // Evento ID determinístico por ventana de cooldown (evita duplicación si llegan ráfagas en milisegundos idénticos)
+    const ventanaCooldown = Math.floor(ahora / 3000)
+    const evento_id = `rellamado_${mesa_id}_${turno.id}_${ventanaCooldown}`
     const payloadRellamado = {
       evento_id,
       turno:       turno.numero,

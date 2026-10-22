@@ -137,19 +137,30 @@ module.exports = async function authRoutes (fastify) {
   fastify.post('/refresh', async (request, reply) => {
     const refreshToken = request.cookies?.refresh_token
     if (!refreshToken) {
+      reply.clearCookie('refresh_token', { path: '/auth/refresh' })
+      reply.clearCookie('turnero_token', { path: '/' })
       return reply.status(401).send({
         error: { codigo: 'sesion_expirada', mensaje: 'Sesion expirada. Inicie sesion nuevamente.' }
       })
     }
 
-    const { token } = await refresh(fastify, { refreshToken })
-    reply.setCookie('turnero_token', token, {
-      httpOnly: true,
-      secure:   process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path:     '/'
-    })
-    return reply.status(200).send({ token })
+    try {
+      const { token } = await refresh(fastify, { refreshToken })
+      reply.setCookie('turnero_token', token, {
+        httpOnly: true,
+        secure:   process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path:     '/'
+      })
+      return reply.status(200).send({ token })
+    } catch (err) {
+      reply.clearCookie('refresh_token', { path: '/auth/refresh' })
+      reply.clearCookie('turnero_token', { path: '/' })
+      const status = err.statusCode || 401
+      return reply.status(status).send({
+        error: { codigo: 'sesion_expirada', mensaje: err.message || 'Sesion expirada.' }
+      })
+    }
   })
 
   // ── GET /auth/me — Estado de sesion para recargas de index.html (INC-3) ───

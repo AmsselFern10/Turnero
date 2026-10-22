@@ -96,6 +96,20 @@ export class TurneroWSClient {
   }
 
   /**
+   * Elimina todos los listeners de un tipo específico o todos los listeners registrados.
+   * @param {string} [tipo]
+   */
+  removeAllListeners(tipo) {
+    if (tipo) {
+      this.listeners.delete(tipo);
+    } else {
+      this.listeners.clear();
+      this.statusListeners.clear();
+    }
+    return this;
+  }
+
+  /**
    * Suscribe un listener a cambios de estado de red/conexión.
    * @param {Function} callback - ({ status, attempt, nextDelay }) => void
    */

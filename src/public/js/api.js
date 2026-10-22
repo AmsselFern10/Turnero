@@ -181,12 +181,19 @@ class ApiClient {
     sessionStorage.removeItem('turnero_jwt');
     sessionStorage.removeItem('turnero_user');
 
-    if (redirect) {
-      if (window.location.pathname !== '/index.html' && window.location.pathname !== '/') {
+    // BORRADO OBLIGATORIO DE LA SESIÓN COMPARTIDA EN LOCALSTORAGE
+    // Evita que getToken() y getUser() vuelvan a hidratar el token caducado tras reinicios de servidor
+    try {
+      localStorage.removeItem('turnero_active_session');
+    } catch (_) {}
+
+    if (redirect && typeof window !== 'undefined') {
+      const pathname = window.location.pathname;
+      if (pathname !== '/index.html' && pathname !== '/') {
         window.location.href = '/index.html';
-      } else {
-        window.location.reload();
       }
+      // Si ya estamos en /index.html o /, NUNCA recargar la página.
+      // Recargar con tokens inválidos causaba bucle infinito y parpadeo continuo.
     }
   }
 
@@ -242,7 +249,11 @@ class ApiClient {
         return data.token;
       } catch (err) {
         console.warn('[API] Sesión expirada definitivamente:', err.message);
-        this.clearSession(true);
+        // Si estamos en la página de login (/index.html o /), limpiar sin recargar para no crear bucle de parpadeo
+        const isLoginPage = typeof window !== 'undefined' && (
+          window.location.pathname === '/index.html' || window.location.pathname === '/'
+        );
+        this.clearSession(!isLoginPage);
         throw err;
       } finally {
         this.refreshPromise = null;
@@ -300,7 +311,10 @@ class ApiClient {
     if (response.status === 401 && !options._isRetry && !isPublic) {
       // Evitar loop infinito si la ruta que dio 401 era el propio /auth/refresh o /auth/login
       if (endpoint.includes('/auth/refresh') || endpoint.includes('/auth/login')) {
-        this.clearSession(true);
+        const isLoginPage = typeof window !== 'undefined' && (
+          window.location.pathname === '/index.html' || window.location.pathname === '/'
+        );
+        this.clearSession(!isLoginPage);
         throw new Error('Credenciales inválidas o expiradas');
       }
 

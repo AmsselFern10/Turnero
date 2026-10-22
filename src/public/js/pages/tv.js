@@ -448,6 +448,10 @@ export function tvView() {
     // ─────────────────────────────────────────────────────────────────────────
 
     _connectWS() {
+      if (this._ws) {
+        this._ws.connect();
+        return;
+      }
       this._ws = new TurneroWSClient({ canal: 'tv:global' });
 
       this._ws.onStatusChange(({ status, attempt, nextDelay }) => {
@@ -638,6 +642,20 @@ export function tvView() {
         es_rezagado: !!payload.es_rezagado
       };
 
+      // Deduplicación estricta: si el turno es idéntico al que está en el Hero y llegó hace menos de 4 s,
+      // o si ya existe un turno idéntico para la misma mesa esperando en cola, descartar duplicado.
+      const esDuplicadoEnHero = this.ultimoLlamado &&
+        Number(this.ultimoLlamado.numero) === item.numero &&
+        String(this.ultimoLlamado.mesa_numero) === String(item.mesa_numero) &&
+        (Date.now() - new Date(this.ultimoLlamado.llamado_en).getTime() < CFG.tiempoVisualizacionMs);
+
+      const esDuplicadoEnCola = this._cola.length > 0 &&
+        this._cola.some(c => c.numero === item.numero && String(c.mesa_numero) === String(item.mesa_numero));
+
+      if (esDuplicadoEnHero || esDuplicadoEnCola) {
+        return;
+      }
+
       // Deduplicación para rezagados: si el operador presiona dos veces o el servidor reenvía,
       // limitar a 1 rezagado/re-llamado pendiente por número de turno en la cola activa.
       if (item.es_rezagado && this._cola.some(c => (c.es_rezagado || c.tipo === 'rellamado') && c.numero === item.numero)) {
@@ -698,6 +716,11 @@ export function tvView() {
       // Limitar a 1 re-llamado/rezagado pendiente por número de turno en la cola activa.
       // (Después de reproducirse, se puede volver a re-llamar sin restricción.)
       if (this._cola.some(c => (c.tipo === 'rellamado' || c.es_rezagado) && c.numero === Number(numero))) {
+        return;
+      }
+
+      // Si el hero actual ya está reproduciendo el re-llamado de este turno, descartar emisión duplicada
+      if (this.ultimoLlamado && this.glowState === 'rellamado' && Number(this.ultimoLlamado.numero) === Number(numero)) {
         return;
       }
 

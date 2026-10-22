@@ -116,6 +116,10 @@ export function loginView() {
         this._decidirPasoPostLogin(usuario);
       } catch (_) {
         api.clearSession(false);
+        this.step = 'login';
+        this.currentUser = null;
+        this.mesaPreAsignada = null;
+        this.loading = false;
       }
     },
 
