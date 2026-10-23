@@ -440,7 +440,7 @@ async function enviarSnapshot (ws, fastify, user) {
 
 // Plugin Fastify envuelto con fastify-plugin
 async function hubPlugin (fastify) {
-  const HEARTBEAT_INTERVAL = 5_000 // 5s para purga rápida de sockets muertos en LAN (RF-WS-06)
+  const HEARTBEAT_INTERVAL = 30_000 // 30s (RF-WS-06)
 
   /**
    * Endpoint WebSocket autenticado y protegido contra IDOR (RF-WS-02, RF-WS-03).
@@ -535,12 +535,6 @@ async function hubPlugin (fastify) {
 
     ws.userId = user.id
     ws.isAlive = true
-
-    // Garantizar UNA SOLA CONEXIÓN activa por usuario: si ya tenía sockets abiertos,
-    // terminarlos de inmediato antes de suscribir el nuevo socket.
-    if (user.id && user.id !== 0) {
-      fastify.desconectarUsuario(user.id, 'Sesión reemplazada por nueva conexión')
-    }
 
     // Suscribir socket al canal verificado
     suscribir(canal, ws)

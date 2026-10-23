@@ -218,7 +218,7 @@
   border-radius: 0.75rem;
   width: 100%;
   padding: 1rem;
-  text-align: left !important;
+  text-align: left;
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -227,9 +227,6 @@
   -webkit-user-select: none;
   user-select: none;
   text-decoration: none;
-}
-.card-choice * {
-  text-align: left;
 }
 .card-choice:hover:not(:disabled) {
   border-color: var(--primary-cobalt);
@@ -366,22 +363,12 @@
   transition: transform 150ms ease;
 }
 .icon-box-md {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.75rem; /* 12px rounded-xl */
   width: 3rem;   /* 48px w-12 */
   height: 3rem;  /* 48px h-12 */
-  flex-shrink: 0;
 }
 .icon-box-lg {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 1rem; /* 16px rounded-2xl */
   width: 3.5rem; /* 56px w-14 */
   height: 3.5rem;/* 56px h-14 */
-  flex-shrink: 0;
 }
 .icon-box-primary {
   background-color: var(--primary-light);
@@ -607,7 +594,6 @@
   border-radius: 0.75rem;
   padding: 0.75rem;
   font-size: 0.75rem;
-  text-align: left;
 }
 
 .alert-warning {
@@ -617,7 +603,6 @@
   border-radius: 0.75rem;
   padding: 0.75rem 1rem;
   font-size: 0.75rem;
-  text-align: left;
 }
 
 .alert-success {
@@ -627,7 +612,6 @@
   border-radius: 0.75rem;
   padding: 0.75rem 1rem;
   font-size: 0.75rem;
-  text-align: left;
 }
 
 /* ── 11. Controles Tipo Switch (.switch-*) ──────────────────────────────────── */

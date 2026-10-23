@@ -104,7 +104,6 @@ export function isSpeechBlocked() {
  * Cancela cualquier locución en curso de forma explícita.
  */
 export function cancelSpeech() {
-  _speechInProgress = false;
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     try {
       window.speechSynthesis.cancel();
@@ -114,7 +113,6 @@ export function cancelSpeech() {
 }
 
 let _ultimoAudio = { texto: '', timestamp: 0 };
-let _speechInProgress = false;
 
 /**
  * Anuncia verbalmente un turno a una ventanilla.
@@ -141,20 +139,13 @@ export function speakCall({ numero, mesa_numero }) {
     const texto = `Turno ${numLimpio}, Mesa ${mesaLimpia}`;
 
     const ahora = Date.now();
-    // Guardia anti-duplicación estricta (5s): si el mismo anuncio fue emitido hace menos de 5 s, descartar
-    if (_ultimoAudio.texto === texto && (ahora - _ultimoAudio.timestamp < 5000)) {
+    // Guardia anti-duplicación: si el mismo anuncio fue emitido hace menos de 3.5 s,
+    // descartar la emisión repetida para evitar que suene dos veces
+    if (_ultimoAudio.texto === texto && (ahora - _ultimoAudio.timestamp < 3500)) {
       console.warn(`[SPEECH] Ignorando locución duplicada para "${texto}" (${ahora - _ultimoAudio.timestamp}ms transcurridos)`);
       return resolve();
     }
-
-    // Mutex anti-solapamiento: si ya hay una locución en curso muy reciente (< 3s), descartar para evitar voces simultáneas
-    if (_speechInProgress && (ahora - _ultimoAudio.timestamp < 3000)) {
-      console.warn(`[SPEECH] Otra locución en curso para "${_ultimoAudio.texto}". Evitando solapamiento.`);
-      return resolve();
-    }
-
     _ultimoAudio = { texto, timestamp: ahora };
-    _speechInProgress = true;
 
     try {
       const ss = window.speechSynthesis;
@@ -189,7 +180,6 @@ export function speakCall({ numero, mesa_numero }) {
       const finalizar = (bloqueado = false) => {
         if (finalizado) return;
         finalizado = true;
-        _speechInProgress = false;
         if (timeoutSeguridad) clearTimeout(timeoutSeguridad);
         if (_activeUtterance === utterance) {
           _activeUtterance = null;

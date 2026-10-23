@@ -497,16 +497,6 @@ export function panelMesaView() {
           return; // No ejecutar el finally normal
         }
 
-        if (err.isTimeout || err.name === 'TimeoutError') {
-          this._llamarKey = null;
-          showToast({
-            message: 'Servidor fuera de línea o sin respuesta. La orden fue cancelada y no se enviará.',
-            type: 'warning',
-            duration: 4000
-          });
-          return;
-        }
-
         if (err.status === 409 || err.codigo === 'sin_turnos_en_espera' || msg.toLowerCase().includes('agotado') || msg.toLowerCase().includes('espera')) {
           this._llamarKey = null;
           if (this.modo === 'kiosko_web' || err.codigo === 'sin_turnos_en_espera' || msg.toLowerCase().includes('espera')) {
@@ -1188,11 +1178,7 @@ export function panelMesaView() {
       this.ws.on('auth_error', async ({ code, reason }) => {
         console.warn('[MESA] WebSocket error de autorización:', code, reason);
         if (code === 4401 || code === 1008) {
-          // Sesión cerrada en el servidor (nuevo login en otro dispositivo).
-          // Desconectar el WS primero para cancelar cualquier timer de reconexión y evitar parpadeo.
-          if (this.ws && typeof this.ws.disconnect === 'function') {
-            this.ws.disconnect();
-          }
+          // Sesión cerrada en el servidor (logout en otra pestaña)
           api.clearSession(true);
           return;
         }

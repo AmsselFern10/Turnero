@@ -183,6 +183,8 @@ body {
   box-shadow: var(--shadow-xs);
 }
 
+}
+
 /* ── 8. Utilidades de Accesibilidad y Controles ──────────────────────────── */
 .sr-only {
   position: absolute;

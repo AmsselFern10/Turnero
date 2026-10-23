@@ -300,31 +300,11 @@ class ApiClient {
     }
 
     let response;
-    const timeoutMs = options.timeout || (endpoint.includes('/turnos/llamar') ? 4000 : 7000);
-    const controller = new AbortController();
-    const timeoutTimer = setTimeout(() => {
-      controller.abort(new Error('TIMEOUT_CONEXION'));
-    }, timeoutMs);
-
-    if (options.signal) {
-      options.signal.addEventListener('abort', () => controller.abort(options.signal.reason), { once: true });
-    }
-    config.signal = controller.signal;
-
     try {
       response = await fetch(endpoint, config);
     } catch (networkError) {
-      if (controller.signal.aborted) {
-        console.warn(`[API] Solicitud abortada por timeout (${timeoutMs}ms) en ${endpoint}`);
-        const errTimeout = new Error('El servidor no responde a tiempo. La acción fue cancelada para proteger el sistema.');
-        errTimeout.name = 'TimeoutError';
-        errTimeout.isTimeout = true;
-        throw errTimeout;
-      }
       console.error(`[API] Error de red al solicitar ${endpoint}:`, networkError);
       throw networkError;
-    } finally {
-      clearTimeout(timeoutTimer);
     }
 
     // Interceptor 401 Unauthorized: intento de renovación transparente (solo en modo autenticado)

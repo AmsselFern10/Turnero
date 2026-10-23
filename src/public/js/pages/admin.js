@@ -3224,17 +3224,6 @@ export function adminView() {
       this.ws = new TurneroWSClient({ token, canal: 'admin:all' });
       this.ws.onStatusChange(({ status }) => { this.wsConnected = status === 'CONECTADO'; });
 
-      // Sesión reemplazada por nuevo inicio en otro dispositivo (código 4401) o token revocado (1008).
-      // Desconectar el WS primero para cancelar cualquier timer de reconexión, luego limpiar y redirigir.
-      this.ws.on('auth_error', ({ code, reason }) => {
-        console.warn('[ADMIN] WebSocket auth_error:', code, reason);
-        // Terminar la conexión inmediatamente para evitar parpadeo de reconexión
-        if (this.ws && typeof this.ws.disconnect === 'function') {
-          this.ws.disconnect();
-        }
-        api.clearSession(true);
-      });
-
       this.ws.on('snapshot', async () => { await this.cargarTodo(); this._actualizarAlertaLote(); });
 
       let _syncPending = false;
