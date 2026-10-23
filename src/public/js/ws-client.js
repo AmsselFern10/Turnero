@@ -25,7 +25,7 @@ export class TurneroWSClient {
    * @param {number|string} [options.mesaId] - ID numérico de la mesa si es operador.
    * @param {number} [options.baseDelay=1000] - Tiempo base en ms para backoff (1s).
    * @param {number} [options.maxDelay=30000] - Tiempo máximo en ms para backoff (30s).
-   * @param {number} [options.heartbeatInterval=30000] - Intervalo de ping en ms (30s).
+   * @param {number} [options.heartbeatInterval=20000] - Intervalo de ping en ms (20s LAN tolerante).
    * @param {number} [options.silenceTimeout=60000] - Tiempo máximo sin actividad antes de reconectar (60s).
    */
   constructor(options = {}) {
@@ -230,7 +230,7 @@ export class TurneroWSClient {
           }
         }, 10000);
 
-        // Iniciar ciclo simétrico de Heartbeat cada 30 segundos
+        // Iniciar ciclo simétrico de Heartbeat cada 20 segundos (tolerante para LAN)
         this._startHeartbeat();
 
         // Si fue una reconexión, solicitar snapshot de sincronización (RF-WS-05)
@@ -241,6 +241,10 @@ export class TurneroWSClient {
 
       socket.onmessage = (event) => {
         if (currentGen !== this.connectionGeneration) return;
+        // Cualquier frame del servidor (datos, pong de aplicación JSON) renueva lastActivityTime.
+        // Los pings W3C nativos del servidor se responden automáticamente por el navegador
+        // y los pongs nativos RFC 6455 no son visibles desde JS — cubiertos por onmessage vía
+        // el pong de aplicación JSON (tipo:'pong') que el hub siempre responde junto al pong W3C.
         this.lastActivityTime = Date.now();
         this._handleMessage(event.data);
       };
@@ -391,10 +395,10 @@ export class TurneroWSClient {
   _startHeartbeat() {
     this._stopHeartbeat();
     this.heartbeatTimer = setInterval(() => {
-      // 1. Detectar corte silencioso: si han pasado más de 60s sin actividad, forzar reconexión
+      // 1. Detectar corte silencioso: si han pasado más de silenceTimeout ms (40s) sin actividad, forzar reconexión
       const elapsedSilence = Date.now() - this.lastActivityTime;
       if (elapsedSilence > this.silenceTimeout) {
-        console.warn(`[WS] Corte silencioso detectado (${(elapsedSilence / 1000).toFixed(0)}s sin tráfico). Reiniciando socket...`);
+        console.warn(`[WS] Corte silencioso detectado (${(elapsedSilence / 1000).toFixed(0)}s sin tráfico, umbral=${this.silenceTimeout / 1000}s). Reiniciando socket...`);
         if (this.ws) {
           try { this.ws.close(1001, 'silencio_detectado'); } catch (_) {}
         }

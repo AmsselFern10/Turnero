@@ -297,6 +297,9 @@ export function tvView() {
       }
       if (this._ws)            { this._ws.disconnect();              this._ws            = null; }
       if (this._staleCheckTimer) { clearInterval(this._staleCheckTimer); this._staleCheckTimer = null; }
+      // Fix 2: vaciar mapas de deduplicación para no bloquear turnos legítimos tras refresh
+      if (this._turnosHabladosRecientes) { this._turnosHabladosRecientes.clear(); this._turnosHabladosRecientes = null; }
+      if (this._seqVistos)               { this._seqVistos.clear();               this._seqVistos               = null; }
     },
 
     // ─────────────────────────────────────────────────────────────────────────
