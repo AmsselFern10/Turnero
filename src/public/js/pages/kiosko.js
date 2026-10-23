@@ -78,8 +78,8 @@ export function kioskoView () {
     toastMessage: '',
     showToast: false,
     qrFallback: false,
-    wsConectado: true,
-    redLocalOk: true,
+    wsConectado: false,  // Fix 1: inicia en false; onStatusChange lo activa al conectar
+    redLocalOk: false,
     impresionAutomatica: false,   // Refleja config kiosko_impresion_automatica (solo tablet)
 
     // Idempotencia y dispositivo
@@ -760,7 +760,13 @@ export function kioskoView () {
      * Conexión WebSocket al canal público único 'kiosko:publico' (RF-WS-01)
      */
     conectarWebSocketPublico () {
-      if (this.ws) return;
+      // Fix 2: guard robusto — solo evitar duplicar si el WS está en ciclo activo
+      if (this.ws && (this.ws.status === 'CONECTADO' || this.ws.status === 'CONECTANDO' || this.ws.status === 'RECONECTANDO')) return;
+      // Si existe pero murió silenciosamente (error sin destroy), limpiar y recrear
+      if (this.ws) {
+        try { this.ws.disconnect(); } catch (_) {}
+        this.ws = null;
+      }
 
       this.ws = new TurneroWSClient({
         canal: 'kiosko:publico',
@@ -778,10 +784,11 @@ export function kioskoView () {
           const miNum = this.seguimientoData.numero || this.ticketData.numero;
           const ult = payload.ultimo_llamado;
           if (ult && miNum && Number(ult.numero) === Number(miNum)) {
-            if (!ult.origen || ult.origen === 'kiosko_web') {
-              this.sincronizarSeguimiento(this.ticketData.token);
-            }
+            // Fix 3: match exacto de número → sincronizar sin importar el origen
+            // (cubre modo mixto voucher+kiosko donde el campo origen puede variar)
+            this.sincronizarSeguimiento(this.ticketData.token);
           } else if (this.seguimientoData.estado === 'esperando' && miNum) {
+            // Para posición en cola solo contar kiosko_web (los voucher_fisico no compiten)
             if (ult && ult.numero && (!ult.origen || ult.origen === 'kiosko_web')) {
               this.seguimientoData.posicion = Math.max(0, miNum - Number(ult.numero) - 1);
             } else if (payload.proximo_numero && miNum >= payload.proximo_numero) {
@@ -801,15 +808,14 @@ export function kioskoView () {
         if (!payload) return;
         const miNumero = this.seguimientoData.numero || this.ticketData.numero;
         if (miNumero && Number(payload.numero) === Number(miNumero)) {
-          if (!payload.origen || payload.origen === 'kiosko_web') {
-            const nombreMesa = payload.mesa_numero ? `Mesa ${payload.mesa_numero}` : (payload.mesa_nombre || 'Ventanilla');
-            this.seguimientoData.mesa = nombreMesa;
-            this.seguimientoData.mesa_numero = payload.mesa_numero || null;
-            this.seguimientoData.estado = 'en_atencion';
-            this.emitirAlertaLlamado(nombreMesa);
-            if (this.ticketData.token) {
-              this.sincronizarSeguimiento(this.ticketData.token);
-            }
+          // Fix 3: match exacto → notificar y sincronizar sin importar el origen del turno
+          const nombreMesa = payload.mesa_numero ? `Mesa ${payload.mesa_numero}` : (payload.mesa_nombre || 'Ventanilla');
+          this.seguimientoData.mesa = nombreMesa;
+          this.seguimientoData.mesa_numero = payload.mesa_numero || null;
+          this.seguimientoData.estado = 'en_atencion';
+          this.emitirAlertaLlamado(nombreMesa);
+          if (this.ticketData.token) {
+            this.sincronizarSeguimiento(this.ticketData.token);
           }
         }
       });
@@ -969,8 +975,11 @@ export function kioskoView () {
      */
     async sincronizarSeguimiento (token) {
       if (!token) return;
+      // Fix 4: si ya hay una petición en vuelo, ignorar la concurrente (evita HTTP doble por eventos WS simultáneos)
+      if (this.estaActualizando) return;
       this.estaActualizando = true;
       this._lastSyncTime = Date.now();
+
 
       try {
         const res = await api.get(`/turnos/mi-turno/${token}`, { public: true });
