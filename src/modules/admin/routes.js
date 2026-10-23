@@ -997,6 +997,13 @@ module.exports = async function adminRoutes (fastify) {
         }
         return null
       },
+      fondo_imagen_escala: (v) => {
+        const n = parseInt(v, 10)
+        if (isNaN(n) || n < 50 || n > 200) {
+          return 'La escala del fondo de pantalla debe ser un número entero entre 50 y 200.'
+        }
+        return null
+      },
       tv_opacidad_principal: (v) => {
         const n = parseInt(v, 10)
         if (isNaN(n) || n < 20 || n > 100) {
@@ -1326,6 +1333,31 @@ module.exports = async function adminRoutes (fastify) {
         message: msg
       })
     }
+  })
+
+  // ── GET /admin/red-info — IP LAN del servidor para autocompletar URL Kiosko ─
+  // Detecta la IP local de la interfaz de red activa (no loopback).
+  // Usado por el panel admin para pre-rellenar "Dirección Local (Wi-Fi Campus / LAN)"
+  // sin que el administrador tenga que ejecutar ipconfig manualmente.
+  fastify.get('/red-info', {
+    preHandler: [fastify.authorizeRol('admin')]
+  }, async (request, reply) => {
+    const { getLanIpAddress } = require('../kiosko/service')
+    const lanIp = getLanIpAddress()
+    const port  = process.env.PORT || 3000
+    const proto = process.env.NODE_ENV === 'production' ? 'https' : 'http'
+
+    const urlLanSugerida = (lanIp === 'localhost')
+      ? null  // No se pudo detectar una IP real
+      : `${proto}://${lanIp}:${port}`
+
+    return reply.send({
+      lan_ip:           lanIp,
+      puerto:           Number(port),
+      protocolo:        proto,
+      url_lan_sugerida: urlLanSugerida,
+      es_localhost:     lanIp === 'localhost'
+    })
   })
 }
 

@@ -18,7 +18,7 @@
 
 import { api } from '../api.js';
 import { TurneroWSClient } from '../ws-client.js';
-import { formatTimer } from '../utils.js';
+import { formatTimer, initFondoPersonalizado } from '../utils.js';
 
 let activeAdminInstance = null;
 
@@ -169,6 +169,10 @@ export function adminView() {
       activo:          true
     },
 
+    // IP LAN del servidor detectada automáticamente (se carga una vez al iniciar)
+    lanIpDetectada:   null,  // ej: 'http://192.168.1.100:3000'
+    lanIpDetectadaRaw: null, // ej: '192.168.1.100'
+
     config: {
       alerta_vouchers_restantes:    20,
       kiosko_web_activo:            false,
@@ -190,17 +194,20 @@ export function adminView() {
       tv_opacidad_secundaria:       100,
       zona_horaria:                 'America/Tegucigalpa',
       fondo_imagen_url:             '',
-      fondo_imagen_activa:          false
+      fondo_imagen_activa:          false,
+      fondo_imagen_escala:          100
     },
     avisoGuardadoPrincipal:          false,
     avisoGuardadoSecundaria:         false,
     avisoGuardadoOpacidadPrincipal:  false,
     avisoGuardadoOpacidadSecundaria: false,
+    avisoGuardadoEscalaFondo:        false,
     _debounceEscalaPrincipal:    null,
     _debounceEscalaSecundaria:   null,
     _debounceEscalaTv:           null,
     _debounceOpacidadPrincipal:  null,
     _debounceOpacidadSecundaria: null,
+    _debounceEscalaFondo:        null,
     kioskoForm: {
       tope_diario:      0,
       modo_uso:         'asistido',
@@ -437,6 +444,8 @@ export function adminView() {
       return (modo === 'asistido' || modo === 'empleado') ? '/kiosko.html?modo=tablet' : '/kiosko.html';
     },
 
+    // URL Kiosko: si no hay config manual usa la IP LAN detectada por el servidor,
+    // nunca localhost (que solo funciona en la PC del servidor).
     get urlTabletPorton() {
       const base = (this.config?.kiosko_url_base || this.config?.kiosko_url_publica || '').trim();
       if (base) {
@@ -444,7 +453,9 @@ export function adminView() {
         const sinKiosko = urlLimpia.endsWith('/kiosko.html') ? urlLimpia : `${urlLimpia}/kiosko.html`;
         return `${sinKiosko}?modo=tablet`;
       }
-      return typeof window !== 'undefined' ? `${window.location.origin}/kiosko.html?modo=tablet` : '/kiosko.html?modo=tablet';
+      // Fallback LAN: usa la IP real del servidor (no window.location.origin = localhost)
+      const origen = this.lanIpDetectada || (typeof window !== 'undefined' ? window.location.origin : '');
+      return `${origen}/kiosko.html?modo=tablet`;
     },
 
     get urlEstudianteQR() {
@@ -454,7 +465,9 @@ export function adminView() {
         const sinKiosko = urlLimpia.endsWith('/kiosko.html') ? urlLimpia : `${urlLimpia}/kiosko.html`;
         return `${sinKiosko}?modo=estudiante`;
       }
-      return typeof window !== 'undefined' ? `${window.location.origin}/kiosko.html?modo=estudiante` : '/kiosko.html?modo=estudiante';
+      // Fallback LAN: usa la IP real del servidor (no window.location.origin = localhost)
+      const origen = this.lanIpDetectada || (typeof window !== 'undefined' ? window.location.origin : '');
+      return `${origen}/kiosko.html?modo=estudiante`;
     },
 
     copiarAlPortapapeles(texto, label = 'Enlace') {
@@ -527,7 +540,14 @@ export function adminView() {
       if (!this._configSnapshot) return false;
       const urlActual = (this.config?.fondo_imagen_url || '').trim();
       const urlSnap = (this._configSnapshot?.fondo_imagen_url || '').trim();
-      return urlActual !== urlSnap;
+      const escalaActual = Number(this.config?.fondo_imagen_escala) || 100;
+      const escalaSnap = Number(this._configSnapshot?.fondo_imagen_escala) || 100;
+      return urlActual !== urlSnap || escalaActual !== escalaSnap;
+    },
+
+    get previewStyleFondo() {
+      const escala = (parseInt(this.config?.fondo_imagen_escala, 10) || 100) / 100;
+      return `transform: scale(${escala});`;
     },
 
     get sistemaHasChanges() {
@@ -941,6 +961,7 @@ export function adminView() {
       await this.cargarTodo();
       this._actualizarAlertaLote();
       this.initWebSocket();
+      initFondoPersonalizado(this.ws);
 
       // Sincronización pasiva en segundo plano cada 5 minutos (resiliencia óptima)
       this._pollTimer = setInterval(async () => {
@@ -952,7 +973,7 @@ export function adminView() {
     destroy() {
       if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
       if (this._pollTimer)  { clearInterval(this._pollTimer);  this._pollTimer = null; }
-      if (this.ws) { this.ws.disconnect(); this.ws = null; }
+      if (this.ws) { this.ws.disconnect(); this.ws = null; this._ws = null; }
       if (activeAdminInstance === this) activeAdminInstance = null;
     },
 
@@ -969,11 +990,28 @@ export function adminView() {
     async cargarTodo() {
       const r = await Promise.allSettled([
         this.cargarKPIs(), this.cargarMesas(), this.cargarLotes(),
-        this.cargarUsuarios(), this.cargarConfiguracion()
+        this.cargarUsuarios(), this.cargarConfiguracion(), this.cargarRedInfo()
       ]);
-      ['KPIs','Mesas','Lotes','Usuarios','Config'].forEach((n, i) => {
+      ['KPIs','Mesas','Lotes','Usuarios','Config','Red'].forEach((n, i) => {
         if (r[i].status === 'rejected') console.warn(`[ADMIN] Fallo ${n}:`, r[i].reason);
       });
+    },
+
+    // Carga la IP LAN detectada por el servidor para pre-rellenar el campo de URL Kiosko
+    async cargarRedInfo() {
+      try {
+        const info = await api.get('/admin/red-info');
+        if (info?.url_lan_sugerida) {
+          this.lanIpDetectada   = info.url_lan_sugerida;  // 'http://192.168.1.100:3000'
+          this.lanIpDetectadaRaw = info.lan_ip;            // '192.168.1.100'
+          // Auto-sugerir en el campo si aún está vacío
+          if (!this.config.kiosko_url_base && !info.es_localhost) {
+            this.cfgKioskoUrlBase = info.url_lan_sugerida;
+          }
+        }
+      } catch (_) {
+        // No crítico: si falla, los getters de URL caen a window.location.origin
+      }
     },
 
     async cargarDashboard() {
@@ -1067,6 +1105,7 @@ export function adminView() {
         this.config.zona_horaria              = c.zona_horaria || 'America/Tegucigalpa';
         this.config.fondo_imagen_url          = c.fondo_imagen_url || '';
         this.config.fondo_imagen_activa       = c.fondo_imagen_activa === 'true' || c.fondo_imagen_activa === true;
+        this.config.fondo_imagen_escala       = parseInt(c.fondo_imagen_escala || '100', 10) || 100;
         this.kioskoUltimoNumero               = res.kiosko_ultimo_numero || 0;
       }
       this.validarFondoUrl();
@@ -3096,12 +3135,71 @@ export function adminView() {
     },
 
     _emitirOpacidadEnVivo(clave, valor) {
-      if (this._ws && typeof this._ws.send === 'function') {
+      const client = this.ws || this._ws;
+      if (client && typeof client.send === 'function') {
         try {
-          this._ws.send('preview_opacidad_tv', {
+          client.send('preview_opacidad_tv', {
             tipo: clave === 'tv_opacidad_principal' ? 'principal' : 'secundaria',
             valor
           });
+        } catch (_) {}
+      }
+    },
+
+    // =========================================================================
+    // ESCALA / ZOOM DE FONDO INSTITUCIONAL
+    // =========================================================================
+
+    async cambiarEscalaFondo(delta) {
+      const actual = parseInt(this.config.fondo_imagen_escala, 10) || 100;
+      const nuevo = Math.min(200, Math.max(50, actual + delta));
+      if (nuevo !== this.config.fondo_imagen_escala) {
+        this.config.fondo_imagen_escala = nuevo;
+        this.onInputEscalaFondo();
+        await this._guardarEscalaFondoInmediata(nuevo);
+      }
+    },
+
+    async restablecerEscalaFondo() {
+      if (this.config.fondo_imagen_escala !== 100) {
+        this.config.fondo_imagen_escala = 100;
+        this.onInputEscalaFondo();
+        await this._guardarEscalaFondoInmediata(100);
+      }
+    },
+
+    onInputEscalaFondo() {
+      const val = parseInt(this.config.fondo_imagen_escala, 10) || 100;
+      this.config.fondo_imagen_escala = Math.min(200, Math.max(50, val));
+      try {
+        localStorage.setItem('turnero_fondo_imagen_escala', String(this.config.fondo_imagen_escala));
+      } catch (_) {}
+      this._emitirEscalaFondoEnVivo(this.config.fondo_imagen_escala);
+    },
+
+    async _guardarEscalaFondoInmediata(val) {
+      if (!this.wsConnected) {
+        showToast({ message: 'Sin conexión con el servidor. No se puede guardar la escala.', type: 'danger' });
+        return;
+      }
+      try {
+        localStorage.setItem('turnero_fondo_imagen_escala', String(val));
+      } catch (_) {}
+      try {
+        await api.patch('/admin/configuracion/fondo_imagen_escala', { valor: String(val) });
+        showToast({ message: `Escala de fondo guardada (${val}%)`, type: 'info' });
+        this.avisoGuardadoEscalaFondo = true;
+        setTimeout(() => { this.avisoGuardadoEscalaFondo = false; }, 2500);
+      } catch (err) {
+        showToast({ message: err.mensaje || 'Error al guardar escala del fondo', type: 'danger' });
+      }
+    },
+
+    _emitirEscalaFondoEnVivo(valor) {
+      const client = this.ws || this._ws;
+      if (client && typeof client.send === 'function') {
+        try {
+          client.send('preview_escala_fondo', { valor });
         } catch (_) {}
       }
     },
@@ -3222,6 +3320,7 @@ export function adminView() {
       if (!token) return;
 
       this.ws = new TurneroWSClient({ token, canal: 'admin:all' });
+      this._ws = this.ws;
       this.ws.onStatusChange(({ status }) => { this.wsConnected = status === 'CONECTADO'; });
 
       this.ws.on('snapshot', async () => { await this.cargarTodo(); this._actualizarAlertaLote(); });
