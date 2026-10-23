@@ -20,19 +20,61 @@ let _estadoCacheExpira = 0
 const ESTADO_CACHE_TTL_MS = 4000
 
 /**
- * Obtiene la dirección IP local de la máquina en la red LAN.
+ * Patrones de nombres de interfaz que corresponden a adaptadores VIRTUALES
+ * (VMware, VirtualBox, Hyper-V, WSL, Docker, VPN genéricas, Loopback Win).
+ * Se excluyen para no confundirlos con la red LAN real del campus.
  */
-function getLanIpAddress () {
+const VIRTUAL_IFACE_PATTERNS = [
+  /vmware/i, /virtualbox/i, /vbox/i,
+  /hyper-v/i, /vethernet/i,           // Hyper-V / Windows vEthernet
+  /wsl/i, /docker/i,                   // WSL2 y Docker Desktop
+  /loopback/i, /pseudo/i, /tunnel/i,
+  /tap/i, /tun/i, /vpn/i,
+  /bluetooth/i, /teredo/i, /isatap/i,
+  /6to4/i, /hamachi/i
+]
+
+/**
+ * Devuelve TODAS las direcciones IPv4 LAN reales (excluye loopback y virtuales).
+ * Ordena priorizando rangos RFC-1918 típicos de red local corporativa/campus.
+ */
+function getLanIpAddresses () {
   const interfaces = os.networkInterfaces()
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name] || []) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address
-      }
+  const candidates = []
+
+  for (const [name, addrs] of Object.entries(interfaces)) {
+    // Saltar interfaz si el nombre coincide con patrón virtual
+    if (VIRTUAL_IFACE_PATTERNS.some(p => p.test(name))) continue
+
+    for (const iface of addrs || []) {
+      if (iface.family !== 'IPv4' || iface.internal) continue
+      candidates.push({ ip: iface.address, iface: name })
     }
   }
-  return 'localhost'
+
+  // Ordenar: preferir 192.168.x.x y 10.x.x.x sobre 172.x.x.x (menos común en campus)
+  candidates.sort((a, b) => {
+    const score = ip => {
+      if (ip.startsWith('192.168.')) return 0
+      if (ip.startsWith('10.'))      return 1
+      if (ip.startsWith('172.'))     return 2
+      return 3
+    }
+    return score(a.ip) - score(b.ip)
+  })
+
+  return candidates
 }
+
+/**
+ * Obtiene la dirección IP local más probable de la red LAN real.
+ * Filtra adaptadores virtuales y prefiere rangos RFC-1918 típicos de campus.
+ */
+function getLanIpAddress () {
+  const candidates = getLanIpAddresses()
+  return candidates.length > 0 ? candidates[0].ip : 'localhost'
+}
+
 
 /**
  * Obtiene la fecha actual del sistema según la zona horaria configurada.
@@ -529,6 +571,8 @@ module.exports = {
   consultarMiTurno,
   cancelarTurnosVencidosDiaAnterior,
   getLanIpAddress,
+  getLanIpAddresses,
   resolverUrlSeguimiento,
   invalidarCacheEstado
 }
+

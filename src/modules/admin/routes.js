@@ -1342,21 +1342,27 @@ module.exports = async function adminRoutes (fastify) {
   fastify.get('/red-info', {
     preHandler: [fastify.authorizeRol('admin')]
   }, async (request, reply) => {
-    const { getLanIpAddress } = require('../kiosko/service')
-    const lanIp = getLanIpAddress()
+    const { getLanIpAddress, getLanIpAddresses } = require('../kiosko/service')
     const port  = process.env.PORT || 3000
     const proto = process.env.NODE_ENV === 'production' ? 'https' : 'http'
 
-    const urlLanSugerida = (lanIp === 'localhost')
-      ? null  // No se pudo detectar una IP real
-      : `${proto}://${lanIp}:${port}`
+    const lanIp      = getLanIpAddress()
+    const candidatas = getLanIpAddresses()  // [{ ip, iface }, ...]
+
+    const toUrl = ip => `${proto}://${ip}:${port}`
 
     return reply.send({
-      lan_ip:           lanIp,
-      puerto:           Number(port),
-      protocolo:        proto,
-      url_lan_sugerida: urlLanSugerida,
-      es_localhost:     lanIp === 'localhost'
+      lan_ip:            lanIp,
+      puerto:            Number(port),
+      protocolo:         proto,
+      url_lan_sugerida:  lanIp !== 'localhost' ? toUrl(lanIp) : null,
+      es_localhost:      lanIp === 'localhost',
+      // Todas las IPs candidatas reales (filtradas de virtuales) — por si hay varias NIC
+      todas_las_ips: candidatas.map(c => ({
+        ip:    c.ip,
+        iface: c.iface,
+        url:   toUrl(c.ip)
+      }))
     })
   })
 }
