@@ -17,6 +17,7 @@
 import { api } from '../api.js';
 import { TurneroWSClient } from '../ws-client.js';
 import { playCallChime, initFondoPersonalizado } from '../utils.js';
+import { WebBluetoothThermalPrinter, construirVoucherESCPOS } from '../escpos-printer.js';
 
 function generarUUID () {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -78,9 +79,24 @@ export function kioskoView () {
     toastMessage: '',
     showToast: false,
     qrFallback: false,
-    wsConectado: false,  // Fix 1: inicia en false; onStatusChange lo activa al conectar
+    wsConectado: false,
     redLocalOk: false,
-    impresionAutomatica: false,   // Refleja config kiosko_impresion_automatica (solo tablet)
+    impresionAutomatica: false,
+
+    // Impresión Híbrida (Modo Asistido / Tablet)
+    modalImpresora: false,
+    canalImpresion: 'servidor', // 'servidor' | 'bluetooth' | 'sistema' | 'ninguno'
+    ipTabletPersonalizada: '',
+    impresoraServidorActiva: false,
+    impresoraServidorIp: '',
+    impresoraServidorPuerto: 9100,
+    bluetoothPrinter: null,
+    bluetoothConectado: false,
+    bluetoothDispositivoNombre: '',
+    conectandoBluetooth: false,
+    probandoImpresora: false,
+    mensajePrueba: '',
+    errorPrueba: '',
 
     // Idempotencia y dispositivo
     deviceId: null,
@@ -174,6 +190,61 @@ export function kioskoView () {
       return this.redLocalOk ? 'Red local LAN conectada' : 'Sin conexión';
     },
 
+    get bluetoothDisponible () {
+      return typeof navigator !== 'undefined' && Boolean(navigator.bluetooth);
+    },
+
+    get tieneImpresoraHabilitada () {
+      if (this.canalImpresion === 'ninguno') return false;
+      if (this.canalImpresion === 'bluetooth') return this.bluetoothConectado;
+      if (this.canalImpresion === 'servidor') {
+        return Boolean((this.ipTabletPersonalizada || this.impresoraServidorIp).trim());
+      }
+      if (this.canalImpresion === 'sistema') return true;
+      return false;
+    },
+
+    get badgeImpresoraTexto () {
+      if (!this.esTablet) return '';
+      if (this.canalImpresion === 'ninguno') return 'Sin impresora';
+      if (this.canalImpresion === 'bluetooth') {
+        return this.bluetoothConectado
+          ? (this.bluetoothDispositivoNombre || 'Bluetooth')
+          : 'BT Desconectado';
+      }
+      if (this.canalImpresion === 'servidor') {
+        const ip = (this.ipTabletPersonalizada || this.impresoraServidorIp).trim();
+        return ip ? `LAN: ${ip}` : 'LAN Sin IP';
+      }
+      if (this.canalImpresion === 'sistema') return 'Impresora SO';
+      return 'Impresora';
+    },
+
+    get badgeImpresoraClases () {
+      if (this.canalImpresion === 'ninguno') {
+        return 'bg-slate-100 text-slate-500 border-slate-200';
+      }
+      if (this.canalImpresion === 'bluetooth') {
+        return this.bluetoothConectado
+          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+          : 'bg-amber-50 text-amber-700 border-amber-200';
+      }
+      if (this.canalImpresion === 'servidor') {
+        const tieneIp = Boolean((this.ipTabletPersonalizada || this.impresoraServidorIp).trim());
+        return tieneIp
+          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+          : 'bg-amber-50 text-amber-700 border-amber-200';
+      }
+      if (this.canalImpresion === 'sistema') {
+        return 'bg-blue-50 text-blue-700 border-blue-200';
+      }
+      return 'bg-slate-100 text-slate-600 border-slate-200';
+    },
+
+    get badgeImpresoraTitle () {
+      return 'Configurar canal de impresión (Bluetooth, LAN o Sistema)';
+    },
+
     /**
      * Inicialización del Kiosko
      */
@@ -194,6 +265,9 @@ export function kioskoView () {
           localStorage.removeItem('turnero_modo_tablet');
         } catch (_) {}
       }
+
+      // Inicializar canal de impresión si es tablet
+      this.inicializarImpresora();
 
       // 2. Obtener o generar identificador persistente del dispositivo móvil
       this.inicializarDeviceId();
@@ -330,9 +404,18 @@ export function kioskoView () {
         this.kioskoModoUso = res.modo_uso || 'asistido';
         const esModoAsistido = this.kioskoModoUso === 'asistido' || this.kioskoModoUso === 'empleado';
 
-        // Leer ajuste de impresión automática (solo aplica en modo tablet)
+        // Leer ajuste de impresión automática y datos de impresora del servidor
         if (res.impresion_automatica !== undefined) {
           this.impresionAutomatica = res.impresion_automatica === true;
+        }
+        if (res.impresora_activa !== undefined) {
+          this.impresoraServidorActiva = res.impresora_activa === true;
+        }
+        if (res.impresora_ip !== undefined) {
+          this.impresoraServidorIp = res.impresora_ip || '';
+        }
+        if (res.impresora_puerto !== undefined) {
+          this.impresoraServidorPuerto = parseInt(res.impresora_puerto, 10) || 9100;
         }
 
         if (!this.kioskoActivo) {
@@ -437,14 +520,25 @@ export function kioskoView () {
           this.iniciarCuentaRegresiva(15);
 
           // Manejo del estado de impresión automática
-          if (data.impresion) {
-            if (data.impresion.ok) {
-              this.avisoImpresion = 'Comprobante impreso exitosamente.';
-              this.mostrarToast(`Voucher ${this.formatTicket(data.numero)} enviado a la impresora`);
+          if (this.impresionAutomatica && this.tieneImpresoraHabilitada) {
+            if (this.canalImpresion === 'bluetooth') {
+              this.imprimirTicket(false);
+            } else if (this.canalImpresion === 'servidor' && this.ipTabletPersonalizada) {
+              this.imprimirTicket(false);
+            } else if (data.impresion) {
+              if (data.impresion.ok) {
+                this.avisoImpresion = 'Comprobante impreso de inmediato.';
+                this.mostrarToast(`Voucher ${this.formatTicket(data.numero)} enviado a la impresora`);
+              } else {
+                this.avisoImpresion = `Aviso: No se pudo imprimir (${data.impresion.mensaje}). El turno está registrado y visible en pantalla.`;
+                this.mostrarToast('Aviso: Impresora no disponible');
+              }
             } else {
-              this.avisoImpresion = `Aviso: No se pudo imprimir (${data.impresion.mensaje}). El turno está registrado y visible en pantalla.`;
-              this.mostrarToast('Aviso: Impresora no disponible');
+              this.imprimirTicket(false);
             }
+          } else if (data.impresion && data.impresion.ok) {
+            this.avisoImpresion = 'Comprobante impreso de inmediato.';
+            this.mostrarToast(`Voucher ${this.formatTicket(data.numero)} enviado a la impresora`);
           } else {
             this.avisoImpresion = '';
           }
@@ -520,62 +614,218 @@ export function kioskoView () {
     },
 
     /**
-     * Imprime el voucher.
-     * - TABLET (esTablet=true): llama POST /kiosko/imprimir → impresora ESC/POS en red.
-     *   Si la impresora no esta configurada o falla, muestra el error y ofrece fallback web.
-     * - CELULAR: abre ventana aislada con el voucher → dialogo del sistema (PDF o impresora).
+     * Inicializa la configuración de impresión persistente y Bluetooth
      */
-    async imprimirTicket () {
-      this.isPrinting = true;
-      const num       = this.formatTicket(this.ticketData.numero);
-      const numLimpio = num.replace('#', '');
-
-      // ── MODO TABLET: impresion directa ESC/POS via backend ──────────────────
-      if (this.esTablet) {
-        try {
-          const res = await fetch('/kiosko/imprimir', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              numero:       this.ticketData.numero,
-              formato:      num,
-              modulo:       'Modulo General de Matriculas',
-              tracking_url: this.ticketData.tracking_url || ''
-            })
-          });
-
-          const data = await res.json().catch(() => ({}));
-
-          if (res.ok) {
-            this.mostrarToast(`${num} enviado a la impresora`);
-          } else if (res.status === 409) {
-            // Impresora no configurada → avisar y ofrecer ventana del sistema como fallback
-            this.mostrarToast(`Sin impresora configurada — abriendo dialogo del sistema`);
-            this._abrirVentanaImpresion(num, numLimpio);
-          } else {
-            // Error de red o timeout → mensaje descriptivo
-            this.mostrarToast(data.mensaje || 'Error al enviar a la impresora');
-          }
-        } catch (err) {
-          // Sin conexion al servidor (raro en LAN, pero posible)
-          this.mostrarToast('No se pudo contactar al servidor de impresion');
-          console.error('[Kiosko] Error fetch /kiosko/imprimir:', err);
-        } finally {
-          this.isPrinting = false;
-          this.reiniciarAutoReset();
+    inicializarImpresora () {
+      if (!this.esTablet) return;
+      try {
+        const canalGuardado = localStorage.getItem('turnero_kiosko_canal_impresion');
+        if (canalGuardado && ['servidor', 'bluetooth', 'sistema', 'ninguno'].includes(canalGuardado)) {
+          this.canalImpresion = canalGuardado;
         }
+        this.ipTabletPersonalizada = (localStorage.getItem('turnero_kiosko_impresora_ip') || '').trim();
+      } catch (_) {}
+
+      if (this.bluetoothDisponible && !this.bluetoothPrinter) {
+        this.bluetoothPrinter = new WebBluetoothThermalPrinter({
+          onConnected: (dev) => {
+            this.bluetoothConectado = true;
+            this.bluetoothDispositivoNombre = dev?.name || 'Impresora Térmica';
+            this.mostrarToast(`Impresora Bluetooth conectada: ${this.bluetoothDispositivoNombre}`);
+          },
+          onDisconnected: () => {
+            this.bluetoothConectado = false;
+            this.mostrarToast('Impresora Bluetooth desconectada');
+          }
+        });
+
+        if (this.canalImpresion === 'bluetooth') {
+          this.bluetoothPrinter.reconectarSilencioso().catch(() => {});
+        }
+      }
+    },
+
+    abrirModalImpresora () {
+      this.mensajePrueba = '';
+      this.errorPrueba = '';
+      this.modalImpresora = true;
+    },
+
+    cerrarModalImpresora () {
+      this.modalImpresora = false;
+    },
+
+    guardarConfigImpresora () {
+      try {
+        localStorage.setItem('turnero_kiosko_canal_impresion', this.canalImpresion);
+        if (this.ipTabletPersonalizada.trim()) {
+          localStorage.setItem('turnero_kiosko_impresora_ip', this.ipTabletPersonalizada.trim());
+        } else {
+          localStorage.removeItem('turnero_kiosko_impresora_ip');
+        }
+        this.mostrarToast('Configuración de impresión guardada');
+      } catch (_) {}
+      this.cerrarModalImpresora();
+    },
+
+    async conectarBluetooth () {
+      if (!this.bluetoothPrinter) {
+        this.errorPrueba = 'Web Bluetooth no está disponible en este dispositivo.';
         return;
       }
+      this.conectandoBluetooth = true;
+      this.errorPrueba = '';
+      try {
+        await this.bluetoothPrinter.conectar();
+        this.canalImpresion = 'bluetooth';
+        try { localStorage.setItem('turnero_kiosko_canal_impresion', 'bluetooth'); } catch (_) {}
+      } catch (err) {
+        if (err.name !== 'NotFoundError') {
+          this.errorPrueba = `Fallo al emparejar Bluetooth: ${err.message}`;
+        }
+      } finally {
+        this.conectandoBluetooth = false;
+      }
+    },
 
-      // ── MODO CELULAR: ventana aislada con voucher HTML ───────────────────────
-      this._abrirVentanaImpresion(num, numLimpio);
-      this.isPrinting = false;
-      this.reiniciarAutoReset();
+    desconectarBluetooth () {
+      if (this.bluetoothPrinter) {
+        this.bluetoothPrinter.desconectar();
+      }
+    },
+
+    async probarImpresion () {
+      this.probandoImpresora = true;
+      this.mensajePrueba = '';
+      this.errorPrueba = '';
+      const ahora = new Date();
+      const ticketPrueba = {
+        numero: 999,
+        formato: '#999',
+        modulo: 'Prueba de Impresión',
+        tracking_url: window.location.origin,
+        fecha: ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        hora: ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+      };
+
+      try {
+        if (this.canalImpresion === 'bluetooth') {
+          if (!this.bluetoothConectado || !this.bluetoothPrinter) {
+            throw new Error('Primero vincule y conecte la impresora Bluetooth.');
+          }
+          const bytes = construirVoucherESCPOS(ticketPrueba);
+          await this.bluetoothPrinter.imprimir(bytes);
+          this.mensajePrueba = 'Comprobante de prueba enviado vía Bluetooth.';
+        } else if (this.canalImpresion === 'servidor') {
+          const ipDestino = (this.ipTabletPersonalizada || this.impresoraServidorIp).trim();
+          if (!ipDestino) {
+            throw new Error('No hay dirección IP configurada para la impresora en red.');
+          }
+          await api.post('/kiosko/imprimir', {
+            numero: 999,
+            formato: '#999',
+            modulo: 'Prueba de Impresión',
+            tracking_url: window.location.origin,
+            ip: ipDestino,
+            puerto: this.impresoraServidorPuerto
+          }, { public: true });
+          this.mensajePrueba = `Comprobante de prueba enviado a ${ipDestino}.`;
+        } else if (this.canalImpresion === 'sistema') {
+          this._abrirVentanaImpresion('#999', '999');
+          this.mensajePrueba = 'Abriendo ventana de impresión del sistema.';
+        } else {
+          throw new Error('La impresión está desactivada.');
+        }
+      } catch (err) {
+        this.errorPrueba = err.message || err.mensaje || 'Error desconocido al probar la impresora.';
+      } finally {
+        this.probandoImpresora = false;
+      }
     },
 
     /**
-     * Abre una ventana emergente con el HTML del voucher para impresion/PDF.
+     * Imprime el voucher actual mediante el canal configurado.
+     * Soporta reimpresión de copia (esReimpresion=true).
+     */
+    async imprimirTicket (esReimpresion = false) {
+      if (this.isPrinting || !this.ticketData.numero) return;
+      this.isPrinting = true;
+      this.reiniciarAutoReset();
+
+      const num = this.formatTicket(this.ticketData.numero);
+      const numLimpio = num.replace('#', '');
+      const ahora = new Date();
+      const ticketObj = {
+        numero: this.ticketData.numero,
+        formato: num,
+        modulo: 'Módulo de Matrículas',
+        tracking_url: this.ticketData.tracking_url || '',
+        fecha: ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        hora: ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+      };
+
+      try {
+        if (this.esTablet) {
+          if (this.canalImpresion === 'bluetooth') {
+            if (!this.bluetoothConectado || !this.bluetoothPrinter) {
+              throw new Error('Impresora Bluetooth no conectada. Conéctela desde el icono de impresora en el encabezado.');
+            }
+            const bytes = construirVoucherESCPOS(ticketObj);
+            await this.bluetoothPrinter.imprimir(bytes);
+            this.avisoImpresion = esReimpresion ? 'Copia impresa vía Bluetooth.' : 'Comprobante impreso vía Bluetooth.';
+            this.mostrarToast(`${esReimpresion ? 'Copia de ' : ''}${num} impresa vía Bluetooth`);
+            return;
+          }
+
+          if (this.canalImpresion === 'servidor') {
+            const ipDestino = (this.ipTabletPersonalizada || this.impresoraServidorIp).trim();
+            const payload = {
+              numero: this.ticketData.numero,
+              formato: num,
+              modulo: 'Módulo de Matrículas',
+              tracking_url: this.ticketData.tracking_url || ''
+            };
+            if (ipDestino) {
+              payload.ip = ipDestino;
+              payload.puerto = this.impresoraServidorPuerto;
+            }
+            const res = await api.post('/kiosko/imprimir', payload, { public: true });
+            if (res.ok) {
+              this.avisoImpresion = esReimpresion ? 'Copia enviada a la impresora.' : 'Comprobante enviado a la impresora.';
+              this.mostrarToast(`${esReimpresion ? 'Copia de ' : ''}${num} enviada a impresora`);
+            } else {
+              this.avisoImpresion = `Aviso: ${res.mensaje || 'Impresora no respondió.'}`;
+              this.mostrarToast(res.mensaje || 'Error de impresora');
+            }
+            return;
+          }
+
+          if (this.canalImpresion === 'sistema') {
+            this._abrirVentanaImpresion(num, numLimpio);
+            this.avisoImpresion = 'Abriendo diálogo de impresión del sistema.';
+            return;
+          }
+
+          // Si canal es 'ninguno', no hace nada
+          return;
+        }
+
+        // Modo celular: siempre ventana de impresión / PDF
+        this._abrirVentanaImpresion(num, numLimpio);
+      } catch (err) {
+        console.warn('[Kiosko] Error al imprimir voucher:', err);
+        const msg = err.mensaje || err.message || 'Error al imprimir ticket.';
+        this.avisoImpresion = `Aviso: ${msg} (El turno ${num} está registrado en pantalla).`;
+        this.mostrarToast('No se pudo imprimir el comprobante');
+      } finally {
+        this.isPrinting = false;
+      }
+    },
+
+    /**
+     * Abre una ventana emergente con el HTML del voucher para impresión/PDF.
      * Usado como flujo principal en celular y como fallback en tablet.
+     * Diseñado estrictamente para rollos térmicos continuos (58mm y 80mm) sin desborde de páginas.
      */
     _abrirVentanaImpresion (num, numLimpio) {
       const trackingUrl = this.ticketData.tracking_url || '';
@@ -583,67 +833,157 @@ export function kioskoView () {
       const fecha = ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
       const hora  = ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 
-      // Capturar QR como data URL
+      // Capturar QR existente como data URL
       const qrContainer = document.getElementById('kiosko-qr-container');
       const qrCanvas = qrContainer?.querySelector('canvas');
       const qrImg    = qrContainer?.querySelector('img');
       let qrHtml = '';
       if (qrCanvas) {
-        try { qrHtml = `<img src="${qrCanvas.toDataURL('image/png')}" width="130" height="130" alt="QR">`; } catch (_) {}
+        try { qrHtml = `<img src="${qrCanvas.toDataURL('image/png')}" width="115" height="115" alt="QR">`; } catch (_) {}
       } else if (qrImg?.src) {
-        qrHtml = `<img src="${qrImg.src}" width="130" height="130" alt="QR">`;
-      }
-      if (!qrHtml && trackingUrl) {
-        qrHtml = `<p class="url-fallback">${trackingUrl}</p>`;
+        qrHtml = `<img src="${qrImg.src}" width="115" height="115" alt="QR">`;
       }
 
       const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Voucher-${numLimpio}-Matriculas2026</title>
+  <title>Voucher-${numLimpio}</title>
   <style>
-    @page { size: 80mm auto; margin: 4mm; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Courier New', Courier, monospace; background: #fff; display: flex; justify-content: center; padding: 2mm; }
-    .voucher { width: 72mm; border: 1.5px solid #1e293b; border-radius: 4mm; padding: 5mm 4mm; text-align: center; }
-    .inst   { font-size: 7pt; color: #475569; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 3mm; }
-    .numero { font-size: 52pt; font-weight: 900; color: #0f172a; line-height: 1; letter-spacing: -1px; margin: 1mm 0; }
-    .modulo { font-size: 7.5pt; color: #64748b; margin-bottom: 3mm; }
-    .sep    { border: none; border-top: 1px dashed #cbd5e1; margin: 3mm 0; }
-    .qr img { display: block; margin: 0 auto; }
-    .qr-label  { font-size: 7pt; color: #64748b; margin-top: 2mm; }
-    .url-fallback { font-size: 6pt; color: #3b82f6; word-break: break-all; margin-top: 1mm; }
-    .pie    { font-size: 6.5pt; color: #94a3b8; margin-top: 3mm; padding-top: 2mm; border-top: 1px solid #e2e8f0; }
+    @page {
+      margin: 0;
+      size: auto;
+    }
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 100%;
+      background: #FFFFFF;
+      color: #000000;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Courier New", monospace;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    body {
+      padding: 2mm 0;
+      text-align: center;
+    }
+    .voucher {
+      width: 52mm;
+      max-width: 52mm;
+      margin: 0 auto;
+      padding: 2mm 1mm;
+      text-align: center;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      page-break-after: avoid;
+      break-after: avoid;
+    }
+    .inst {
+      font-size: 8.5pt;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      line-height: 1.2;
+    }
+    .sub {
+      font-size: 7pt;
+      color: #333333;
+      margin-top: 1mm;
+    }
+    .sep {
+      border: none;
+      border-top: 1px dashed #000000;
+      margin: 2.5mm 0;
+    }
+    .numero {
+      font-size: 38pt;
+      font-weight: 900;
+      font-family: monospace;
+      line-height: 1;
+      letter-spacing: -1px;
+      margin: 1.5mm 0;
+    }
+    .modulo {
+      font-size: 7.5pt;
+      font-weight: 600;
+      color: #222222;
+      line-height: 1.2;
+    }
+    .qr {
+      margin: 2mm auto;
+      display: block;
+    }
+    .qr img {
+      display: block;
+      margin: 0 auto;
+      width: 110px;
+      height: 110px;
+    }
+    .qr-label {
+      font-size: 6.5pt;
+      color: #444444;
+      margin-top: 1.5mm;
+      line-height: 1.2;
+    }
+    .pie {
+      font-size: 6.5pt;
+      color: #444444;
+      line-height: 1.3;
+      margin-top: 2mm;
+    }
   </style>
 </head>
 <body>
   <div class="voucher">
-    <div class="inst">Matriculas 2026 - Turno Digital</div>
-    <div class="numero">${num}</div>
-    <div class="modulo">Modulo General de Matriculas</div>
+    <div class="inst">MATRÍCULAS 2026</div>
+    <div class="sub">Turno Digital de Atención</div>
     <hr class="sep">
-    <div class="qr">
-      ${qrHtml}
-      <div class="qr-label">Escanea para seguir tu turno en tiempo real</div>
-    </div>
-    <div class="pie">${fecha} &bull; ${hora} &bull; Valido solo para hoy</div>
+    <div class="numero">${num}</div>
+    <div class="modulo">Módulo General de Matrículas</div>
+    <hr class="sep">
+    ${qrHtml ? `<div class="qr">${qrHtml}<div class="qr-label">Escanea para seguir tu turno</div></div>` : ''}
+    <div class="pie">${fecha} • ${hora}<br>Válido solo para hoy</div>
   </div>
 </body>
 </html>`;
 
-      const win = window.open('', '_blank', 'width=340,height=520,toolbar=no,menubar=no');
-      if (!win) { this.mostrarToast('Permite las ventanas emergentes para imprimir'); return; }
+      const win = window.open('', '_blank', 'width=320,height=480,toolbar=no,menubar=no,status=no');
+      if (!win) {
+        this.mostrarToast('Permite las ventanas emergentes para imprimir');
+        return;
+      }
 
+      win.document.open();
       win.document.write(html);
       win.document.close();
-      win.focus();
-      win.onload = () => { win.print(); win.close(); };
-      setTimeout(() => { try { win.print(); win.close(); } catch (_) {} }, 900);
 
-      this.mostrarToast(`Voucher ${num} listo para imprimir`);
-      document.title = `Voucher-${numLimpio}-Matriculas2026`;
-      setTimeout(() => { document.title = this.tituloOriginal; }, 3000);
+      let yaImpreso = false;
+      const lanzarImpresion = () => {
+        if (yaImpreso) return;
+        yaImpreso = true;
+        try {
+          win.focus();
+          win.print();
+        } catch (_) {}
+        setTimeout(() => {
+          try { win.close(); } catch (_) {}
+        }, 400);
+      };
+
+      if (win.document.readyState === 'complete') {
+        setTimeout(lanzarImpresion, 150);
+      } else {
+        win.onload = () => setTimeout(lanzarImpresion, 150);
+        setTimeout(lanzarImpresion, 600);
+      }
+
+      this.mostrarToast(`Voucher ${num} enviado al diálogo de impresión`);
+      document.title = `Voucher-${numLimpio}`;
+      setTimeout(() => { document.title = this.tituloOriginal; }, 2500);
     },
 
     /**
@@ -700,43 +1040,6 @@ export function kioskoView () {
         const seg = 15;
         this.iniciarAutoReset(seg);
         this.iniciarCuentaRegresiva(seg);
-      }
-    },
-
-    /**
-     * Envía manualmente el ticket actual a la impresora LAN
-     */
-    async imprimirTicket () {
-      if (this.isPrinting || !this.ticketData.numero) return;
-      this.isPrinting = true;
-      this.reiniciarAutoReset(); // Reiniciar auto-reset de 15s al interactuar
-      try {
-        const res = await api.post('/kiosko/imprimir', {
-          numero: this.ticketData.numero,
-          formato: this.formatTicket(this.ticketData.numero),
-          modulo: 'Módulo de Matrículas',
-          tracking_url: this.ticketData.tracking_url
-        });
-        if (res.ok) {
-          this.avisoImpresion = 'Comprobante enviado a la impresora.';
-          this.mostrarToast(`Voucher ${this.formatTicket(this.ticketData.numero)} impreso exitosamente`);
-        } else {
-          this.avisoImpresion = `Aviso: ${res.mensaje || 'Impresora no disponible.'}`;
-          this.mostrarToast(res.mensaje || 'Impresora inactiva');
-        }
-      } catch (err) {
-        console.warn('[Kiosko] Error al imprimir comprobante:', err);
-        const mensajeError = err.mensaje || err.message || 'La impresora no está disponible en este momento.';
-        this.avisoImpresion = `Aviso: ${mensajeError} (El turno ${this.formatTicket(this.ticketData.numero)} sigue registrado en pantalla).`;
-        this.mostrarToast('Impresora inactiva o no disponible');
-        // Fallback accesible si no hay impresora térmica en red LAN: abrir impresión de navegador
-        if (typeof window !== 'undefined' && window.print) {
-          setTimeout(() => {
-            window.print();
-          }, 300);
-        }
-      } finally {
-        this.isPrinting = false;
       }
     },
 
@@ -1174,6 +1477,10 @@ export function kioskoView () {
       if (this._onVisibilityHandler) {
         document.removeEventListener('visibilitychange', this._onVisibilityHandler);
         this._onVisibilityHandler = null;
+      }
+      if (this.bluetoothPrinter) {
+        this.bluetoothPrinter.desconectar();
+        this.bluetoothPrinter = null;
       }
       this.soltarWakeLock();
       document.title = this.tituloOriginal;

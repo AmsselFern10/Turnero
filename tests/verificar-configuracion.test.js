@@ -76,6 +76,7 @@ async function runConfigVerification() {
       'tv_escala_turnos',
       'tv_escala_principal',
       'tv_escala_secundaria',
+      'fondo_imagen_escala',
       'zona_horaria'
     ]
 
@@ -114,7 +115,8 @@ async function runConfigVerification() {
       { clave: 'kiosko_url_base',           valor: 'http://192.168.1.100:3000/kiosko.html' },
       { clave: 'impresora_activa',          valor: 'true' },
       { clave: 'impresora_ip',              valor: '192.168.1.210' },
-      { clave: 'impresora_puerto',          valor: '9100' }
+      { clave: 'impresora_puerto',          valor: '9100' },
+      { clave: 'fondo_imagen_escala',       valor: '125' }
     ]
 
     for (const mod of modificacionesValidas) {

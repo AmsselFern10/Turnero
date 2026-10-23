@@ -18,7 +18,7 @@
 
 import { api } from '../api.js';
 import { TurneroWSClient } from '../ws-client.js';
-import { formatTimer, initFondoPersonalizado } from '../utils.js';
+import { formatTimer } from '../utils.js';
 
 let activeAdminInstance = null;
 
@@ -53,49 +53,49 @@ export function adminView() {
     relojHora: '--:--:--',
     currentUser: null,
     _clockTimer: null,
-    _pollTimer:  null,
+    _pollTimer: null,
 
     kpis: {
-      atendidos_hoy:       0,
+      atendidos_hoy: 0,
       espera_promedio_min: '--',
-      mesas_activas:       0,
-      vouchers_restantes:  0,
-      turnos_en_espera:    0
+      mesas_activas: 0,
+      vouchers_restantes: 0,
+      turnos_en_espera: 0
     },
 
-    mesas:                [],
-    lotes:                [],
-    loteActivo:           null,
-    usuarios:             [],
-    operadoresDisponibles:[],
+    mesas: [],
+    lotes: [],
+    loteActivo: null,
+    usuarios: [],
+    operadoresDisponibles: [],
 
-    toasts:               [],
-    loteAExtender:        null,
-    extensionVouchers:    null,
-    extensionCantidad:    null,
+    toasts: [],
+    loteAExtender: null,
+    extensionVouchers: null,
+    extensionCantidad: null,
 
     erroresValidacion: {
-      extensionCantidad:    '',
-      nuevoLoteHasta:       '',
-      nuevaMesaNumero:      '',
-      nuevaMesaNombre:      '',
-      editMesaNumero:       '',
-      editMesaNombre:       '',
-      nuevoUsrNombre:       '',
-      nuevoUsrUsername:     '',
-      nuevoUsrPassword:     '',
-      editUsrNombre:        '',
-      editUsrUsername:      '',
-      editUsrPassword:      '',
+      extensionCantidad: '',
+      nuevoLoteHasta: '',
+      nuevaMesaNumero: '',
+      nuevaMesaNombre: '',
+      editMesaNumero: '',
+      editMesaNombre: '',
+      nuevoUsrNombre: '',
+      nuevoUsrUsername: '',
+      nuevoUsrPassword: '',
+      editUsrNombre: '',
+      editUsrUsername: '',
+      editUsrPassword: '',
       ajusteContadorNumero: '',
       ajusteContadorMotivo: '',
-      cfgAlertaVouchers:    '',
-      cfgZonaHoraria:       '',
-      cfgKioskoTope:        '',
-      cfgKioskoUrlBase:     '',
-      cfgKioskoUrlPublica:  '',
-      cfgImpresoraPuerto:   '',
-      cfgFondoUrl:          ''
+      cfgAlertaVouchers: '',
+      cfgZonaHoraria: '',
+      cfgKioskoTope: '',
+      cfgKioskoUrlBase: '',
+      cfgKioskoUrlPublica: '',
+      cfgImpresoraPuerto: '',
+      cfgFondoUrl: ''
     },
 
     subTabConfig: 'todos',
@@ -108,38 +108,38 @@ export function adminView() {
     _savingKeys: {},
 
     filtroMesasDashboard: 'todas',
-    filtroLotes:          'todos',
-    filtroMesas:          'todas',
-    filtroUsuarios:       'todos',
+    filtroLotes: 'todos',
+    filtroMesas: 'todas',
+    filtroUsuarios: 'todos',
 
-    modalLote:             false,
-    modalExtender:         false,
-    modalMesa:             false,
-    modalEditarMesa:       false,
-    modalUsuario:          false,
-    modalEditarUsuario:    false,
-    modalCambioLote:       false,
-    modalConfirmarKiosko:  false,
-    modalConfigKiosko:     false,
-    modalCartelQR:         false,
-    modalLoteAgotado:      false,   // Modal cuando un lote se agota
-    loteAgotadoInfo:       null,    // Info del lote agotado para mostrar en modal
-    kioskoConfigEditMode:  false,
-    lotePendienteActivar:  null,
-    lotePausado:           null,
-    nuevoLoteHasta:        500,
+    modalLote: false,
+    modalExtender: false,
+    modalMesa: false,
+    modalEditarMesa: false,
+    modalUsuario: false,
+    modalEditarUsuario: false,
+    modalCambioLote: false,
+    modalConfirmarKiosko: false,
+    modalConfigKiosko: false,
+    modalCartelQR: false,
+    modalLoteAgotado: false,   // Modal cuando un lote se agota
+    loteAgotadoInfo: null,    // Info del lote agotado para mostrar en modal
+    kioskoConfigEditMode: false,
+    lotePendienteActivar: null,
+    lotePausado: null,
+    nuevoLoteHasta: 500,
 
     archivoFondoSeleccionado: null,
-    _subiendoFondo:           false,
-    _togglingFondo:           false,
-    _imprimiendoPrueba:       false,
+    _subiendoFondo: false,
+    _togglingFondo: false,
+    _imprimiendoPrueba: false,
 
-    modalAjustarContador:  false,
+    modalAjustarContador: false,
     ajusteContador: {
-      nuevoUltimo:          null,
-      motivo:               '',
-      confirmarRetroceso:   false,
-      cargando:             false
+      nuevoUltimo: null,
+      motivo: '',
+      confirmarRetroceso: false,
+      cargando: false
     },
 
     nuevaMesa: {
@@ -155,65 +155,61 @@ export function adminView() {
 
     nuevoUsuario: {
       nombre_completo: '',
-      username:        '',
-      password:        '',
-      rol:             'operador'
+      username: '',
+      password: '',
+      rol: 'operador'
     },
 
     usuarioEditando: {
       id: null,
       nombre_completo: '',
-      username:        '',
-      password:        '',
-      rol:             'operador',
-      activo:          true
+      username: '',
+      password: '',
+      rol: 'operador',
+      activo: true
     },
 
-    // IPs LAN del servidor detectadas automáticamente (se cargan una vez al iniciar)
-    lanIpDetectada:    null,  // URL base de la IP sugerida: 'http://192.168.169.9:3000'
-    lanIpDetectadaRaw: null,  // Solo la IP: '192.168.169.9'
-    todasLasIpsLan:    [],    // [{ ip, iface, url }] — Ethernet, Wi-Fi y cualquier NIC real
 
     config: {
-      alerta_vouchers_restantes:    20,
-      kiosko_web_activo:            false,
-      modo_generacion_turnos:       'voucher_fisico',
-      voz_anuncio_activa:           true,
-      mostrar_estimado_espera:      true,
-      kiosko_tope_diario:           0,
-      kiosko_modo_uso:              'asistido',
-      kiosko_url_base:              '',
-      kiosko_url_publica:           '',
-      kiosko_impresion_automatica:  false,
-      impresora_ip:                 '',
-      impresora_puerto:             9100,
-      impresora_activa:             false,
-      tv_escala_principal:          100,
-      tv_escala_secundaria:         100,
-      tv_escala_turnos:             100,
-      tv_opacidad_principal:        100,
-      tv_opacidad_secundaria:       100,
-      zona_horaria:                 'America/Tegucigalpa',
-      fondo_imagen_url:             '',
-      fondo_imagen_activa:          false,
-      fondo_imagen_escala:          100
-    },
-    avisoGuardadoPrincipal:          false,
-    avisoGuardadoSecundaria:         false,
-    avisoGuardadoOpacidadPrincipal:  false,
-    avisoGuardadoOpacidadSecundaria: false,
-    avisoGuardadoEscalaFondo:        false,
-    _debounceEscalaPrincipal:    null,
-    _debounceEscalaSecundaria:   null,
-    _debounceEscalaTv:           null,
-    _debounceOpacidadPrincipal:  null,
-    _debounceOpacidadSecundaria: null,
-    _debounceEscalaFondo:        null,
-    kioskoForm: {
-      tope_diario:      0,
-      modo_uso:         'asistido',
+      alerta_vouchers_restantes: 20,
+      kiosko_web_activo: false,
+      modo_generacion_turnos: 'voucher_fisico',
+      voz_anuncio_activa: true,
+      mostrar_estimado_espera: true,
+      kiosko_tope_diario: 0,
+      kiosko_modo_uso: 'asistido',
+      kiosko_url_base: '',
+      kiosko_url_publica: '',
+      kiosko_impresion_automatica: false,
+      impresora_ip: '',
+      impresora_puerto: 9100,
       impresora_activa: false,
-      impresora_ip:     '',
+      tv_escala_principal: 100,
+      tv_escala_secundaria: 100,
+      tv_escala_turnos: 100,
+      tv_opacidad_principal: 100,
+      tv_opacidad_secundaria: 100,
+      zona_horaria: 'America/Tegucigalpa',
+      fondo_imagen_url: '',
+      fondo_imagen_activa: false,
+      fondo_imagen_escala: 100
+    },
+    avisoGuardadoPrincipal: false,
+    avisoGuardadoSecundaria: false,
+    avisoGuardadoOpacidadPrincipal: false,
+    avisoGuardadoOpacidadSecundaria: false,
+    avisoGuardadoEscalaFondo: false,
+    _debounceEscalaPrincipal: null,
+    _debounceEscalaSecundaria: null,
+    _debounceEscalaTv: null,
+    _debounceOpacidadPrincipal: null,
+    _debounceOpacidadSecundaria: null,
+    _debounceEscalaFondo: null,
+    kioskoForm: {
+      tope_diario: 0,
+      modo_uso: 'asistido',
+      impresora_activa: false,
+      impresora_ip: '',
       impresora_puerto: 9100
     },
     _configSnapshot: null,
@@ -221,27 +217,27 @@ export function adminView() {
     _reiniciandoContadorKiosko: false,
 
     filtroReporte: {
-      fecha:       new Date().toISOString().slice(0, 10),
-      mesa_id:     '',
+      fecha: new Date().toISOString().slice(0, 10),
+      mesa_id: '',
       operador_id: '',
-      estado:      'todos'
+      estado: 'todos'
     },
     reporteData: {
       kpis: {
-        total_atendidos:       0,
-        total_cancelados:      0,
-        total_turnos:          0,
+        total_atendidos: 0,
+        total_cancelados: 0,
+        total_turnos: 0,
         promedio_atencion_seg: 0,
-        promedio_espera_seg:   0,
-        mesas_activas:         0
+        promedio_espera_seg: 0,
+        mesas_activas: 0
       },
       mesas_resumen: [],
-      turnos:        []
+      turnos: []
     },
     cargandoReporte: false,
     cargandoDashboard: false,
 
-    ws:          null,
+    ws: null,
     wsConnected: true,
     accesoDenegado: false,
     loteAgotadoAlerta: false,
@@ -249,22 +245,22 @@ export function adminView() {
 
     // Modal de confirmación propio y unificado (reemplaza confirm() nativo del navegador)
     _confirmModal: {
-      visible:        false,
-      titulo:         '',
-      subtitulo:      '',
-      mensaje:        '',
-      detalle:        '',
-      impacto:        '',
+      visible: false,
+      titulo: '',
+      subtitulo: '',
+      mensaje: '',
+      detalle: '',
+      impacto: '',
       esIrreversible: false,
-      reforzada:      false,
-      textoEsperado:  '',
-      textoEscrito:   '',
-      accion:         null,
-      botonTexto:     'Confirmar',
-      botonClase:     'btn-danger btn-sm',
-      tipo:           'peligro',
-      cargando:       false,
-      error:          ''
+      reforzada: false,
+      textoEsperado: '',
+      textoEscrito: '',
+      accion: null,
+      botonTexto: 'Confirmar',
+      botonClase: 'btn-danger btn-sm',
+      tipo: 'peligro',
+      cargando: false,
+      error: ''
     },
 
     _pedirConfirmacion({
@@ -282,22 +278,22 @@ export function adminView() {
       tipo = 'peligro'
     }) {
       this._confirmModal = {
-        visible:        true,
-        titulo:         titulo || 'Confirmar acción',
-        subtitulo:      subtitulo || '',
-        mensaje:        mensaje || '',
-        detalle:        detalle || '',
-        impacto:        impacto || '',
+        visible: true,
+        titulo: titulo || 'Confirmar acción',
+        subtitulo: subtitulo || '',
+        mensaje: mensaje || '',
+        detalle: detalle || '',
+        impacto: impacto || '',
         esIrreversible: Boolean(esIrreversible),
-        reforzada:      Boolean(reforzada),
-        textoEsperado:  String(textoEsperado || '').trim(),
-        textoEscrito:   '',
-        accion:         accion || null,
-        botonTexto:     botonTexto || 'Confirmar',
-        botonClase:     botonClase || 'btn-danger btn-sm',
-        tipo:           tipo || 'peligro',
-        cargando:       false,
-        error:          ''
+        reforzada: Boolean(reforzada),
+        textoEsperado: String(textoEsperado || '').trim(),
+        textoEscrito: '',
+        accion: accion || null,
+        botonTexto: botonTexto || 'Confirmar',
+        botonClase: botonClase || 'btn-danger btn-sm',
+        tipo: tipo || 'peligro',
+        cargando: false,
+        error: ''
       };
     },
 
@@ -445,8 +441,8 @@ export function adminView() {
       return (modo === 'asistido' || modo === 'empleado') ? '/kiosko.html?modo=tablet' : '/kiosko.html';
     },
 
-    // URL Kiosko: si no hay config manual usa la IP LAN detectada por el servidor,
-    // nunca localhost (que solo funciona en la PC del servidor).
+    // URL Kiosko: usa la URL configurada manualmente si existe,
+    // sino cae a window.location.origin (correcto si el admin abre el panel desde la IP real).
     get urlTabletPorton() {
       const base = (this.config?.kiosko_url_base || this.config?.kiosko_url_publica || '').trim();
       if (base) {
@@ -454,9 +450,7 @@ export function adminView() {
         const sinKiosko = urlLimpia.endsWith('/kiosko.html') ? urlLimpia : `${urlLimpia}/kiosko.html`;
         return `${sinKiosko}?modo=tablet`;
       }
-      // Fallback LAN: usa la IP real del servidor (no window.location.origin = localhost)
-      const origen = this.lanIpDetectada || (typeof window !== 'undefined' ? window.location.origin : '');
-      return `${origen}/kiosko.html?modo=tablet`;
+      return typeof window !== 'undefined' ? `${window.location.origin}/kiosko.html?modo=tablet` : '/kiosko.html?modo=tablet';
     },
 
     get urlEstudianteQR() {
@@ -466,9 +460,7 @@ export function adminView() {
         const sinKiosko = urlLimpia.endsWith('/kiosko.html') ? urlLimpia : `${urlLimpia}/kiosko.html`;
         return `${sinKiosko}?modo=estudiante`;
       }
-      // Fallback LAN: usa la IP real del servidor (no window.location.origin = localhost)
-      const origen = this.lanIpDetectada || (typeof window !== 'undefined' ? window.location.origin : '');
-      return `${origen}/kiosko.html?modo=estudiante`;
+      return typeof window !== 'undefined' ? `${window.location.origin}/kiosko.html?modo=estudiante` : '/kiosko.html?modo=estudiante';
     },
 
     copiarAlPortapapeles(texto, label = 'Enlace') {
@@ -864,10 +856,10 @@ export function adminView() {
     _defaultTituloToast(tipo) {
       switch (tipo) {
         case 'success': return 'Operación Exitosa';
-        case 'error':   return 'Error';
+        case 'error': return 'Error';
         case 'warning': return 'Advertencia';
-        case 'info':    return 'Información';
-        default:        return 'Notificación';
+        case 'info': return 'Información';
+        default: return 'Notificación';
       }
     },
 
@@ -962,7 +954,7 @@ export function adminView() {
       await this.cargarTodo();
       this._actualizarAlertaLote();
       this.initWebSocket();
-      initFondoPersonalizado(this.ws);
+      // initFondoPersonalizado(this.ws);
 
       // Sincronización pasiva en segundo plano cada 5 minutos (resiliencia óptima)
       this._pollTimer = setInterval(async () => {
@@ -973,7 +965,7 @@ export function adminView() {
 
     destroy() {
       if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
-      if (this._pollTimer)  { clearInterval(this._pollTimer);  this._pollTimer = null; }
+      if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
       if (this.ws) { this.ws.disconnect(); this.ws = null; this._ws = null; }
       if (activeAdminInstance === this) activeAdminInstance = null;
     },
@@ -991,41 +983,11 @@ export function adminView() {
     async cargarTodo() {
       const r = await Promise.allSettled([
         this.cargarKPIs(), this.cargarMesas(), this.cargarLotes(),
-        this.cargarUsuarios(), this.cargarConfiguracion(), this.cargarRedInfo()
+        this.cargarUsuarios(), this.cargarConfiguracion()
       ]);
-      ['KPIs','Mesas','Lotes','Usuarios','Config','Red'].forEach((n, i) => {
+      ['KPIs', 'Mesas', 'Lotes', 'Usuarios', 'Config'].forEach((n, i) => {
         if (r[i].status === 'rejected') console.warn(`[ADMIN] Fallo ${n}:`, r[i].reason);
       });
-    },
-
-    // Carga la IP LAN detectada por el servidor para pre-rellenar el campo de URL Kiosko
-    async cargarRedInfo() {
-      try {
-        const info = await api.get('/admin/red-info');
-        if (info?.url_lan_sugerida) {
-          this.lanIpDetectada    = info.url_lan_sugerida;
-          this.lanIpDetectadaRaw = info.lan_ip;
-        }
-        // Guardar todas las candidatas (Ethernet + Wi-Fi + otras NIC reales)
-        this.todasLasIpsLan = Array.isArray(info?.todas_las_ips) ? info.todas_las_ips : [];
-        // Auto-sugerir la primera si el campo está vacío y no es localhost
-        if (!this.config.kiosko_url_base && info?.url_lan_sugerida && !info.es_localhost) {
-          this.config.kiosko_url_base = info.url_lan_sugerida;
-          this.validarKioskoUrlBase();
-        }
-      } catch (_) {
-        // No crítico: si falla, los getters de URL caen a window.location.origin
-      }
-    },
-
-    /**
-     * Aplica la IP del adaptador seleccionado (Ethernet o Wi-Fi) al campo de URL base.
-     * El admin elige el adaptador correcto según cómo esté conectado el servidor a la red.
-     */
-    usarIpLan(candidata) {
-      if (!candidata?.url) return;
-      this.config.kiosko_url_base = candidata.url;
-      this.validarKioskoUrlBase();
     },
 
     async cargarDashboard() {
@@ -1046,11 +1008,11 @@ export function adminView() {
       const hasta = lote ? (parseInt(lote.numero_hasta, 10) || 0) : 0;
       const llamados = lote ? (parseInt(lote.ultimo_numero_llamado, 10) || 0) : 0;
       this.kpis = {
-        atendidos_hoy:       parseInt(data.atendidos_hoy, 10) || 0,
+        atendidos_hoy: parseInt(data.atendidos_hoy, 10) || 0,
         espera_promedio_min: data.promedio_seg != null ? (data.promedio_seg / 60).toFixed(1) : '--',
-        mesas_activas:       parseInt(data.mesas_activas, 10) || 0,
-        vouchers_restantes:  lote ? Math.max(0, hasta - llamados) : 0,
-        turnos_en_espera:    parseInt(data.turnos_en_espera, 10) || 0
+        mesas_activas: parseInt(data.mesas_activas, 10) || 0,
+        vouchers_restantes: lote ? Math.max(0, hasta - llamados) : 0,
+        turnos_en_espera: parseInt(data.turnos_en_espera, 10) || 0
       };
       if (lote) {
         if (!lote.numero_desde) lote.numero_desde = 1;
@@ -1098,29 +1060,29 @@ export function adminView() {
       if (res && res.configuracion) {
         const c = res.configuracion;
         this.config.alerta_vouchers_restantes = parseInt(c.alerta_vouchers_restantes || '20', 10) || 20;
-        this.config.kiosko_web_activo         = c.kiosko_web_activo === 'true' || c.kiosko_web_activo === true;
-        this.config.modo_generacion_turnos    = c.modo_generacion_turnos || (this.config.kiosko_web_activo ? 'kiosko_web' : 'voucher_fisico');
-        this.config.voz_anuncio_activa        = c.voz_anuncio_activa !== 'false';
-        this.config.mostrar_estimado_espera   = c.mostrar_estimado_espera !== 'false';
-        this.config.kiosko_tope_diario        = parseInt(c.kiosko_tope_diario || '0', 10) || 0;
-        this.config.kiosko_modo_uso           = c.kiosko_modo_uso || 'asistido';
-        this.config.kiosko_url_base           = c.kiosko_url_base || '';
-        this.config.kiosko_url_publica        = c.kiosko_url_publica || '';
-        this.config.impresora_ip              = c.impresora_ip     || '';
-        this.config.impresora_puerto          = parseInt(c.impresora_puerto || '9100', 10) || 9100;
-        this.config.impresora_activa          = c.impresora_activa === 'true' || c.impresora_activa === true;
+        this.config.kiosko_web_activo = c.kiosko_web_activo === 'true' || c.kiosko_web_activo === true;
+        this.config.modo_generacion_turnos = c.modo_generacion_turnos || (this.config.kiosko_web_activo ? 'kiosko_web' : 'voucher_fisico');
+        this.config.voz_anuncio_activa = c.voz_anuncio_activa !== 'false';
+        this.config.mostrar_estimado_espera = c.mostrar_estimado_espera !== 'false';
+        this.config.kiosko_tope_diario = parseInt(c.kiosko_tope_diario || '0', 10) || 0;
+        this.config.kiosko_modo_uso = c.kiosko_modo_uso || 'asistido';
+        this.config.kiosko_url_base = c.kiosko_url_base || '';
+        this.config.kiosko_url_publica = c.kiosko_url_publica || '';
+        this.config.impresora_ip = c.impresora_ip || '';
+        this.config.impresora_puerto = parseInt(c.impresora_puerto || '9100', 10) || 9100;
+        this.config.impresora_activa = c.impresora_activa === 'true' || c.impresora_activa === true;
         this.config.kiosko_impresion_automatica = c.kiosko_impresion_automatica === 'true' || c.kiosko_impresion_automatica === true;
         const escalaBase = parseInt(c.tv_escala_turnos || '100', 10) || 100;
-        this.config.tv_escala_principal       = parseInt(c.tv_escala_principal || String(escalaBase), 10) || 100;
-        this.config.tv_escala_secundaria      = parseInt(c.tv_escala_secundaria || String(escalaBase), 10) || 100;
-        this.config.tv_escala_turnos          = this.config.tv_escala_principal;
-        this.config.tv_opacidad_principal     = parseInt(c.tv_opacidad_principal || '100', 10) || 100;
-        this.config.tv_opacidad_secundaria    = parseInt(c.tv_opacidad_secundaria || '100', 10) || 100;
-        this.config.zona_horaria              = c.zona_horaria || 'America/Tegucigalpa';
-        this.config.fondo_imagen_url          = c.fondo_imagen_url || '';
-        this.config.fondo_imagen_activa       = c.fondo_imagen_activa === 'true' || c.fondo_imagen_activa === true;
-        this.config.fondo_imagen_escala       = parseInt(c.fondo_imagen_escala || '100', 10) || 100;
-        this.kioskoUltimoNumero               = res.kiosko_ultimo_numero || 0;
+        this.config.tv_escala_principal = parseInt(c.tv_escala_principal || String(escalaBase), 10) || 100;
+        this.config.tv_escala_secundaria = parseInt(c.tv_escala_secundaria || String(escalaBase), 10) || 100;
+        this.config.tv_escala_turnos = this.config.tv_escala_principal;
+        this.config.tv_opacidad_principal = parseInt(c.tv_opacidad_principal || '100', 10) || 100;
+        this.config.tv_opacidad_secundaria = parseInt(c.tv_opacidad_secundaria || '100', 10) || 100;
+        this.config.zona_horaria = c.zona_horaria || 'America/Tegucigalpa';
+        this.config.fondo_imagen_url = c.fondo_imagen_url || '';
+        this.config.fondo_imagen_activa = c.fondo_imagen_activa === 'true' || c.fondo_imagen_activa === true;
+        this.config.fondo_imagen_escala = parseInt(c.fondo_imagen_escala || '100', 10) || 100;
+        this.kioskoUltimoNumero = res.kiosko_ultimo_numero || 0;
       }
       this.validarFondoUrl();
       this._configSnapshot = { ...this.config };
@@ -1968,9 +1930,9 @@ export function adminView() {
       try {
         const payload = {
           nombre_completo: this.usuarioEditando.nombre_completo.trim(),
-          username:        this.usuarioEditando.username.trim(),
-          rol:             this.usuarioEditando.rol,
-          activo:          this.usuarioEditando.activo
+          username: this.usuarioEditando.username.trim(),
+          rol: this.usuarioEditando.rol,
+          activo: this.usuarioEditando.activo
         };
         if (this.usuarioEditando.password && this.usuarioEditando.password.length >= 4) {
           payload.password = this.usuarioEditando.password;
@@ -2076,9 +2038,9 @@ export function adminView() {
         } else {
           // Liberar: encontrar la mesa actual del usuario y llamar con operador_id null
           const usrObj = this.usuarios.find(u => u.id === usrId || String(u.id) === String(usrId));
-          const mesaActual = this.mesas.find(m => 
-            m.operador_id === usrId || 
-            String(m.operador_id) === String(usrId) || 
+          const mesaActual = this.mesas.find(m =>
+            m.operador_id === usrId ||
+            String(m.operador_id) === String(usrId) ||
             Number(m.operador_id) === Number(usrId) ||
             (usrObj && usrObj.mesa_id && (m.id === usrObj.mesa_id || String(m.id) === String(usrObj.mesa_id)))
           );
@@ -2267,11 +2229,11 @@ export function adminView() {
 
       try {
         await Promise.all([
-          api.patch('/admin/configuracion/kiosko_tope_diario',           { valor: String(tope) }),
-          api.patch('/admin/configuracion/kiosko_modo_uso',              { valor: modo }),
-          api.patch('/admin/configuracion/kiosko_url_base',              { valor: urlBase }),
-          api.patch('/admin/configuracion/kiosko_url_publica',           { valor: urlPublica }),
-          api.patch('/admin/configuracion/kiosko_impresion_automatica',  { valor: impresionAuto })
+          api.patch('/admin/configuracion/kiosko_tope_diario', { valor: String(tope) }),
+          api.patch('/admin/configuracion/kiosko_modo_uso', { valor: modo }),
+          api.patch('/admin/configuracion/kiosko_url_base', { valor: urlBase }),
+          api.patch('/admin/configuracion/kiosko_url_publica', { valor: urlPublica }),
+          api.patch('/admin/configuracion/kiosko_impresion_automatica', { valor: impresionAuto })
         ]);
         this._configSnapshot = { ...this.config };
         this.notificar({
@@ -2411,7 +2373,7 @@ export function adminView() {
           <style>
             @page {
               size: portrait;
-              margin: 12mm 15mm;
+              margin: 0;
             }
             * {
               box-sizing: border-box;
@@ -2421,23 +2383,33 @@ export function adminView() {
             html, body {
               width: 100%;
               height: 100%;
+              margin: 0;
+              padding: 0;
               background: #ffffff;
               color: #0f172a;
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
               overflow: hidden;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            body {
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding: 10mm;
             }
             .cartel-sheet {
               width: 100%;
               max-width: 620px;
               margin: 0 auto;
-              height: 100%;
+              height: calc(100vh - 20mm);
               max-height: 255mm;
               display: flex;
               flex-direction: column;
               align-items: center;
               justify-content: space-between;
               text-align: center;
-              padding: 16mm 14mm;
+              padding: 12mm 14mm;
               border: 3.5px solid #0f172a;
               border-radius: 28px;
               page-break-inside: avoid;
@@ -2659,7 +2631,7 @@ export function adminView() {
 
       try {
         await Promise.all([
-          api.patch('/admin/configuracion/impresora_ip',     { valor: ip }),
+          api.patch('/admin/configuracion/impresora_ip', { valor: ip }),
           api.patch('/admin/configuracion/impresora_puerto', { valor: String(puerto) })
         ]);
         this._configSnapshot = { ...this.config };
@@ -2703,7 +2675,7 @@ export function adminView() {
       try {
         await Promise.all([
           api.patch('/admin/configuracion/alerta_vouchers_restantes', { valor: String(alerta) }),
-          api.patch('/admin/configuracion/zona_horaria',              { valor: zona })
+          api.patch('/admin/configuracion/zona_horaria', { valor: zona })
         ]);
         this._configSnapshot = { ...this.config };
         this._actualizarAlertaLote();
@@ -2760,8 +2732,8 @@ export function adminView() {
         this.notificar({
           tipo: 'success',
           titulo: nuevoEstado ? 'Fondo de Pantalla Activado' : 'Fondo de Pantalla Desactivado',
-          mensaje: nuevoEstado 
-            ? 'El fondo institucional se activó en vivo en todas las pantallas.' 
+          mensaje: nuevoEstado
+            ? 'El fondo institucional se activó en vivo en todas las pantallas.'
             : 'El fondo institucional se desactivó en vivo (las pantallas vuelven al fondo estándar).'
         });
       } catch (err) {
@@ -2792,7 +2764,7 @@ export function adminView() {
 
       try {
         await Promise.all([
-          api.patch('/admin/configuracion/fondo_imagen_url',    { valor: url }),
+          api.patch('/admin/configuracion/fondo_imagen_url', { valor: url }),
           api.patch('/admin/configuracion/fondo_imagen_activa', { valor: activa })
         ]);
         if (this._configSnapshot) {
@@ -2960,7 +2932,7 @@ export function adminView() {
       this.config.tv_escala_principal = Math.min(140, Math.max(75, val));
       try {
         localStorage.setItem('turnero_tv_escala_principal', String(this.config.tv_escala_principal));
-      } catch (_) {}
+      } catch (_) { }
       this._emitirEscalaEnVivo('tv_escala_principal', this.config.tv_escala_principal);
     },
 
@@ -2971,7 +2943,7 @@ export function adminView() {
       }
       try {
         localStorage.setItem('turnero_tv_escala_principal', String(val));
-      } catch (_) {}
+      } catch (_) { }
       try {
         await api.patch('/admin/configuracion/tv_escala_principal', { valor: String(val) });
         showToast({ message: `Tamaño de turno principal guardado (${val}%)`, type: 'info' });
@@ -3005,7 +2977,7 @@ export function adminView() {
       this.config.tv_escala_secundaria = Math.min(140, Math.max(75, val));
       try {
         localStorage.setItem('turnero_tv_escala_secundaria', String(this.config.tv_escala_secundaria));
-      } catch (_) {}
+      } catch (_) { }
       this._emitirEscalaEnVivo('tv_escala_secundaria', this.config.tv_escala_secundaria);
     },
 
@@ -3016,7 +2988,7 @@ export function adminView() {
       }
       try {
         localStorage.setItem('turnero_tv_escala_secundaria', String(val));
-      } catch (_) {}
+      } catch (_) { }
       try {
         await api.patch('/admin/configuracion/tv_escala_secundaria', { valor: String(val) });
         showToast({ message: `Tamaño de turnos anteriores guardado (${val}%)`, type: 'info' });
@@ -3035,7 +3007,7 @@ export function adminView() {
             tipo: clave === 'tv_escala_principal' ? 'principal' : 'secundaria',
             valor
           });
-        } catch (_) {}
+        } catch (_) { }
       }
     },
 
@@ -3064,7 +3036,7 @@ export function adminView() {
 
     cambiarOpacidadPrincipal(delta) {
       const actual = parseInt(this.config.tv_opacidad_principal, 10) || 100;
-      const nuevo  = Math.min(100, Math.max(20, actual + delta));
+      const nuevo = Math.min(100, Math.max(20, actual + delta));
       if (nuevo !== this.config.tv_opacidad_principal) {
         this.config.tv_opacidad_principal = nuevo;
         this._guardarOpacidadPrincipalInmediata(nuevo);
@@ -3083,7 +3055,7 @@ export function adminView() {
       this.config.tv_opacidad_principal = Math.min(100, Math.max(20, val));
       try {
         localStorage.setItem('turnero_tv_opacidad_principal', String(this.config.tv_opacidad_principal));
-      } catch (_) {}
+      } catch (_) { }
       this._emitirOpacidadEnVivo('tv_opacidad_principal', this.config.tv_opacidad_principal);
     },
 
@@ -3094,7 +3066,7 @@ export function adminView() {
       }
       try {
         localStorage.setItem('turnero_tv_opacidad_principal', String(val));
-      } catch (_) {}
+      } catch (_) { }
       try {
         await api.patch('/admin/configuracion/tv_opacidad_principal', { valor: String(val) });
         showToast({ message: `Opacidad principal guardada (${val}%)`, type: 'info' });
@@ -3107,7 +3079,7 @@ export function adminView() {
 
     cambiarOpacidadSecundaria(delta) {
       const actual = parseInt(this.config.tv_opacidad_secundaria, 10) || 100;
-      const nuevo  = Math.min(100, Math.max(20, actual + delta));
+      const nuevo = Math.min(100, Math.max(20, actual + delta));
       if (nuevo !== this.config.tv_opacidad_secundaria) {
         this.config.tv_opacidad_secundaria = nuevo;
         this._guardarOpacidadSecundariaInmediata(nuevo);
@@ -3126,7 +3098,7 @@ export function adminView() {
       this.config.tv_opacidad_secundaria = Math.min(100, Math.max(20, val));
       try {
         localStorage.setItem('turnero_tv_opacidad_secundaria', String(this.config.tv_opacidad_secundaria));
-      } catch (_) {}
+      } catch (_) { }
       this._emitirOpacidadEnVivo('tv_opacidad_secundaria', this.config.tv_opacidad_secundaria);
     },
 
@@ -3137,7 +3109,7 @@ export function adminView() {
       }
       try {
         localStorage.setItem('turnero_tv_opacidad_secundaria', String(val));
-      } catch (_) {}
+      } catch (_) { }
       try {
         await api.patch('/admin/configuracion/tv_opacidad_secundaria', { valor: String(val) });
         showToast({ message: `Opacidad de turnos anteriores guardada (${val}%)`, type: 'info' });
@@ -3156,7 +3128,7 @@ export function adminView() {
             tipo: clave === 'tv_opacidad_principal' ? 'principal' : 'secundaria',
             valor
           });
-        } catch (_) {}
+        } catch (_) { }
       }
     },
 
@@ -3187,7 +3159,7 @@ export function adminView() {
       this.config.fondo_imagen_escala = Math.min(200, Math.max(50, val));
       try {
         localStorage.setItem('turnero_fondo_imagen_escala', String(this.config.fondo_imagen_escala));
-      } catch (_) {}
+      } catch (_) { }
       this._emitirEscalaFondoEnVivo(this.config.fondo_imagen_escala);
     },
 
@@ -3198,7 +3170,7 @@ export function adminView() {
       }
       try {
         localStorage.setItem('turnero_fondo_imagen_escala', String(val));
-      } catch (_) {}
+      } catch (_) { }
       try {
         await api.patch('/admin/configuracion/fondo_imagen_escala', { valor: String(val) });
         showToast({ message: `Escala de fondo guardada (${val}%)`, type: 'info' });
@@ -3214,7 +3186,7 @@ export function adminView() {
       if (client && typeof client.send === 'function') {
         try {
           client.send('preview_escala_fondo', { valor });
-        } catch (_) {}
+        } catch (_) { }
       }
     },
 
@@ -3236,8 +3208,8 @@ export function adminView() {
       this.cargandoReporte = true;
       try {
         const query = new URLSearchParams();
-        if (this.filtroReporte.fecha)       query.set('fecha', this.filtroReporte.fecha);
-        if (this.filtroReporte.mesa_id)     query.set('mesa_id', this.filtroReporte.mesa_id);
+        if (this.filtroReporte.fecha) query.set('fecha', this.filtroReporte.fecha);
+        if (this.filtroReporte.mesa_id) query.set('mesa_id', this.filtroReporte.mesa_id);
         if (this.filtroReporte.operador_id) query.set('operador_id', this.filtroReporte.operador_id);
         if (this.filtroReporte.estado && this.filtroReporte.estado !== 'todos')
           query.set('estado', this.filtroReporte.estado);
@@ -3245,9 +3217,9 @@ export function adminView() {
         const res = await api.get(`/admin/reportes/datos?${query.toString()}`);
         if (res) {
           this.reporteData = {
-            kpis:          res.kpis          || this.reporteData.kpis,
+            kpis: res.kpis || this.reporteData.kpis,
             mesas_resumen: res.mesas_resumen || [],
-            turnos:        res.turnos        || []
+            turnos: res.turnos || []
           };
         }
         // Retorna la promesa resuelta para que el HTML pueda encadenar .then()/.catch()
@@ -3267,14 +3239,14 @@ export function adminView() {
         const query = new URLSearchParams();
         const fecha = this.filtroReporte.fecha || new Date().toISOString().slice(0, 10);
         query.set('fecha', fecha);
-        if (this.filtroReporte.mesa_id)     query.set('mesa_id', this.filtroReporte.mesa_id);
+        if (this.filtroReporte.mesa_id) query.set('mesa_id', this.filtroReporte.mesa_id);
         if (this.filtroReporte.operador_id) query.set('operador_id', this.filtroReporte.operador_id);
-        if (this.filtroReporte.estado)      query.set('estado', this.filtroReporte.estado);
+        if (this.filtroReporte.estado) query.set('estado', this.filtroReporte.estado);
 
         const blob = await api.getBlob(`/admin/reportes/exportar-xls?${query.toString()}`);
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href     = url;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
         a.download = `reporte_turnero_${fecha}.xls`;
         document.body.appendChild(a);
         a.click();
@@ -3360,15 +3332,15 @@ export function adminView() {
         }
       };
 
-      this.ws.on('kpi_update',              recargarEnVivo);
-      this.ws.on('turno_llamado',           recargarEnVivo);
-      this.ws.on('turno_cancelado',         recargarEnVivo);
-      this.ws.on('kiosko_turno_generado',   recargarEnVivo);
+      this.ws.on('kpi_update', recargarEnVivo);
+      this.ws.on('turno_llamado', recargarEnVivo);
+      this.ws.on('turno_cancelado', recargarEnVivo);
+      this.ws.on('kiosko_turno_generado', recargarEnVivo);
       this.ws.on('contador_kiosko_reiniciado', async (payload) => {
         this.kioskoUltimoNumero = 0;
         await recargarEnVivo();
       });
-      this.ws.on('proximo_actualizado',     recargarEnVivo);
+      this.ws.on('proximo_actualizado', recargarEnVivo);
       // mesa_actualizada también recarga usuarios para mantener la columna Mesa sincronizada
       this.ws.on('mesa_actualizada', async () => {
         await recargarEnVivo();
@@ -3388,8 +3360,8 @@ export function adminView() {
         // Buscar el siguiente lote preparado
         const siguiente = this.lotes.find(l => l.estado === 'preparado');
         this.loteAgotadoInfo = {
-          loteAgotado:    p || {},
-          loteSiguiente:  siguiente || null
+          loteAgotado: p || {},
+          loteSiguiente: siguiente || null
         };
         this.modalLoteAgotado = true;
       });
@@ -3400,9 +3372,9 @@ export function adminView() {
       });
 
       this.ws.on('lote_extendido', async () => { this.loteAgotadoAlerta = false; await recargarEnVivo(); });
-      this.ws.on('lote_pausado',   recargarEnVivo);
-      this.ws.on('lote_activado',  recargarEnVivo);
-      this.ws.on('lote_cerrado',   async () => { this.loteAgotadoAlerta = false; await recargarEnVivo(); });
+      this.ws.on('lote_pausado', recargarEnVivo);
+      this.ws.on('lote_activado', recargarEnVivo);
+      this.ws.on('lote_cerrado', async () => { this.loteAgotadoAlerta = false; await recargarEnVivo(); });
       this.ws.on('config_actualizada', async () => {
         await this.cargarConfiguracion();
         await recargarEnVivo();
@@ -3419,10 +3391,10 @@ export function adminView() {
       const loteRef = this.loteActivo || this.lotePausado;
       if (!loteRef) return;
       this.ajusteContador = {
-        nuevoUltimo:        loteRef.ultimo_numero_llamado ?? 0,
-        motivo:             '',
+        nuevoUltimo: loteRef.ultimo_numero_llamado ?? 0,
+        motivo: '',
         confirmarRetroceso: false,
-        cargando:           false
+        cargando: false
       };
       this.modalAjustarContador = true;
     },
@@ -3468,8 +3440,8 @@ export function adminView() {
           this.ajusteContador.cargando = true;
           try {
             const res = await api.patch(`/lotes/${loteRef.id}/ajustar-contador`, {
-              nuevo_ultimo_llamado:   nuevoNum,
-              motivo:                 motivoTxt,
+              nuevo_ultimo_llamado: nuevoNum,
+              motivo: motivoTxt,
               confirmacion_retroceso: this.ajusteContador.confirmarRetroceso
             });
 

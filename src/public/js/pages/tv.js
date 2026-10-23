@@ -248,7 +248,7 @@ export function tvView() {
             this._aplicarOpacidadSecundaria(data.tv_opacidad_secundaria, true);
           }
           if (data.fondo_imagen_url !== undefined && data.fondo_imagen_activa !== undefined) {
-            aplicarFondoPersonalizado(data.fondo_imagen_url, data.fondo_imagen_activa);
+            aplicarFondoPersonalizado(data.fondo_imagen_url, data.fondo_imagen_activa, data.fondo_imagen_escala);
           }
         }
       } catch (_) {
@@ -508,6 +508,23 @@ export function tvView() {
         }
       });
 
+      // Vista previa en vivo de escala de fondo institucional
+      this._ws.on('preview_escala_fondo', (p) => {
+        if (!p || p.valor === undefined) return;
+        const numEscala = parseInt(p.valor, 10);
+        if (!isNaN(numEscala) && numEscala >= 50 && numEscala <= 200) {
+          const body = document.body;
+          if (body && body.classList.contains('has-custom-bg')) {
+            if (numEscala === 100) {
+              body.style.setProperty('--bg-custom-size', 'cover');
+            } else {
+              const isLandscape = window.innerWidth >= window.innerHeight;
+              body.style.setProperty('--bg-custom-size', isLandscape ? `${numEscala}vw auto` : `auto ${numEscala}vh`);
+            }
+          }
+        }
+      });
+
       this._ws.on('config_actualizada', (p) => {
         if (!p) return;
         if (p.clave === 'voz_anuncio_activa') {
@@ -538,7 +555,7 @@ export function tvView() {
         if (p.clave === 'kiosko_web_activo') {
           this.modo = p.valor === 'true' ? 'kiosko_web' : 'voucher_fisico';
         }
-        if (p.clave === 'fondo_imagen_url' || p.clave === 'fondo_imagen_activa') {
+        if (p.clave === 'fondo_imagen_url' || p.clave === 'fondo_imagen_activa' || p.clave === 'fondo_imagen_escala') {
           this._cargarConfiguracionPublica();
         }
       });

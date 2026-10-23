@@ -834,7 +834,7 @@ module.exports = async function turnosRoutes (fastify) {
   // ── GET /turnos/configuracion-publica — Parámetros públicos para TV y Kiosko ──
   fastify.get('/configuracion-publica', async (request, reply) => {
     const { rows } = await fastify.db.query(
-      `SELECT clave, valor FROM configuracion WHERE clave IN ('voz_anuncio_activa', 'kiosko_web_activo', 'alerta_vouchers_restantes', 'tv_escala_turnos', 'tv_escala_principal', 'tv_escala_secundaria', 'fondo_imagen_url', 'fondo_imagen_activa', 'tv_opacidad_principal', 'tv_opacidad_secundaria')`
+      `SELECT clave, valor FROM configuracion WHERE clave IN ('voz_anuncio_activa', 'kiosko_web_activo', 'alerta_vouchers_restantes', 'tv_escala_turnos', 'tv_escala_principal', 'tv_escala_secundaria', 'fondo_imagen_url', 'fondo_imagen_activa', 'fondo_imagen_escala', 'tv_opacidad_principal', 'tv_opacidad_secundaria')`
     )
     const configMap = {
       voz_anuncio_activa: true,
@@ -845,6 +845,7 @@ module.exports = async function turnosRoutes (fastify) {
       tv_escala_secundaria: 100,
       fondo_imagen_url: '',
       fondo_imagen_activa: false,
+      fondo_imagen_escala: 100,
       tv_opacidad_principal: 100,
       tv_opacidad_secundaria: 100
     }
@@ -857,6 +858,7 @@ module.exports = async function turnosRoutes (fastify) {
       else if (r.clave === 'tv_escala_secundaria') configMap.tv_escala_secundaria = parseInt(r.valor, 10) || 100
       else if (r.clave === 'fondo_imagen_url') configMap.fondo_imagen_url = r.valor || ''
       else if (r.clave === 'fondo_imagen_activa') configMap.fondo_imagen_activa = r.valor === 'true'
+      else if (r.clave === 'fondo_imagen_escala') configMap.fondo_imagen_escala = parseInt(r.valor, 10) || 100
       else if (r.clave === 'tv_opacidad_principal') configMap.tv_opacidad_principal = parseInt(r.valor, 10) || 100
       else if (r.clave === 'tv_opacidad_secundaria') configMap.tv_opacidad_secundaria = parseInt(r.valor, 10) || 100
     }

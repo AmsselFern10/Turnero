@@ -261,6 +261,8 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
      'URL o ruta de la imagen institucional de fondo para las pantallas del sistema.'),
     ('fondo_imagen_activa',        'false',
      'Activar la imagen de fondo institucional en las pantallas del sistema.'),
+    ('fondo_imagen_escala',        '100',
+     'Escala porcentual del fondo de pantalla institucional (50-200%).'),
     ('tv_opacidad_principal',       '100',
      'Opacidad del fondo de la tarjeta principal (turno en curso) en pantalla TV. Entero de 20 a 100; 100 = completamente opaco.'),
     ('tv_opacidad_secundaria',      '100',

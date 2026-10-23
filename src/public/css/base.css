@@ -20,6 +20,7 @@
   font-display: swap;
   src: url('/assets/fonts/inter-400.woff2') format('woff2');
 }
+
 @font-face {
   font-family: 'Inter';
   font-style: normal;
@@ -27,6 +28,7 @@
   font-display: swap;
   src: url('/assets/fonts/inter-500.woff2') format('woff2');
 }
+
 @font-face {
   font-family: 'Inter';
   font-style: normal;
@@ -34,6 +36,7 @@
   font-display: swap;
   src: url('/assets/fonts/inter-600.woff2') format('woff2');
 }
+
 @font-face {
   font-family: 'Inter';
   font-style: normal;
@@ -41,6 +44,7 @@
   font-display: swap;
   src: url('/assets/fonts/inter-700.woff2') format('woff2');
 }
+
 @font-face {
   font-family: 'Inter';
   font-style: normal;
@@ -56,6 +60,7 @@
   font-display: swap;
   src: url('/assets/fonts/jetbrains-mono-400.woff2') format('woff2');
 }
+
 @font-face {
   font-family: 'JetBrains Mono';
   font-style: normal;
@@ -63,6 +68,7 @@
   font-display: swap;
   src: url('/assets/fonts/jetbrains-mono-500.woff2') format('woff2');
 }
+
 @font-face {
   font-family: 'JetBrains Mono';
   font-style: normal;
@@ -70,6 +76,7 @@
   font-display: swap;
   src: url('/assets/fonts/jetbrains-mono-600.woff2') format('woff2');
 }
+
 @font-face {
   font-family: 'JetBrains Mono';
   font-style: normal;
@@ -77,6 +84,7 @@
   font-display: swap;
   src: url('/assets/fonts/jetbrains-mono-700.woff2') format('woff2');
 }
+
 @font-face {
   font-family: 'JetBrains Mono';
   font-style: normal;
@@ -89,36 +97,58 @@
 /* ── 2. Tokens Visuales Oficiales del Sistema ──────────────────────────────── */
 :root {
   /* Lienzo y Superficies */
-  --bg-app: #EEF2F6;              /* Slate Blue grisáceo institucional (antifatiga) */
-  --card-bg: #FFFFFF;             /* Blanco puro para tarjetas y contenedores */
-  --card-bg-subtle: #F8FAFC;      /* Fondo suave secundario (slate-50) */
-  --border-subtle: #CBD5E1;       /* Bordes definidos de tarjetas (slate-300) */
-  --border-light: #E2E8F0;        /* Bordes internos sutiles (slate-200) */
+  --bg-app: #EEF2F6;
+  /* Slate Blue grisáceo institucional (antifatiga) */
+  --card-bg: #FFFFFF;
+  /* Blanco puro para tarjetas y contenedores */
+  --card-bg-subtle: #F8FAFC;
+  /* Fondo suave secundario (slate-50) */
+  --border-subtle: #CBD5E1;
+  /* Bordes definidos de tarjetas (slate-300) */
+  --border-light: #E2E8F0;
+  /* Bordes internos sutiles (slate-200) */
 
   /* Colores de Marca y Acción */
-  --primary-cobalt: #1D4ED8;      /* Azul Cobalto Institucional principal */
-  --primary-hover: #1E40AF;       /* Hover de botones principales (blue-800) */
-  --primary-light: #EFF6FF;       /* Fondos activos/badges (blue-50) */
-  --primary-border: #BFDBFE;      /* Borde de estados primarios (blue-200) */
+  --primary-cobalt: #1D4ED8;
+  /* Azul Cobalto Institucional principal */
+  --primary-hover: #1E40AF;
+  /* Hover de botones principales (blue-800) */
+  --primary-light: #EFF6FF;
+  /* Fondos activos/badges (blue-50) */
+  --primary-border: #BFDBFE;
+  /* Borde de estados primarios (blue-200) */
 
   /* Semántica de Estados */
-  --color-success: #059669;       /* En atención / En línea (emerald-600) */
-  --color-success-bg: #ECFDF5;    /* Fondo estado conectado (emerald-50) */
-  --color-success-border: #A7F3D0;/* Borde estado conectado (emerald-200) */
+  --color-success: #059669;
+  /* En atención / En línea (emerald-600) */
+  --color-success-bg: #ECFDF5;
+  /* Fondo estado conectado (emerald-50) */
+  --color-success-border: #A7F3D0;
+  /* Borde estado conectado (emerald-200) */
 
-  --color-warning: #D97706;       /* Espera / Próximo / Reconexión (amber-600) */
-  --color-warning-bg: #FFFBEB;    /* Fondo alerta (amber-50) */
-  --color-warning-border: #FDE68A;/* Borde alerta (amber-200) */
+  --color-warning: #D97706;
+  /* Espera / Próximo / Reconexión (amber-600) */
+  --color-warning-bg: #FFFBEB;
+  /* Fondo alerta (amber-50) */
+  --color-warning-border: #FDE68A;
+  /* Borde alerta (amber-200) */
 
-  --color-danger: #E11D48;        /* Cancelado / Error / Destructivo (rose-600) */
-  --color-danger-bg: #FFF1F2;     /* Fondo error (rose-50) */
-  --color-danger-border: #FECDD3; /* Borde error (rose-200) */
+  --color-danger: #E11D48;
+  /* Cancelado / Error / Destructivo (rose-600) */
+  --color-danger-bg: #FFF1F2;
+  /* Fondo error (rose-50) */
+  --color-danger-border: #FECDD3;
+  /* Borde error (rose-200) */
 
   /* Tipografía y Escala de Contraste */
-  --text-main: #0F172A;           /* Texto titular / Números dominantes (slate-900) */
-  --text-secondary: #334155;      /* Subtítulos / Labels / Botones (slate-700) */
-  --text-muted: #64748B;          /* Metadatos / Cronómetros neutros (slate-500) */
-  --text-disabled: #94A3B8;       /* Deshabilitados / Placeholders (slate-400) */
+  --text-main: #0F172A;
+  /* Texto titular / Números dominantes (slate-900) */
+  --text-secondary: #334155;
+  /* Subtítulos / Labels / Botones (slate-700) */
+  --text-muted: #64748B;
+  /* Metadatos / Cronómetros neutros (slate-500) */
+  --text-disabled: #94A3B8;
+  /* Deshabilitados / Placeholders (slate-400) */
 
   /* Sombras Sutiles */
   --shadow-xs: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
@@ -183,7 +213,7 @@ body {
   box-shadow: var(--shadow-xs);
 }
 
-}
+
 
 /* ── 8. Utilidades de Accesibilidad y Controles ──────────────────────────── */
 .sr-only {
@@ -209,13 +239,16 @@ body {
   width: 7px;
   height: 7px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
   background: #CBD5E1;
   border-radius: 9999px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: #94A3B8;
 }
@@ -236,7 +269,7 @@ body {
 /* el fondo blanco de las tarjetas (.card) ni los estilos de headers o footers */
 body.has-custom-bg {
   background-image: var(--bg-custom-image) !important;
-  background-size: cover !important;
+  background-size: var(--bg-custom-size, cover) !important;
   background-position: center center !important;
   background-repeat: no-repeat !important;
   background-attachment: fixed !important;
@@ -251,5 +284,3 @@ body.has-custom-bg {
     background-attachment: scroll !important;
   }
 }
-
-

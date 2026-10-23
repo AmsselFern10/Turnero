@@ -33,8 +33,8 @@ const CMD = {
   FONT_LARGE:    Buffer.from([GS,  0x21, 0x11]),        // Doble ancho y alto (4x)
   FONT_NORMAL:   Buffer.from([GS,  0x21, 0x00]),        // Volver a normal
   LINE_FEED:     Buffer.from([0x0A]),                    // Salto de línea
-  CUT_FULL:      Buffer.from([GS,  0x56, 0x00]),        // Corte completo de papel
-  CUT_PARTIAL:   Buffer.from([GS,  0x56, 0x01]),        // Corte parcial
+  CUT_FULL:      Buffer.from([GS,  0x56, 0x41, 0x02]),   // Avance 2 líneas y corte completo
+  CUT_PARTIAL:   Buffer.from([GS,  0x56, 0x42, 0x02]),   // Avance 2 líneas y corte parcial
   DIVIDER:       Buffer.from('--------------------------------\n', 'latin1'),
 }
 

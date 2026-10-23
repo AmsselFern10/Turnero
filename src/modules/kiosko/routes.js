@@ -224,7 +224,7 @@ module.exports = async function kioskoRoutes (fastify) {
     }
   }, async (request, reply) => {
     const { imprimirTicketESCPOS } = require('./printer')
-    const { numero, formato, modulo, tracking_url } = request.body || {}
+    const { numero, formato, modulo, tracking_url, ip, puerto } = request.body || {}
 
     if (!numero) {
       return reply.status(400).send({ ok: false, codigo: 'DATOS_INCOMPLETOS', mensaje: 'Se requiere el numero de turno.' })
@@ -240,9 +240,18 @@ module.exports = async function kioskoRoutes (fastify) {
       hora:  ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
     }
 
+    const opcionesPrint = {}
+    if (ip && String(ip).trim() !== '') {
+      opcionesPrint.ip = String(ip).trim()
+      opcionesPrint.forzar = true
+    }
+    if (puerto) {
+      opcionesPrint.puerto = Number(puerto)
+    }
+
     try {
-      await imprimirTicketESCPOS(fastify, ticket)
-      fastify.log.info({ numero, ip: request.ip }, 'Voucher impreso via ESC/POS')
+      await imprimirTicketESCPOS(fastify, ticket, opcionesPrint)
+      fastify.log.info({ numero, ip: request.ip, destinoIp: opcionesPrint.ip || 'servidor' }, 'Voucher impreso via ESC/POS')
       return reply.status(200).send({ ok: true, mensaje: `Voucher ${ticket.formato} enviado a la impresora.` })
     } catch (err) {
       fastify.log.warn({ code: err.code, message: err.message }, 'Error de impresora ESC/POS')

@@ -129,7 +129,7 @@ async function getKioskoEstado (fastify) {
   const [resConfig, resTurnos, resMesas, resContador] = await Promise.all([
     fastify.db.query(
       `SELECT clave, valor FROM configuracion
-       WHERE clave IN ('kiosko_web_activo', 'modo_generacion_turnos', 'kiosko_tope_diario', 'kiosko_modo_uso', 'kiosko_impresion_automatica', 'kiosko_url_base', 'kiosko_url_publica')`
+       WHERE clave IN ('kiosko_web_activo', 'modo_generacion_turnos', 'kiosko_tope_diario', 'kiosko_modo_uso', 'kiosko_impresion_automatica', 'kiosko_url_base', 'kiosko_url_publica', 'impresora_activa', 'impresora_ip', 'impresora_puerto')`
     ),
     fastify.db.query(
       `SELECT
@@ -185,6 +185,9 @@ async function getKioskoEstado (fastify) {
     tope_diario: topeDiario,
     tope_alcanzado: topeAlcanzado,
     impresion_automatica: impresionAutomatica,
+    impresora_activa: cfg.impresora_activa === 'true',
+    impresora_ip: cfg.impresora_ip || '',
+    impresora_puerto: parseInt(cfg.impresora_puerto || '9100', 10),
     url_base: cfg.kiosko_url_base || '',
     url_publica: cfg.kiosko_url_publica || '',
     turnos_en_espera: turnosData.en_espera || 0,

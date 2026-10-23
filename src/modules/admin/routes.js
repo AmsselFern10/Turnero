@@ -1334,42 +1334,6 @@ module.exports = async function adminRoutes (fastify) {
       })
     }
   })
-
-  // ── GET /admin/red-info — IP LAN del servidor para autocompletar URL Kiosko ─
-  // Detecta la IP local de la interfaz de red activa (no loopback).
-  // Usado por el panel admin para pre-rellenar "Dirección Local (Wi-Fi Campus / LAN)"
-  // sin que el administrador tenga que ejecutar ipconfig manualmente.
-  fastify.get('/red-info', {
-    preHandler: [fastify.authorizeRol('admin')]
-  }, async (request, reply) => {
-    const { getLanIpAddress, getLanIpAddresses } = require('../kiosko/service')
-    const port    = process.env.PORT || 3000
-    const proto   = process.env.NODE_ENV === 'production' ? 'https' : 'http'
-    const hostEnv = (process.env.HOST_IP || '').trim()
-
-    const lanIp      = getLanIpAddress()   // Aplica prioridad HOST_IP → auto
-    const candidatas = getLanIpAddresses() // Solo auto-detectadas (sin HOST_IP)
-
-    const toUrl = ip => `${proto}://${ip}:${port}`
-
-    // Si HOST_IP está configurado, ponerlo primero en la lista de candidatas
-    const todasLasIps = []
-    if (hostEnv && hostEnv !== 'localhost') {
-      todasLasIps.push({ ip: hostEnv, iface: 'HOST_IP (manual)', url: toUrl(hostEnv) })
-    }
-    todasLasIps.push(...candidatas.map(c => ({ ip: c.ip, iface: c.iface, url: toUrl(c.ip) })))
-
-    return reply.send({
-      lan_ip:            lanIp,
-      puerto:            Number(port),
-      protocolo:         proto,
-      url_lan_sugerida:  lanIp !== 'localhost' ? toUrl(lanIp) : null,
-      es_localhost:      lanIp === 'localhost',
-      // true si viene de HOST_IP del .env (Docker/WSL2), false si es auto-detectada
-      es_manual:         Boolean(hostEnv && hostEnv !== 'localhost'),
-      todas_las_ips:     todasLasIps
-    })
-  })
 }
 
 

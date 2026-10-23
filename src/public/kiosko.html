@@ -32,6 +32,17 @@
       <template x-if="esTablet">
         <div class="flex items-center gap-2">
           <span class="pill pill-primary text-xs font-bold">Modo asistido</span>
+          <button type="button"
+                  @click="abrirModalImpresora()"
+                  class="pill text-xs font-semibold cursor-pointer transition-all hover:opacity-90 flex items-center gap-1.5 shadow-2xs"
+                  :class="badgeImpresoraClases"
+                  :title="badgeImpresoraTitle"
+                  aria-label="Configuración de impresora de tickets">
+            <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24-1.076-.673-2.13-1.27-3.104m12.1 0c-.597.974-1.03 2.028-1.27 3.104M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-18 0A2.25 2.25 0 015.25 14.25h13.5A2.25 2.25 0 0121 16.5m-18 0h18" />
+            </svg>
+            <span x-text="badgeImpresoraTexto"></span>
+          </button>
           <a href="/index.html"
              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-700 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
              title="Regresar a pantalla de inicio / login"
@@ -230,43 +241,74 @@
                 <span>Vuelve a inicio en <span class="font-mono-num font-bold text-slate-700" x-text="cuentaRegresiva"></span>s</span>
               </div>
 
-              <!-- Botón imprimir: solo visible cuando impresión automática está desactivada -->
-              <div x-show="!impresionAutomatica" class="grid grid-cols-2 gap-2">
-                <button @click="imprimirTicket()" :disabled="isPrinting" type="button"
-                        title="Enviar a impresora de tickets" aria-label="Imprimir ticket"
-                        class="btn-ghost btn-sm flex items-center justify-center space-x-1.5">
-                  <template x-if="!isPrinting">
-                    <div class="flex items-center space-x-1.5">
-                      <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24-1.076-.673-2.13-1.27-3.104m12.1 0c-.597.974-1.03 2.028-1.27 3.104M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-18 0A2.25 2.25 0 015.25 14.25h13.5A2.25 2.25 0 0121 16.5m-18 0h18" />
-                      </svg>
-                      <span>Imprimir ticket</span>
-                    </div>
-                  </template>
-                  <template x-if="isPrinting">
-                    <div class="flex items-center space-x-1.5">
-                      <svg class="w-3.5 h-3.5 animate-spin stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                      </svg>
-                      <span>Enviando...</span>
-                    </div>
-                  </template>
-                </button>
+              <!-- Acciones de Impresión en Tablet: Reimprimir copia o Imprimir manual -->
+              <div class="grid grid-cols-2 gap-2">
+                <!-- Si hay impresora habilitada y la impresión automática está activa: botón "Reimprimir copia" -->
+                <template x-if="tieneImpresoraHabilitada && impresionAutomatica">
+                  <button @click="imprimirTicket(true)" :disabled="isPrinting" type="button"
+                          title="Imprimir una copia adicional del comprobante" aria-label="Reimprimir copia"
+                          class="btn-ghost btn-sm flex items-center justify-center space-x-1.5 border border-slate-300">
+                    <template x-if="!isPrinting">
+                      <div class="flex items-center space-x-1.5">
+                        <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                        </svg>
+                        <span>Reimprimir copia</span>
+                      </div>
+                    </template>
+                    <template x-if="isPrinting">
+                      <div class="flex items-center space-x-1.5">
+                        <svg class="w-3.5 h-3.5 animate-spin stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"></path>
+                        </svg>
+                        <span>Imprimiendo...</span>
+                      </div>
+                    </template>
+                  </button>
+                </template>
+
+                <!-- Si hay impresora habilitada y la impresión automática está inactiva: botón "Imprimir ticket" -->
+                <template x-if="tieneImpresoraHabilitada && !impresionAutomatica">
+                  <button @click="imprimirTicket(false)" :disabled="isPrinting" type="button"
+                          title="Enviar a impresora de tickets" aria-label="Imprimir ticket"
+                          class="btn-ghost btn-sm flex items-center justify-center space-x-1.5 border border-slate-300">
+                    <template x-if="!isPrinting">
+                      <div class="flex items-center space-x-1.5">
+                        <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24-1.076-.673-2.13-1.27-3.104m12.1 0c-.597.974-1.03 2.028-1.27 3.104M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-18 0A2.25 2.25 0 015.25 14.25h13.5A2.25 2.25 0 0121 16.5m-18 0h18" />
+                        </svg>
+                        <span>Imprimir ticket</span>
+                      </div>
+                    </template>
+                    <template x-if="isPrinting">
+                      <div class="flex items-center space-x-1.5">
+                        <svg class="w-3.5 h-3.5 animate-spin stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"></path>
+                        </svg>
+                        <span>Enviando...</span>
+                      </div>
+                    </template>
+                  </button>
+                </template>
+
+                <!-- Si NO hay impresora habilitada: botón para configurar -->
+                <template x-if="!tieneImpresoraHabilitada">
+                  <button @click="abrirModalImpresora()" type="button"
+                          title="Configurar impresora" aria-label="Configurar impresora"
+                          class="btn-ghost btn-sm flex items-center justify-center space-x-1.5 text-slate-600 border border-slate-300">
+                    <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M10.34 15.84c-.388-.497-.61-1.127-.61-1.78a2.5 2.5 0 114.77 1.05m-3.9 4.74h3.04a1 1 0 001-1v-2.07a1 1 0 00-.29-.71l-1.42-1.42a1 1 0 00-1.41 0l-1.42 1.42a1 1 0 00-.29.71V19.9a1 1 0 001 1z" />
+                    </svg>
+                    <span>Configurar</span>
+                  </button>
+                </template>
+
                 <button @click="volverABienvenida()" type="button"
                         title="Cancelar y volver al inicio" aria-label="Cancelar"
-                        class="btn-ghost btn-sm">
+                        class="btn-ghost btn-sm border border-slate-300">
                   Cancelar
                 </button>
               </div>
-
-              <!-- Con impresión automática activa: solo botón cancelar -->
-              <template x-if="impresionAutomatica">
-                <button @click="volverABienvenida()" type="button"
-                        title="Cancelar y volver al inicio" aria-label="Cancelar"
-                        class="btn-ghost btn-sm w-full">
-                  Cancelar
-                </button>
-              </template>
             </div>
           </template>
 
@@ -389,6 +431,176 @@
       <polyline points="20 6 9 17 4 12"></polyline>
     </svg>
     <span class="text-xs font-semibold" x-text="toastMessage"></span>
+  </div>
+
+  <!-- ── 5. MODAL: CONFIGURACIÓN DE IMPRESIÓN HÍBRIDA (SOLO TABLET) ── -->
+  <div x-show="modalImpresora" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fade-in"
+       @keydown.escape.window="cerrarModalImpresora()">
+    <div class="card max-w-lg w-full p-6 text-left space-y-5 shadow-xl border border-slate-300"
+         @click.away="cerrarModalImpresora()">
+
+      <!-- Encabezado del Modal -->
+      <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700">
+            <svg class="w-5 h-5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24-1.076-.673-2.13-1.27-3.104m12.1 0c-.597.974-1.03 2.028-1.27 3.104M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-18 0A2.25 2.25 0 015.25 14.25h13.5A2.25 2.25 0 0121 16.5m-18 0h18" />
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900 leading-none">Impresora de Tickets</h3>
+            <p class="text-xs text-slate-500 mt-1">Configure el canal de salida para vouchers en esta tablet</p>
+          </div>
+        </div>
+        <button type="button" @click="cerrarModalImpresora()"
+                class="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                title="Cerrar modal" aria-label="Cerrar modal">
+          <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Opciones de Canal de Impresión -->
+      <div class="space-y-3">
+        <label class="text-xs font-semibold uppercase tracking-wider text-slate-500 block">Canal de emisión</label>
+
+        <!-- Opción 1: Red Local (TCP / LAN) -->
+        <label class="flex items-start p-3 rounded-xl border cursor-pointer transition-all"
+               :class="canalImpresion === 'servidor' ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500/20' : 'border-slate-200 hover:border-slate-300 bg-white'">
+          <input type="radio" name="canalImpresion" value="servidor" x-model="canalImpresion" class="mt-1 text-blue-600 focus:ring-blue-500">
+          <div class="ml-3 flex-1 text-xs">
+            <div class="font-bold text-slate-900 flex items-center justify-between">
+              <span>Impresora Térmica en Red LAN (TCP / ESC-POS)</span>
+              <span class="pill pill-primary text-[10px] py-0.5 px-2">Recomendado</span>
+            </div>
+            <p class="text-slate-500 mt-0.5">Envío directo de bytes ESC/POS al puerto 9100 de la impresora en red.</p>
+            <div x-show="canalImpresion === 'servidor'" class="mt-2.5 pt-2 border-t border-slate-200/80 space-y-2">
+              <div class="text-[11px] text-slate-600">
+                <span>IP general del sistema: </span>
+                <span class="font-mono-num font-bold text-slate-800" x-text="impresoraServidorIp || 'Sin configurar en Ajustes'"></span>
+              </div>
+              <div>
+                <label class="block text-[11px] font-medium text-slate-700 mb-1">IP específica para esta tablet (opcional):</label>
+                <input type="text" x-model="ipTabletPersonalizada"
+                       placeholder="Ej: 192.168.1.150 (vacío para usar la del sistema)"
+                       class="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-mono-num focus:ring-2 focus:ring-blue-500 focus:outline-none">
+              </div>
+            </div>
+          </div>
+        </label>
+
+        <!-- Opción 2: Bluetooth Térmico -->
+        <label class="flex items-start p-3 rounded-xl border cursor-pointer transition-all"
+               :class="canalImpresion === 'bluetooth' ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500/20' : 'border-slate-200 hover:border-slate-300 bg-white'">
+          <input type="radio" name="canalImpresion" value="bluetooth" x-model="canalImpresion" class="mt-1 text-blue-600 focus:ring-blue-500">
+          <div class="ml-3 flex-1 text-xs">
+            <div class="font-bold text-slate-900 flex items-center justify-between">
+              <span>Impresora Térmica Bluetooth (Web Bluetooth)</span>
+              <span class="pill text-[10px] py-0.5 px-2" :class="bluetoothConectado ? 'pill-success' : 'pill-neutral'"
+                    x-text="bluetoothConectado ? 'Conectado' : 'Sin conectar'"></span>
+            </div>
+            <p class="text-slate-500 mt-0.5">Impresión directa desde la tablet a impresoras Bluetooth portátiles (58mm/80mm).</p>
+
+            <div x-show="canalImpresion === 'bluetooth'" class="mt-2.5 pt-2 border-t border-slate-200/80 space-y-2">
+              <template x-if="!bluetoothDisponible">
+                <div class="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[11px]">
+                  Web Bluetooth no está habilitado en este navegador. Utilice Google Chrome o Microsoft Edge en Android/Windows.
+                </div>
+              </template>
+
+              <template x-if="bluetoothDisponible">
+                <div class="flex items-center gap-2">
+                  <template x-if="!bluetoothConectado">
+                    <button type="button" @click="conectarBluetooth()" :disabled="conectandoBluetooth"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs active:scale-[0.98] transition-all cursor-pointer">
+                      <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                      </svg>
+                      <span x-text="conectandoBluetooth ? 'Buscando...' : 'Vincular y conectar impresora'"></span>
+                    </button>
+                  </template>
+                  <template x-if="bluetoothConectado">
+                    <div class="flex items-center justify-between w-full">
+                      <span class="text-xs font-semibold text-emerald-700" x-text="bluetoothDispositivoNombre || 'Impresora Conectada'"></span>
+                      <button type="button" @click="desconectarBluetooth()"
+                              class="text-[11px] text-rose-600 hover:text-rose-800 font-semibold underline cursor-pointer">
+                        Desconectar
+                      </button>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </div>
+        </label>
+
+        <!-- Opción 3: Controlador del Sistema (Driver SO / USB) -->
+        <label class="flex items-start p-3 rounded-xl border cursor-pointer transition-all"
+               :class="canalImpresion === 'sistema' ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500/20' : 'border-slate-200 hover:border-slate-300 bg-white'">
+          <input type="radio" name="canalImpresion" value="sistema" x-model="canalImpresion" class="mt-1 text-blue-600 focus:ring-blue-500">
+          <div class="ml-3 flex-1 text-xs">
+            <span class="font-bold text-slate-900 block">Controlador del Sistema (Ventana / Diálogo nativo)</span>
+            <p class="text-slate-500 mt-0.5">Abre la ventana estándar de impresión del navegador para impresoras USB instaladas en el equipo.</p>
+          </div>
+        </label>
+
+        <!-- Opción 4: Desactivar Impresión -->
+        <label class="flex items-start p-3 rounded-xl border cursor-pointer transition-all"
+               :class="canalImpresion === 'ninguno' ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500/20' : 'border-slate-200 hover:border-slate-300 bg-white'">
+          <input type="radio" name="canalImpresion" value="ninguno" x-model="canalImpresion" class="mt-1 text-blue-600 focus:ring-blue-500">
+          <div class="ml-3 flex-1 text-xs">
+            <span class="font-bold text-slate-900 block">Sin impresora (Solo en pantalla)</span>
+            <p class="text-slate-500 mt-0.5">No se imprimirá papel ni se mostrarán avisos de error de impresión.</p>
+          </div>
+        </label>
+      </div>
+
+      <!-- Prueba de Impresión y Avisos -->
+      <div class="pt-3 border-t border-slate-200 space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="text-xs text-slate-600">Verifique el funcionamiento antes de iniciar jornada:</span>
+          <button type="button" @click="probarImpresion()" :disabled="probandoImpresora || canalImpresion === 'ninguno'"
+                  title="Imprimir ticket de prueba" aria-label="Imprimir ticket de prueba"
+                  class="btn-xs btn-secondary flex items-center gap-1.5 shadow-2xs cursor-pointer">
+            <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24-1.076-.673-2.13-1.27-3.104m12.1 0c-.597.974-1.03 2.028-1.27 3.104M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-18 0A2.25 2.25 0 015.25 14.25h13.5A2.25 2.25 0 0121 16.5m-18 0h18" />
+            </svg>
+            <span x-text="probandoImpresora ? 'Probando...' : 'Imprimir ticket de prueba'">Imprimir ticket de prueba</span>
+          </button>
+        </div>
+
+        <template x-if="mensajePrueba">
+          <div class="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+            <svg class="w-4 h-4 text-emerald-600 stroke-[2] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+            </svg>
+            <span x-text="mensajePrueba"></span>
+          </div>
+        </template>
+
+        <template x-if="errorPrueba">
+          <div class="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+            <svg class="w-4 h-4 text-rose-600 stroke-[2] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+            <span x-text="errorPrueba"></span>
+          </div>
+        </template>
+      </div>
+
+      <!-- Botones de Acción del Modal -->
+      <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+        <button type="button" @click="cerrarModalImpresora()" class="btn-sm btn-ghost cursor-pointer">
+          Cancelar
+        </button>
+        <button type="button" @click="guardarConfigImpresora()" class="btn-sm btn-primary cursor-pointer">
+          Guardar y Cerrar
+        </button>
+      </div>
+
+    </div>
   </div>
 
   <!-- Scripts al final del body -->

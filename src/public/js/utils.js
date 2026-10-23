@@ -268,8 +268,9 @@ export function showToast({ message, type = 'info', duration = 3500 }) {
  * preservando intactas las tarjetas blancas (.card), controles, header y footer.
  * @param {string} url - URL de la imagen
  * @param {boolean|string} activo - Si está activado o no
+ * @param {number|string} [escala=100] - Escala porcentual (50 a 200)
  */
-export function aplicarFondoPersonalizado(url, activo) {
+export function aplicarFondoPersonalizado(url, activo, escala = 100) {
   if (typeof document === 'undefined') return;
   const body = document.body;
   if (!body) return;
@@ -280,9 +281,25 @@ export function aplicarFondoPersonalizado(url, activo) {
   if (estaActivo && urlValida) {
     const cleanUrl = url.trim().replace(/"/g, '\\"');
     body.style.setProperty('--bg-custom-image', `url("${cleanUrl}")`);
+
+    const numEscala = parseInt(escala, 10);
+    const escalaValida = !isNaN(numEscala) && numEscala >= 50 && numEscala <= 200 ? numEscala : 100;
+
+    if (escalaValida === 100) {
+      body.style.setProperty('--bg-custom-size', 'cover');
+    } else {
+      const isLandscape = typeof window !== 'undefined' ? (window.innerWidth >= window.innerHeight) : true;
+      if (isLandscape) {
+        body.style.setProperty('--bg-custom-size', `${escalaValida}vw auto`);
+      } else {
+        body.style.setProperty('--bg-custom-size', `auto ${escalaValida}vh`);
+      }
+    }
+
     body.classList.add('has-custom-bg');
   } else {
     body.style.removeProperty('--bg-custom-image');
+    body.style.removeProperty('--bg-custom-size');
     body.classList.remove('has-custom-bg');
   }
 }
@@ -300,7 +317,7 @@ export async function initFondoPersonalizado(wsClient = null) {
       const resp = await fetch('/turnos/configuracion-publica');
       if (resp.ok) {
         const data = await resp.json();
-        aplicarFondoPersonalizado(data.fondo_imagen_url, data.fondo_imagen_activa);
+        aplicarFondoPersonalizado(data.fondo_imagen_url, data.fondo_imagen_activa, data.fondo_imagen_escala);
       }
     } catch (_) {}
   }
@@ -312,8 +329,25 @@ export async function initFondoPersonalizado(wsClient = null) {
   if (wsClient && typeof wsClient.on === 'function') {
     wsClient.on('config_actualizada', (payload) => {
       if (!payload) return;
-      if (payload.clave === 'fondo_imagen_url' || payload.clave === 'fondo_imagen_activa') {
+      if (payload.clave === 'fondo_imagen_url' || payload.clave === 'fondo_imagen_activa' || payload.clave === 'fondo_imagen_escala') {
         actualizar();
+      }
+    });
+
+    // Soporte para vista previa en vivo mientras se desliza el control
+    wsClient.on('preview_escala_fondo', (payload) => {
+      if (!payload || payload.valor === undefined) return;
+      const numEscala = parseInt(payload.valor, 10);
+      if (!isNaN(numEscala) && numEscala >= 50 && numEscala <= 200) {
+        const body = document.body;
+        if (body && body.classList.contains('has-custom-bg')) {
+          if (numEscala === 100) {
+            body.style.setProperty('--bg-custom-size', 'cover');
+          } else {
+            const isLandscape = window.innerWidth >= window.innerHeight;
+            body.style.setProperty('--bg-custom-size', isLandscape ? `${numEscala}vw auto` : `auto ${numEscala}vh`);
+          }
+        }
       }
     });
   }
