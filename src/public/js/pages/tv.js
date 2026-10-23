@@ -642,17 +642,23 @@ export function tvView() {
         es_rezagado: !!payload.es_rezagado
       };
 
-      // Deduplicación estricta: si el turno es idéntico al que está en el Hero y llegó hace menos de 4 s,
-      // o si ya existe un turno idéntico para la misma mesa esperando en cola, descartar duplicado.
+      // Deduplicación estricta (10s): si el turno es idéntico al del Hero o ya fue reproducido
+      // en los últimos 10 segundos, o si ya existe un turno idéntico para la misma mesa esperando en cola,
+      // descartar duplicado sin importar si llegó por evento en vivo o por snapshot.
+      const claveTurno = `${item.numero}_${item.mesa_numero}`;
+      this._turnosHabladosRecientes = this._turnosHabladosRecientes || new Map();
+      const ultimoHabladoTs = this._turnosHabladosRecientes.get(claveTurno) || 0;
+      const fueHabladoReciente = (Date.now() - ultimoHabladoTs < 10000);
+
       const esDuplicadoEnHero = this.ultimoLlamado &&
         Number(this.ultimoLlamado.numero) === item.numero &&
         String(this.ultimoLlamado.mesa_numero) === String(item.mesa_numero) &&
-        (Date.now() - new Date(this.ultimoLlamado.llamado_en).getTime() < CFG.tiempoVisualizacionMs);
+        (Date.now() - new Date(this.ultimoLlamado.llamado_en).getTime() < 10000);
 
       const esDuplicadoEnCola = this._cola.length > 0 &&
         this._cola.some(c => c.numero === item.numero && String(c.mesa_numero) === String(item.mesa_numero));
 
-      if (esDuplicadoEnHero || esDuplicadoEnCola) {
+      if (esDuplicadoEnHero || esDuplicadoEnCola || fueHabladoReciente) {
         return;
       }
 
@@ -856,6 +862,10 @@ export function tvView() {
 
         this._lastSeqAnunciado = Math.max(this._lastSeqAnunciado, item.seq ?? 0);
         this._ajustarTamanoTicket();
+
+        // Registrar timestamp de locución para blindaje anti-duplicación (10s)
+        if (!this._turnosHabladosRecientes) this._turnosHabladosRecientes = new Map();
+        this._turnosHabladosRecientes.set(`${item.numero}_${item.mesa_numero}`, Date.now());
 
         // ── AUDIO (campana + voz) en paralelo al temporizador de exhibición ──
         // Se lanzan sin await: el temporizador fijo es la única señal de avance.

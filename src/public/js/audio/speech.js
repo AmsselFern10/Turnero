@@ -139,9 +139,9 @@ export function speakCall({ numero, mesa_numero }) {
     const texto = `Turno ${numLimpio}, Mesa ${mesaLimpia}`;
 
     const ahora = Date.now();
-    // Guardia anti-duplicación: si el mismo anuncio fue emitido hace menos de 3.5 s,
+    // Guardia anti-duplicación estricta (10s): si el mismo anuncio fue emitido hace menos de 10 segundos,
     // descartar la emisión repetida para evitar que suene dos veces
-    if (_ultimoAudio.texto === texto && (ahora - _ultimoAudio.timestamp < 3500)) {
+    if (_ultimoAudio.texto === texto && (ahora - _ultimoAudio.timestamp < 10000)) {
       console.warn(`[SPEECH] Ignorando locución duplicada para "${texto}" (${ahora - _ultimoAudio.timestamp}ms transcurridos)`);
       return resolve();
     }

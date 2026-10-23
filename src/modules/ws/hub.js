@@ -440,7 +440,7 @@ async function enviarSnapshot (ws, fastify, user) {
 
 // Plugin Fastify envuelto con fastify-plugin
 async function hubPlugin (fastify) {
-  const HEARTBEAT_INTERVAL = 30_000 // 30s (RF-WS-06)
+  const HEARTBEAT_INTERVAL = 20_000 // 20s para LAN tolerante y realista (RF-WS-06)
 
   /**
    * Endpoint WebSocket autenticado y protegido contra IDOR (RF-WS-02, RF-WS-03).

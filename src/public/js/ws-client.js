@@ -35,8 +35,8 @@ export class TurneroWSClient {
     this.mesaId = options.mesaId || null;
     this.baseDelay = options.baseDelay || 1000;
     this.maxDelay = options.maxDelay || 30000;
-    this.heartbeatInterval = options.heartbeatInterval || 30000;
-    this.silenceTimeout = options.silenceTimeout || 60000;
+    this.heartbeatInterval = options.heartbeatInterval || 20000; // 20s para LAN tolerante
+    this.silenceTimeout = options.silenceTimeout || 40000;       // 40s para detección segura
 
     // Determinar URL del WebSocket
     if (options.url) {
