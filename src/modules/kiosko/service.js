@@ -68,9 +68,14 @@ function getLanIpAddresses () {
 
 /**
  * Obtiene la dirección IP local más probable de la red LAN real.
- * Filtra adaptadores virtuales y prefiere rangos RFC-1918 típicos de campus.
+ * Prioridad:
+ *   1. process.env.HOST_IP — override explícito (necesario en Docker/WSL2 donde
+ *      os.networkInterfaces() ve la IP interna del contenedor, no la del host)
+ *   2. Auto-detección filtrando adaptadores virtuales
  */
 function getLanIpAddress () {
+  const hostIp = (process.env.HOST_IP || '').trim()
+  if (hostIp && hostIp !== 'localhost' && hostIp !== '127.0.0.1') return hostIp
   const candidates = getLanIpAddresses()
   return candidates.length > 0 ? candidates[0].ip : 'localhost'
 }
