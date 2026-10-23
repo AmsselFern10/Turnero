@@ -169,9 +169,10 @@ export function adminView() {
       activo:          true
     },
 
-    // IP LAN del servidor detectada automáticamente (se carga una vez al iniciar)
-    lanIpDetectada:   null,  // ej: 'http://192.168.1.100:3000'
-    lanIpDetectadaRaw: null, // ej: '192.168.1.100'
+    // IPs LAN del servidor detectadas automáticamente (se cargan una vez al iniciar)
+    lanIpDetectada:    null,  // URL base de la IP sugerida: 'http://192.168.169.9:3000'
+    lanIpDetectadaRaw: null,  // Solo la IP: '192.168.169.9'
+    todasLasIpsLan:    [],    // [{ ip, iface, url }] — Ethernet, Wi-Fi y cualquier NIC real
 
     config: {
       alerta_vouchers_restantes:    20,
@@ -1002,16 +1003,29 @@ export function adminView() {
       try {
         const info = await api.get('/admin/red-info');
         if (info?.url_lan_sugerida) {
-          this.lanIpDetectada   = info.url_lan_sugerida;  // 'http://192.168.1.100:3000'
-          this.lanIpDetectadaRaw = info.lan_ip;            // '192.168.1.100'
-          // Auto-sugerir en el campo si aún está vacío
-          if (!this.config.kiosko_url_base && !info.es_localhost) {
-            this.cfgKioskoUrlBase = info.url_lan_sugerida;
-          }
+          this.lanIpDetectada    = info.url_lan_sugerida;
+          this.lanIpDetectadaRaw = info.lan_ip;
+        }
+        // Guardar todas las candidatas (Ethernet + Wi-Fi + otras NIC reales)
+        this.todasLasIpsLan = Array.isArray(info?.todas_las_ips) ? info.todas_las_ips : [];
+        // Auto-sugerir la primera si el campo está vacío y no es localhost
+        if (!this.config.kiosko_url_base && info?.url_lan_sugerida && !info.es_localhost) {
+          this.config.kiosko_url_base = info.url_lan_sugerida;
+          this.validarKioskoUrlBase();
         }
       } catch (_) {
         // No crítico: si falla, los getters de URL caen a window.location.origin
       }
+    },
+
+    /**
+     * Aplica la IP del adaptador seleccionado (Ethernet o Wi-Fi) al campo de URL base.
+     * El admin elige el adaptador correcto según cómo esté conectado el servidor a la red.
+     */
+    usarIpLan(candidata) {
+      if (!candidata?.url) return;
+      this.config.kiosko_url_base = candidata.url;
+      this.validarKioskoUrlBase();
     },
 
     async cargarDashboard() {
