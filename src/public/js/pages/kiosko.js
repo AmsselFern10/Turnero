@@ -201,18 +201,28 @@ export function kioskoView () {
     },
 
     get bluetoothBloqueadoPorHttp () {
-      return this.esHttpNoSeguro;
+      // No bloquea la interfaz; permite siempre la selección y búsqueda por Bluetooth
+      return false;
     },
 
     get bluetoothDisponible () {
-      return typeof navigator !== 'undefined' && Boolean(navigator.bluetooth) && !this.bluetoothBloqueadoPorHttp;
+      // Siempre disponible para permitir abrir el modal de búsqueda y vinculación
+      return true;
+    },
+
+    get navigatorBluetoothSoportado () {
+      return typeof navigator !== 'undefined' && Boolean(navigator.bluetooth);
+    },
+
+    get urlOrigenActual () {
+      if (typeof window === 'undefined') return '';
+      return window.location.origin || `${window.location.protocol}//${window.location.host}`;
     },
 
     get tieneImpresoraHabilitada () {
       if (!this.impresoraServidorActiva) return false;
       if (this.canalImpresion === 'ninguno') return false;
       if (this.canalImpresion === 'bluetooth') {
-        if (this.bluetoothBloqueadoPorHttp) return false;
         return this.bluetoothConectado;
       }
       if (this.canalImpresion === 'servidor') {
@@ -227,7 +237,7 @@ export function kioskoView () {
       if (!this.impresoraServidorActiva) return 'Impresión desactivada';
       if (this.canalImpresion === 'ninguno') return 'Sin impresora';
       if (this.canalImpresion === 'bluetooth') {
-        if (this.bluetoothBloqueadoPorHttp) {
+        if (!this.bluetoothConectado && !this.navigatorBluetoothSoportado && this.esHttpNoSeguro) {
           return 'Impresión por red LAN recomendada';
         }
         return this.bluetoothConectado
@@ -247,7 +257,7 @@ export function kioskoView () {
       if (!this.impresoraServidorActiva) return 'Inactiva';
       if (this.canalImpresion === 'ninguno') return 'Sin impr.';
       if (this.canalImpresion === 'bluetooth') {
-        if (this.bluetoothBloqueadoPorHttp) {
+        if (!this.bluetoothConectado && !this.navigatorBluetoothSoportado && this.esHttpNoSeguro) {
           return 'LAN recomendada';
         }
         return this.bluetoothConectado
@@ -692,12 +702,7 @@ export function kioskoView () {
         this.ipTabletPersonalizada = (localStorage.getItem('turnero_kiosko_impresora_ip') || '').trim();
       } catch (_) {}
 
-      // Si está en red HTTP LAN no segura y el canal era Bluetooth, conmutar por defecto a red LAN
-      if (this.bluetoothBloqueadoPorHttp && this.canalImpresion === 'bluetooth') {
-        this.canalImpresion = 'servidor';
-      }
-
-      if (this.bluetoothDisponible && !this.bluetoothPrinter) {
+      if (!this.bluetoothPrinter) {
         this.bluetoothPrinter = new WebBluetoothThermalPrinter({
           onConnected: (dev) => {
             this.bluetoothConectado = true;
@@ -740,14 +745,27 @@ export function kioskoView () {
     },
 
     async conectarBluetooth () {
-      if (this.bluetoothBloqueadoPorHttp) {
-        this.errorPrueba = 'Web Bluetooth requiere conexión HTTPS. En red HTTP use Impresión LAN o Controlador del Sistema.';
-        return;
-      }
       if (!this.bluetoothPrinter) {
-        this.errorPrueba = 'Web Bluetooth no está disponible en este dispositivo.';
+        this.bluetoothPrinter = new WebBluetoothThermalPrinter({
+          onConnected: (dev) => {
+            this.bluetoothConectado = true;
+            this.bluetoothDispositivoNombre = dev?.name || 'Impresora Térmica';
+            this.mostrarToast(`Impresora Bluetooth conectada: ${this.bluetoothDispositivoNombre}`);
+          },
+          onDisconnected: () => {
+            this.bluetoothConectado = false;
+            this.mostrarToast('Impresora Bluetooth desconectada');
+          }
+        });
+      }
+
+      if (typeof navigator === 'undefined' || !navigator.bluetooth) {
+        const urlOrigen = this.urlOrigenActual;
+        this.errorPrueba = `Para buscar por Bluetooth en HTTP: abra en Chrome chrome://flags/#unsafely-treat-insecure-origin-as-secure , añada "${urlOrigen}" y active "Enabled", luego reinicie Chrome.`;
+        this.mostrarToast('Habilite el origen en chrome://flags para buscar por Bluetooth');
         return;
       }
+
       this.conectandoBluetooth = true;
       this.errorPrueba = '';
       try {
@@ -760,6 +778,25 @@ export function kioskoView () {
         }
       } finally {
         this.conectandoBluetooth = false;
+      }
+    },
+
+    copiarAlPortapapeles (texto, label = 'Enlace') {
+      if (!texto) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(texto).then(() => {
+          this.mostrarToast(`${label} copiado`);
+        }).catch(() => {
+          this.mostrarToast(`${label} copiado`);
+        });
+      } else {
+        const temp = document.createElement('textarea');
+        temp.value = texto;
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        document.body.removeChild(temp);
+        this.mostrarToast(`${label} copiado`);
       }
     },
 
@@ -786,11 +823,8 @@ export function kioskoView () {
 
       try {
         if (this.canalImpresion === 'bluetooth') {
-          if (this.bluetoothBloqueadoPorHttp) {
-            throw new Error('Web Bluetooth requiere HTTPS en conexiones de red. En red HTTP use Impresión LAN o Controlador del Sistema.');
-          }
           if (!this.bluetoothConectado || !this.bluetoothPrinter) {
-            throw new Error('Primero vincule y conecte la impresora Bluetooth.');
+            throw new Error('Primero vincule y conecte la impresora Bluetooth pulsando "Vincular y conectar impresora".');
           }
           const bytes = construirVoucherESCPOS(ticketPrueba, this.anchoPapel || 58);
           await this.bluetoothPrinter.imprimir(bytes);
@@ -846,9 +880,6 @@ export function kioskoView () {
       try {
         if (this.esTablet) {
           if (this.canalImpresion === 'bluetooth') {
-            if (this.bluetoothBloqueadoPorHttp) {
-              throw new Error('Web Bluetooth requiere HTTPS en red LAN. Use Impresión LAN o Controlador del Sistema.');
-            }
             if (!this.bluetoothConectado || !this.bluetoothPrinter) {
               throw new Error('Impresora Bluetooth no conectada. Conéctela desde el icono de impresora en el encabezado.');
             }

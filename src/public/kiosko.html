@@ -514,6 +514,27 @@
                   </div>
                 </template>
               </div>
+
+              <!-- Guía de activación para Bluetooth en HTTP -->
+              <template x-if="!navigatorBluetoothSoportado && esHttpNoSeguro">
+                <div class="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-[11px] space-y-1.5 text-left">
+                  <div class="font-bold flex items-center gap-1.5 text-blue-900">
+                    <svg class="w-3.5 h-3.5 text-blue-600 flex-shrink-0 stroke-[2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                    </svg>
+                    <span>Para buscar por Bluetooth en esta red HTTP:</span>
+                  </div>
+                  <p class="leading-relaxed text-blue-800">
+                    1. En Chrome en esta tablet abra: <code class="bg-blue-100 px-1 py-0.5 rounded font-mono text-[10px]">chrome://flags/#unsafely-treat-insecure-origin-as-secure</code><br>
+                    2. Añada: <strong class="font-mono text-[10px] break-all" x-text="urlOrigenActual"></strong> y seleccione <strong>Enabled</strong>.<br>
+                    3. Reinicie Chrome y pulse "Vincular y conectar impresora".
+                  </p>
+                  <button type="button" @click="copiarAlPortapapeles(urlOrigenActual, 'Dirección URL')"
+                          class="btn-ghost btn-xs text-[10px] font-semibold text-blue-700 bg-white border border-blue-300 rounded px-2 py-1 cursor-pointer">
+                    Copiar URL para Chrome Flags
+                  </button>
+                </div>
+              </template>
             </div>
           </div>
         </label>
