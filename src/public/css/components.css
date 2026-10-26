@@ -354,21 +354,30 @@
 }
 
 /* ── 3b. Cajas de Icono Institucionales (.icon-box) ────────────────────────── */
-.icon-box {
+.icon-box,
+.icon-box-md,
+.icon-box-lg {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 1rem; /* 16px rounded-2xl */
+  border-radius: 0.75rem; /* 12px rounded-xl */
   flex-shrink: 0;
   transition: transform 150ms ease;
+}
+.icon-box {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 1rem; /* 16px rounded-2xl */
 }
 .icon-box-md {
   width: 3rem;   /* 48px w-12 */
   height: 3rem;  /* 48px h-12 */
+  border-radius: 0.75rem; /* 12px rounded-xl */
 }
 .icon-box-lg {
   width: 3.5rem; /* 56px w-14 */
   height: 3.5rem;/* 56px h-14 */
+  border-radius: 1rem; /* 16px rounded-2xl */
 }
 .icon-box-primary {
   background-color: var(--primary-light);
@@ -425,15 +434,16 @@
   background-color: var(--card-bg);
   border: 1px solid var(--border-subtle);
   border-radius: 1rem;
-  overflow: hidden;
   box-shadow: var(--shadow-xs);
+  position: relative;
 }
 
 .table-base {
   width: 100%;
   font-size: 0.75rem;
   text-align: left;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .table-head {
@@ -443,12 +453,105 @@
   border-bottom: 1px solid var(--border-light);
 }
 
+.table-head th:first-child {
+  border-top-left-radius: 1rem;
+}
+.table-head th:last-child {
+  border-top-right-radius: 1rem;
+}
+
 .table-row {
   border-bottom: 1px solid var(--border-light);
   transition: background-color 150ms ease;
 }
 .table-row:hover {
   background-color: rgba(241, 245, 249, 0.75);
+}
+
+.table-base tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 1rem;
+}
+.table-base tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 1rem;
+}
+
+/* ── 5b. Kebab Menu y Menús Desplegables (.kebab-btn, .dropdown-*) ─────────── */
+.kebab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  color: var(--text-muted);
+  background-color: transparent;
+  border: 1px solid transparent;
+  transition: all 150ms ease;
+  cursor: pointer;
+}
+.kebab-btn:hover {
+  color: var(--text-main);
+  background-color: #F1F5F9;
+  border-color: var(--border-light);
+}
+.kebab-btn:focus-visible {
+  outline: 2px solid rgba(29, 78, 216, 0.25);
+  border-color: var(--primary-cobalt);
+}
+
+.dropdown-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  width: 12.5rem;
+  background-color: #FFFFFF;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  padding: 0.375rem;
+  z-index: 50;
+  text-align: left;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-main);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+  text-decoration: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.dropdown-item:hover:not(:disabled) {
+  background-color: #F1F5F9;
+  color: var(--primary-cobalt);
+}
+.dropdown-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dropdown-item-danger {
+  color: var(--color-danger);
+}
+.dropdown-item-danger:hover:not(:disabled) {
+  background-color: var(--color-danger-bg);
+  color: #BE123C;
+}
+
+.dropdown-divider {
+  height: 1px;
+  background-color: var(--border-light);
+  margin: 0.25rem 0;
 }
 
 /* ── 6. Campos de Entrada (.input-*, .select-*) ──────────────────────────────── */
@@ -471,11 +574,101 @@
 .input-field::placeholder {
   color: var(--text-disabled);
 }
+.input-field:-webkit-autofill,
+.input-field:-webkit-autofill:hover,
+.input-field:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px #FFFFFF inset;
+  -webkit-text-fill-color: var(--text-main);
+  transition: background-color 5000s ease-in-out 0s;
+}
 
 .input-sm {
   padding: 0.375rem 0.5rem;
   font-size: 0.75rem;
   border-radius: 0.5rem;
+}
+
+.input-compact {
+  width: 72px !important;
+  max-width: 72px !important;
+  min-width: 60px !important;
+}
+
+.select-compact-ticket {
+  width: 100% !important;
+  max-width: 275px !important;
+}
+
+.button-group-compact {
+  width: 100% !important;
+  max-width: 320px !important;
+}
+
+/* ── Tooltips Flotantes Institucionales ───────────────────────────────────── */
+.tooltip-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tooltip-bubble {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background-color: #0F172A; /* slate-900 */
+  color: #F8FAFC; /* slate-50 */
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: 8px;
+  white-space: normal;
+  width: max-content;
+  max-width: 250px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 150ms ease, transform 150ms ease, visibility 150ms;
+  z-index: 50;
+  text-align: left;
+}
+
+.tooltip-bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 4px;
+  border-style: solid;
+  border-color: #0F172A transparent transparent transparent;
+}
+
+.tooltip-container:hover .tooltip-bubble,
+.tooltip-container:focus-within .tooltip-bubble {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ── Badges e Insignias Discretas ─────────────────────────────────────────── */
+.badge-default-subtle {
+  font-size: 9px !important;
+  line-height: 1.1 !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase !important;
+  color: #475569 !important;
+  background-color: #F1F5F9 !important;
+  border: 1px solid #CBD5E1 !important;
+  border-radius: 4px !important;
+  padding: 1.5px 5px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
 }
 
 .select-field {
@@ -664,7 +857,7 @@
   html, body {
     width: 100% !important;
     height: auto !important;
-    min-height: auto !important;
+    min-height: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
     background: #FFFFFF !important;

@@ -1240,8 +1240,8 @@ export function panelMesaView() {
         this.mesaPausada = false;
       });
 
-      // El admin inactivó o liberó esta mesa: avisar al operador y redirigir a selección de mesa
-      this.ws.on('mesa_inactivada', () => {
+      // El admin inactivó, liberó o reasignó esta mesa: avisar al operador y redirigir a selección de mesa
+      this.ws.on('mesa_inactivada', (payload) => {
         this.mesaInactivada = true;
         // Limpiar la sesión de mesa para que el login muestre la grilla
         sessionStorage.removeItem('turnero_mesa');
@@ -1249,13 +1249,22 @@ export function panelMesaView() {
         sessionStorage.removeItem('mesa_id');
         sessionStorage.removeItem('mesa_numero');
         sessionStorage.removeItem('mesa_nombre');
+
+        const motivo = payload?.motivo;
+        let mensaje = 'Esta ventanilla fue inactivada o liberada por la administración.';
+        if (motivo === 'operador_reasignado_por_admin') {
+          mensaje = 'La administración reasignó esta ventanilla a otro operador.';
+        } else if (motivo === 'mesa_eliminada_por_admin') {
+          mensaje = 'Esta ventanilla fue retirada por la administración.';
+        }
+
         showToast({
-          message: 'Esta ventanilla fue inactivada o liberada por la administración.',
+          message: mensaje,
           type: 'warning',
           duration: 4000
         });
-        // Redirigir tras 2.5 segundos para que el operador vea el aviso
-        setTimeout(() => { window.location.href = '/index.html'; }, 2500);
+        // Redirigir tras 2 segundos para que el operador vea el aviso
+        setTimeout(() => { window.location.href = '/index.html'; }, 2000);
       });
 
       // Actualización en caliente del próximo turno cuando CUALQUIER mesa llama o el lote avanza (RF-TURN-09)
@@ -1316,6 +1325,13 @@ export function panelMesaView() {
         if (Number(m.id) !== Number(this.mesa.id)) return;
         if (m.numero !== undefined) this.mesa.numero = m.numero;
         if (m.nombre !== undefined) this.mesa.nombre = m.nombre;
+        try {
+          const raw = sessionStorage.getItem('turnero_mesa');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            sessionStorage.setItem('turnero_mesa', JSON.stringify({ ...parsed, ...m }));
+          }
+        } catch (_) {}
       });
 
       // F-6: Lote pausado — el operador ya no puede llamar más turnos
@@ -1356,6 +1372,62 @@ export function panelMesaView() {
         const restantes = Math.max(0, (lote.numero_hasta ?? this.loteActivo?.numero_hasta ?? 0) - lote.ultimo_numero_llamado);
         this.vouchersRestantes = restantes;
         this.proximoNumero = restantes > 0 ? lote.ultimo_numero_llamado + 1 : null;
+      });
+
+      // F-9: Lote extendido o reactivado en sala — actualizar proximo y vouchers en vivo sin recargar
+      this.ws.on('proximo_actualizado', (payload) => {
+        if (!payload) return;
+        if (payload.vouchers_restantes !== undefined) {
+          this.vouchersRestantes = payload.vouchers_restantes;
+        }
+        if (payload.proximo_numero !== undefined) {
+          this.proximoNumero = payload.proximo_numero;
+        }
+        if (payload.lote && this.loteActivo) {
+          this.loteActivo.numero_lote = payload.lote;
+          if (payload.ultimo_llamado !== undefined) {
+            this.loteActivo.ultimo_numero_llamado = payload.ultimo_llamado;
+          }
+        }
+      });
+
+      this.ws.on('lote_activado', (payload) => {
+        if (payload && payload.lote) {
+          this.loteActivo = payload.lote;
+          const restantes = Math.max(0, payload.lote.numero_hasta - payload.lote.ultimo_numero_llamado);
+          this.vouchersRestantes = restantes;
+          this.proximoNumero = restantes > 0 ? payload.lote.ultimo_numero_llamado + 1 : null;
+        }
+      });
+
+      this.ws.on('lote_extendido', (payload) => {
+        if (payload && payload.lote) {
+          this.loteActivo = payload.lote;
+          const restantes = Math.max(0, payload.lote.numero_hasta - payload.lote.ultimo_numero_llamado);
+          this.vouchersRestantes = restantes;
+          this.proximoNumero = restantes > 0 ? payload.lote.ultimo_numero_llamado + 1 : null;
+        }
+      });
+
+      // F-10: Usuario actualizado — si el admin renombra al operador, refrescar encabezado en vivo
+      this.ws.on('usuario_actualizado', (payload) => {
+        if (!payload || !payload.usuario) return;
+        const u = payload.usuario;
+        if (this.currentUser && (Number(u.id) === Number(this.currentUser.id))) {
+          if (u.nombre_completo) {
+            this.currentUser.nombre_completo = u.nombre_completo;
+          }
+          if (u.username) {
+            this.currentUser.username = u.username;
+          }
+          try {
+            const raw = sessionStorage.getItem('turnero_user');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              sessionStorage.setItem('turnero_user', JSON.stringify({ ...parsed, ...u }));
+            }
+          } catch (_) {}
+        }
       });
 
       // Snapshot tras reconexión por micro-corte (RF-WS-05)

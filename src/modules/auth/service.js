@@ -119,26 +119,22 @@ async function logout (fastify, { userId, jti, exp, ip }) {
     await fastify.redis.del(`user_active_session:${userId}`)
   } catch (_) {}
 
-  // Si el usuario tenía una mesa asignada, cancelar turnos en atención y liberar la mesa
-  const { rows: mesasUsuario } = await fastify.db.query(
-    `SELECT id, numero, nombre, estado FROM mesas WHERE operador_id = $1`, [userId]
+  // Si el usuario tenía una mesa asignada, cancelar turnos en atención en una sola consulta atómica
+  const { rows: turnosCanc } = await fastify.db.query(
+    `UPDATE turnos SET estado = 'cancelado', finalizado_en = NOW()
+     WHERE mesa_id IN (SELECT id FROM mesas WHERE operador_id = $1)
+       AND estado = 'en_atencion'
+     RETURNING id, numero, mesa_id`,
+    [userId]
   )
-  for (const m of mesasUsuario) {
-    const { rows: turnosCanc } = await fastify.db.query(
-      `UPDATE turnos SET estado = 'cancelado', finalizado_en = NOW()
-       WHERE mesa_id = $1 AND estado = 'en_atencion'
-       RETURNING id, numero`,
-      [m.id]
+  for (const tc of turnosCanc) {
+    await fastify.db.query(
+      `INSERT INTO audit_log (mesa_id, operador_id, turno_id, accion, ip_origen, metadata_json)
+       VALUES ($1, $2, $3, 'TURNO_CANCELADO', $4, $5)`,
+      [tc.mesa_id, userId, tc.id, ip, JSON.stringify({ motivo: 'operador_logout', turno_numero: tc.numero })]
     )
-    for (const tc of turnosCanc) {
-      await fastify.db.query(
-        `INSERT INTO audit_log (mesa_id, operador_id, turno_id, accion, ip_origen, metadata_json)
-         VALUES ($1, $2, $3, 'TURNO_CANCELADO', $4, $5)`,
-        [m.id, userId, tc.id, ip, JSON.stringify({ motivo: 'operador_logout', turno_numero: tc.numero })]
-      )
-      await fastify.broadcast('admin:all', 'turno_cancelado', { turno_id: tc.id, turno_numero: tc.numero, mesa_id: m.id })
-      await fastify.broadcast('lote:activo', 'rezagados_actualizados', { accion: 'cancelado', turno_id: tc.id, turno_numero: tc.numero, mesa_id: m.id })
-    }
+    await fastify.broadcast('admin:all', 'turno_cancelado', { turno_id: tc.id, turno_numero: tc.numero, mesa_id: tc.mesa_id })
+    await fastify.broadcast('lote:activo', 'rezagados_actualizados', { accion: 'cancelado', turno_id: tc.id, turno_numero: tc.numero, mesa_id: tc.mesa_id })
   }
 
   // Al hacer logout, NO se libera la mesa (operador_id se mantiene).

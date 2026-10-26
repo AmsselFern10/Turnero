@@ -64,6 +64,7 @@ async function runTests() {
         modo_generacion_turnos: 'kiosko_web',
         kiosko_tope_diario: '0',
         kiosko_url_base: '',
+        kiosko_modo_uso: 'estudiante',
         zona_horaria: 'America/Tegucigalpa',
         ...initialState.config
       },

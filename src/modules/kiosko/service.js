@@ -35,25 +35,53 @@ const VIRTUAL_IFACE_PATTERNS = [
 ]
 
 /**
- * Devuelve TODAS las direcciones IPv4 LAN reales (excluye loopback y virtuales).
- * Ordena priorizando rangos RFC-1918 típicos de red local corporativa/campus.
+ * Clasifica una interfaz de red como Wi-Fi, Ethernet o Virtual según su nombre e IP
+ */
+function clasificarInterfaz (name, ip) {
+  const esVirtual = VIRTUAL_IFACE_PATTERNS.some(p => p.test(name)) ||
+    ip.startsWith('172.17.') || ip.startsWith('172.18.') || ip.startsWith('169.254.')
+
+  if (esVirtual) {
+    return { tipo: 'virtual', esVirtual: true, etiqueta: 'Virtual / Contenedor' }
+  }
+
+  if (/wi-?fi|wireless|wlan|802\.11|airport/i.test(name)) {
+    return { tipo: 'wifi', esVirtual: false, etiqueta: 'Wi-Fi' }
+  }
+
+  if (/ethernet|eth|enp|eno|ens|lan|en[0-9]|conexi[oó]n de red/i.test(name)) {
+    return { tipo: 'ethernet', esVirtual: false, etiqueta: 'Ethernet' }
+  }
+
+  return { tipo: 'ethernet', esVirtual: false, etiqueta: 'Red Local' }
+}
+
+/**
+ * Devuelve las direcciones IPv4 de la máquina clasificadas con metadatos:
+ * { ip, iface, tipo: 'wifi'|'ethernet'|'virtual', esVirtual: boolean, etiqueta: string }
+ * Prioriza adaptadores físicos sobre virtuales y rangos RFC-1918 estándar.
  */
 function getLanIpAddresses () {
   const interfaces = os.networkInterfaces()
   const candidates = []
 
   for (const [name, addrs] of Object.entries(interfaces)) {
-    // Saltar interfaz si el nombre coincide con patrón virtual
-    if (VIRTUAL_IFACE_PATTERNS.some(p => p.test(name))) continue
-
     for (const iface of addrs || []) {
       if (iface.family !== 'IPv4' || iface.internal) continue
-      candidates.push({ ip: iface.address, iface: name })
+      const clasif = clasificarInterfaz(name, iface.address)
+      candidates.push({
+        ip: iface.address,
+        iface: name,
+        tipo: clasif.tipo,
+        esVirtual: clasif.esVirtual,
+        etiqueta: clasif.etiqueta
+      })
     }
   }
 
-  // Ordenar: preferir 192.168.x.x y 10.x.x.x sobre 172.x.x.x (menos común en campus)
+  // Ordenar: primero físicas no virtuales, luego por rango de IP (192.168 -> 10. -> 172. -> otros)
   candidates.sort((a, b) => {
+    if (a.esVirtual !== b.esVirtual) return a.esVirtual ? 1 : -1
     const score = ip => {
       if (ip.startsWith('192.168.')) return 0
       if (ip.startsWith('10.'))      return 1
@@ -71,13 +99,14 @@ function getLanIpAddresses () {
  * Prioridad:
  *   1. process.env.HOST_IP — override explícito (necesario en Docker/WSL2 donde
  *      os.networkInterfaces() ve la IP interna del contenedor, no la del host)
- *   2. Auto-detección filtrando adaptadores virtuales
+ *   2. Primera candidata física no virtual
  */
 function getLanIpAddress () {
   const hostIp = (process.env.HOST_IP || '').trim()
   if (hostIp && hostIp !== 'localhost' && hostIp !== '127.0.0.1') return hostIp
   const candidates = getLanIpAddresses()
-  return candidates.length > 0 ? candidates[0].ip : 'localhost'
+  const fisicas = candidates.filter(c => !c.esVirtual)
+  return fisicas.length > 0 ? fisicas[0].ip : (candidates[0]?.ip || 'localhost')
 }
 
 
@@ -129,7 +158,7 @@ async function getKioskoEstado (fastify) {
   const [resConfig, resTurnos, resMesas, resContador] = await Promise.all([
     fastify.db.query(
       `SELECT clave, valor FROM configuracion
-       WHERE clave IN ('kiosko_web_activo', 'modo_generacion_turnos', 'kiosko_tope_diario', 'kiosko_modo_uso', 'kiosko_impresion_automatica', 'kiosko_url_base', 'kiosko_url_publica', 'impresora_activa', 'impresora_ip', 'impresora_puerto')`
+       WHERE clave IN ('kiosko_web_activo', 'modo_generacion_turnos', 'kiosko_tope_diario', 'kiosko_modo_uso', 'kiosko_impresion_automatica', 'kiosko_url_base', 'kiosko_url_publica', 'impresora_activa', 'impresora_ip', 'impresora_puerto', 'impresora_canal', 'impresora_ancho_papel')`
     ),
     fastify.db.query(
       `SELECT
@@ -164,7 +193,7 @@ async function getKioskoEstado (fastify) {
     cfg[r.clave] = r.valor
   }
 
-  const activo = cfg.kiosko_web_activo === 'true'
+  const activo = cfg.kiosko_web_activo === 'true' && cfg.modo_generacion_turnos === 'kiosko_web'
   const modo = cfg.modo_generacion_turnos || 'voucher_fisico'
   const modoUso = cfg.kiosko_modo_uso || 'asistido'
   const topeDiario = parseInt(cfg.kiosko_tope_diario || '0', 10)
@@ -178,6 +207,13 @@ async function getKioskoEstado (fastify) {
   const mesasActivas = resMesas.rows[0]?.activas || 0
   const tiempoPromedioSeg = turnosData.tiempo_promedio_seg || 180
 
+  const port = process.env.APP_PORT_EXPOSED || process.env.APP_PORT || 3000
+  let urlBase = (cfg.kiosko_url_base || '').trim() || (cfg.kiosko_url_publica || '').trim()
+  if (!urlBase) {
+    const lanIp = getLanIpAddress()
+    urlBase = `http://${lanIp}:${port}/kiosko.html`
+  }
+
   _estadoCache = {
     activo,
     modo,
@@ -186,9 +222,11 @@ async function getKioskoEstado (fastify) {
     tope_alcanzado: topeAlcanzado,
     impresion_automatica: impresionAutomatica,
     impresora_activa: cfg.impresora_activa === 'true',
+    impresora_canal: cfg.impresora_canal || 'directa',
+    impresora_ancho_papel: cfg.impresora_ancho_papel || '58',
     impresora_ip: cfg.impresora_ip || '',
     impresora_puerto: parseInt(cfg.impresora_puerto || '9100', 10),
-    url_base: cfg.kiosko_url_base || '',
+    url_base: urlBase,
     url_publica: cfg.kiosko_url_publica || '',
     turnos_en_espera: turnosData.en_espera || 0,
     ultimo_llamado: ultimoLlamado,
@@ -207,10 +245,13 @@ async function getKioskoEstado (fastify) {
  */
 function resolverUrlSeguimiento (baseUrlConfig, reqHost, reqProtocol, token) {
   if (baseUrlConfig && baseUrlConfig.trim() !== '') {
-    const base = baseUrlConfig.trim().replace(/\/$/, '')
+    let base = baseUrlConfig.trim().replace(/\/$/, '')
+    // Si incluye /kiosko.html, mantenerlo y anexar el parámetro
     if (base.endsWith('/kiosko.html')) {
       return `${base}?token=${encodeURIComponent(token)}`
     }
+    // Limpiar posibles sufijos de API erróneos como /kiosko/mi-turno...
+    base = base.replace(/\/kiosko\/mi-turno.*$/i, '')
     return `${base}/kiosko.html?token=${encodeURIComponent(token)}`
   }
 

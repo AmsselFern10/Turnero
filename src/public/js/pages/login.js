@@ -37,10 +37,25 @@ export function loginView() {
     mesaPreAsignada: null,
     kioskoActivo: false,
     kioskoModoUso: 'asistido',
+    kioskoUrlBase: '',
     _ws: null,
 
     get kioskoHref() {
-      return (this.kioskoModoUso === 'asistido' || this.kioskoModoUso === 'empleado') ? '/kiosko.html?modo=tablet' : '/kiosko.html';
+      const esAsistido = (this.kioskoModoUso === 'asistido' || this.kioskoModoUso === 'empleado');
+      let base = (this.kioskoUrlBase || '').trim();
+
+      if (base) {
+        if (!/^https?:\/\//i.test(base)) {
+          base = `http://${base}`;
+        }
+        base = base.split('?')[0].split('#')[0];
+        if (!base.endsWith('/kiosko.html')) {
+          base = base.replace(/\/$/, '') + '/kiosko.html';
+        }
+        return esAsistido ? `${base}?modo=tablet` : base;
+      }
+
+      return esAsistido ? '/kiosko.html?modo=tablet' : '/kiosko.html';
     },
 
     get kioskoLabelHeader() {
@@ -129,10 +144,12 @@ export function loginView() {
         if (res && typeof res.activo === 'boolean') {
           this.kioskoActivo = res.activo;
           this.kioskoModoUso = res.modo_uso || 'asistido';
+          this.kioskoUrlBase = res.url_base || res.url_publica || '';
         }
       } catch (_) {
         this.kioskoActivo = false;
         this.kioskoModoUso = 'asistido';
+        this.kioskoUrlBase = '';
       }
     },
 
@@ -194,6 +211,9 @@ export function loginView() {
         if (payload?.clave === 'kiosko_modo_uso') {
           this.kioskoModoUso = payload.valor || 'empleado';
         }
+        if (payload?.clave === 'kiosko_url_base') {
+          this.kioskoUrlBase = payload.valor || '';
+        }
       });
 
       this._ws.connect();
@@ -208,11 +228,25 @@ export function loginView() {
 
     _actualizarMesaEnGrid({ mesa, accion } = {}) {
       if (!mesa) return;
-      if (accion === 'tomada') {
+      if (accion === 'tomada' || accion === 'inactivada' || accion === 'eliminada') {
         this.mesas = this.mesas.filter(m => m.id !== mesa.id);
       } else if (accion === 'liberada' && mesa.estado === 'activa') {
         if (!this.mesas.some(m => m.id === mesa.id)) {
           this.mesas = [...this.mesas, mesa].sort((a, b) => a.numero - b.numero);
+        } else {
+          this.mesas = this.mesas.map(m => m.id === mesa.id ? { ...m, ...mesa } : m).sort((a, b) => a.numero - b.numero);
+        }
+      } else if (accion === 'actualizada') {
+        if (mesa.estado === 'activa' && !mesa.operador_id) {
+          const idx = this.mesas.findIndex(m => m.id === mesa.id);
+          if (idx >= 0) {
+            this.mesas[idx] = { ...this.mesas[idx], ...mesa };
+            this.mesas = [...this.mesas].sort((a, b) => a.numero - b.numero);
+          } else {
+            this.mesas = [...this.mesas, mesa].sort((a, b) => a.numero - b.numero);
+          }
+        } else {
+          this.mesas = this.mesas.filter(m => m.id !== mesa.id);
         }
       }
     },

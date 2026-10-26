@@ -573,6 +573,13 @@ module.exports = async function turnosRoutes (fastify) {
         const broadcastPromises = [
           fastify.broadcast('tv:global', 'turno_rellamado', payloadRellamado),
           fastify.broadcast('kiosko:publico', 'turno_rellamado', payloadRellamado),
+          fastify.broadcast('admin:all', 'turno_rellamado', payloadRellamado),
+          fastify.broadcast('admin:all', 'kpi_update', {
+            mesa_id,
+            turno_numero: turno.numero,
+            tipo_evento: 'rellamado'
+          }),
+          fastify.broadcast(`mesa:${mesa_id}`, 'turno_rellamado', payloadRellamado),
           fastify.db.query(
             `INSERT INTO audit_log (mesa_id, turno_id, operador_id, accion, metadata_json, ip_origen)
              VALUES ($1, $2, $3, 'TURNO_RELLAMADO', $4, $5)`,
@@ -722,16 +729,17 @@ module.exports = async function turnosRoutes (fastify) {
 
     setImmediate(async () => {
       try {
-        const { rows: [{ count: enEspera }] } = await fastify.db.query(
-          `SELECT COUNT(*)::int AS count FROM turnos
+        const { rows: [esperaData] } = await fastify.db.query(
+          `SELECT
+             COUNT(*)::int AS count,
+             (SELECT numero FROM turnos
+              WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()
+              ORDER BY sesion ASC, numero ASC LIMIT 1) AS proximo
+           FROM turnos
            WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()`
         )
-        const { rows: [proximoRow] } = await fastify.db.query(
-          `SELECT numero FROM turnos
-           WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()
-           ORDER BY sesion ASC, numero ASC LIMIT 1`
-        )
-        const proximo = proximoRow ? proximoRow.numero : null
+        const enEspera = esperaData?.count || 0
+        const proximo = esperaData?.proximo ?? null
         await Promise.allSettled([
           fastify.broadcast('admin:all', 'kiosko_turno_generado', {
             numero: resultado.numero,

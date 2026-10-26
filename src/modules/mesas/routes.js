@@ -44,28 +44,54 @@ module.exports = async function mesasRoutes (fastify) {
         required: ['numero', 'nombre'],
         properties: {
           numero: { type: 'integer', minimum: 1 },
-          nombre: { type: 'string', minLength: 1, maxLength: 60 }
+          nombre: { type: 'string', minLength: 1, maxLength: 60 },
+          estado: { type: 'string', enum: ['activa', 'inactiva'] }
         }
       }
     }
   }, async (request, reply) => {
     const { numero, nombre } = request.body
+    const estado = request.body.estado || 'inactiva'
 
-    const { rows: conflicto } = await fastify.db.query(
-      `SELECT id FROM mesas WHERE numero = $1 AND estado != 'eliminada' AND eliminado_en IS NULL`,
-      [numero]
-    )
-    if (conflicto.length > 0) {
-      return reply.status(409).send({ error: `El número de mesa ${numero} ya está asignado a otra ventanilla.` })
+    try {
+      const { rows: conflicto } = await fastify.db.query(
+        `SELECT id FROM mesas WHERE numero = $1 AND estado != 'eliminada' AND eliminado_en IS NULL`,
+        [numero]
+      )
+      if (conflicto.length > 0) {
+        return reply.status(409).send({ error: `El número de mesa ${numero} ya está asignado a otra ventanilla.` })
+      }
+
+      const { rows: [mesa] } = await fastify.db.query(
+        `INSERT INTO mesas (numero, nombre, estado) VALUES ($1, $2, $3)
+         RETURNING id, numero, nombre, estado, operador_id`,
+        [numero, nombre, estado]
+      )
+
+      await fastify.db.query(
+        `INSERT INTO audit_log (mesa_id, operador_id, accion, ip_origen, metadata_json)
+         VALUES ($1, $2, 'ADMIN_ACTION', $3, $4)`,
+        [mesa.id, request.user.id, request.ip, JSON.stringify({ tipo: 'MESA_CREADA', numero, nombre, estado })]
+      )
+
+      // Notificar al admin para que la nueva mesa aparezca de inmediato en la lista y Monitoreo
+      await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
+
+      // Si fue creada como activa, aparece de inmediato en la selección de mesa del login
+      if (mesa.estado === 'activa') {
+        await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', {
+          mesa,
+          accion: 'liberada'
+        })
+      }
+
+      return reply.status(201).send({ mesa })
+    } catch (err) {
+      if (err.code === '23505') {
+        return reply.status(409).send({ error: `El número de mesa ${numero} ya está asignado a otra ventanilla.` })
+      }
+      throw err
     }
-
-    const { rows: [mesa] } = await fastify.db.query(
-      `INSERT INTO mesas (numero, nombre) VALUES ($1, $2)
-       RETURNING id, numero, nombre, estado`,
-      [numero, nombre]
-    )
-
-    return reply.status(201).send({ mesa })
   })
 
   // ── PATCH /mesas/:id/asignar — Asignar operador a mesa (RF-ADM-04) ─────────
@@ -155,31 +181,41 @@ module.exports = async function mesasRoutes (fastify) {
         mesa,
         accion: operador_id ? 'tomada' : 'liberada'
       })
-      // Si hay un operador asignado: notificar al login para auto-redirigir al operador afectado.
+      // Si hay un operador nuevo asignado: notificar al login para auto-redirigir al operador asignado.
       if (operador_id && mesa.estado === 'activa') {
         await fastify.broadcast('tv:global', 'operador_asignado_por_admin', {
           operador_id: Number(operador_id),
           mesa: { id: mesa.id, numero: mesa.numero, nombre: mesa.nombre, estado: mesa.estado }
         })
       }
-      // F-2: Si se quita el operador (libera la mesa), notificar al canal mesa para que
-      // el panel del operador que estaba trabajando vea el aviso inmediato y no siga actuando.
-      if (!operador_id) {
-        await fastify.broadcast(`mesa:${mesaId}`, 'mesa_inactivada', { mesa, motivo: 'operador_removido_por_admin' })
-        if (mesaActual.operador_id) {
-          await fastify.broadcast('tv:global', 'operador_desasignado_por_admin', {
-            operador_id: Number(mesaActual.operador_id),
-            mesa_id: mesaId
-          })
-        }
+
+      // Si se quita al operador actual o se reemplaza por otro:
+      // notificar al operador anterior para que sea redirigido de inmediato al login con su aviso
+      if (mesaActual.operador_id && Number(mesaActual.operador_id) !== Number(operador_id)) {
+        await fastify.broadcast(`mesa:${mesaId}`, 'mesa_inactivada', {
+          mesa,
+          motivo: operador_id ? 'operador_reasignado_por_admin' : 'operador_removido_por_admin',
+          operador_anterior_id: Number(mesaActual.operador_id)
+        })
+        await fastify.broadcast('tv:global', 'operador_desasignado_por_admin', {
+          operador_id: Number(mesaActual.operador_id),
+          mesa_id: mesaId
+        })
       }
 
       return reply.send({ mesa })
     } catch (err) {
-
       if (err.code === '23505') {
+        let numMesa = ''
+        try {
+          const { rows: [otraMesa] } = await fastify.db.query(
+            `SELECT numero FROM mesas WHERE operador_id = $1 AND estado != 'eliminada' AND eliminado_en IS NULL LIMIT 1`,
+            [operador_id]
+          )
+          if (otraMesa) numMesa = ` a la Mesa ${otraMesa.numero}`
+        } catch (_) {}
         return reply.status(409).send({
-          error: 'Este operador ya se encuentra asignado a otra mesa (conflicto de concurrencia).'
+          error: `Este operador ya está asignado${numMesa}. Un operador no puede estar en dos mesas.`
         })
       }
       throw err
@@ -274,7 +310,10 @@ module.exports = async function mesasRoutes (fastify) {
         await Promise.allSettled([
           fastify.broadcast(`mesa:${mesaId}`, eventoMesa, { mesa }),
           fastify.broadcast('admin:all', 'mesa_actualizada', { mesa }),
-          fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', { mesa, accion: estado === 'inactiva' ? 'eliminada' : 'actualizada' })
+          fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', {
+            mesa,
+            accion: estado === 'inactiva' ? 'inactivada' : (estado === 'activa' && !mesa.operador_id ? 'liberada' : 'actualizada')
+          })
         ])
 
         if (estado === 'inactiva' && mesaActual.operador_id) {
@@ -311,44 +350,58 @@ module.exports = async function mesasRoutes (fastify) {
     const vals = []
     let idx = 1
 
-    if (numero !== undefined) {
-      const { rows: conflicto } = await fastify.db.query(
-        "SELECT id FROM mesas WHERE numero = $1 AND id != $2 AND estado != 'eliminada' AND eliminado_en IS NULL",
-        [numero, mesaId]
+    try {
+      if (numero !== undefined) {
+        const { rows: conflicto } = await fastify.db.query(
+          "SELECT id FROM mesas WHERE numero = $1 AND id != $2 AND estado != 'eliminada' AND eliminado_en IS NULL",
+          [numero, mesaId]
+        )
+        if (conflicto.length > 0) {
+          return reply.status(409).send({ error: `El número de mesa ${numero} ya está asignado a otra ventanilla.` })
+        }
+        campos.push(`numero = $${idx++}`)
+        vals.push(numero)
+      }
+
+      if (nombre !== undefined) {
+        campos.push(`nombre = $${idx++}`)
+        vals.push(nombre)
+      }
+
+      if (campos.length === 0) {
+        return reply.status(400).send({ error: 'No hay campos para actualizar' })
+      }
+
+      vals.push(mesaId)
+      const { rows: [mesa] } = await fastify.db.query(
+        `UPDATE mesas SET ${campos.join(', ')} WHERE id = $${idx}
+         RETURNING id, numero, nombre, estado, operador_id`,
+        vals
       )
-      if (conflicto.length > 0) {
+
+      if (!mesa) return reply.status(404).send({ error: 'Mesa no encontrada' })
+
+      await fastify.db.query(
+        `INSERT INTO audit_log (mesa_id, operador_id, accion, ip_origen, metadata_json)
+         VALUES ($1, $2, 'ADMIN_ACTION', $3, $4)`,
+        [mesaId, request.user.id, request.ip, JSON.stringify({ tipo: 'MESA_EDITADA', numero, nombre })]
+      )
+
+      // Difundir en vivo a todas las pantallas:
+      // 1. Admin (lista de mesas y Monitoreo)
+      await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
+      // 2. Operador conectado a esta mesa (actualiza encabezado de consola)
+      await fastify.broadcast(`mesa:${mesaId}`, 'mesa_actualizada', { mesa })
+      // 3. Selección de mesa en login (si la mesa está disponible)
+      await fastify.broadcast('tv:global', 'mesas_disponibles_actualizadas', { mesa, accion: 'actualizada' })
+
+      return reply.send({ mesa })
+    } catch (err) {
+      if (err.code === '23505') {
         return reply.status(409).send({ error: `El número de mesa ${numero} ya está asignado a otra ventanilla.` })
       }
-      campos.push(`numero = $${idx++}`)
-      vals.push(numero)
+      throw err
     }
-
-    if (nombre !== undefined) {
-      campos.push(`nombre = $${idx++}`)
-      vals.push(nombre)
-    }
-
-    if (campos.length === 0) {
-      return reply.status(400).send({ error: 'No hay campos para actualizar' })
-    }
-
-    vals.push(mesaId)
-    const { rows: [mesa] } = await fastify.db.query(
-      `UPDATE mesas SET ${campos.join(', ')} WHERE id = $${idx}
-       RETURNING id, numero, nombre, estado, operador_id`,
-      vals
-    )
-
-    if (!mesa) return reply.status(404).send({ error: 'Mesa no encontrada' })
-
-    await fastify.db.query(
-      `INSERT INTO audit_log (mesa_id, operador_id, accion, ip_origen, metadata_json)
-       VALUES ($1, $2, 'ADMIN_ACTION', $3, $4)`,
-      [mesaId, request.user.id, request.ip, JSON.stringify({ tipo: 'MESA_EDITADA', numero, nombre })]
-    )
-
-    await fastify.broadcast('admin:all', 'mesa_actualizada', { mesa })
-    return reply.send({ mesa })
   })
 
   // ── DELETE /mesas/:id — Eliminar mesa (RF-ADM-04) ──────────────────────────

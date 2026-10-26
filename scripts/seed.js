@@ -145,6 +145,8 @@ async function seed() {
       ['impresora_ip',                '',                                       'Direccion IP de la impresora termica ESC/POS en la red local.'],
       ['impresora_puerto',            '9100',                                   'Puerto TCP de la impresora termica ESC/POS (estandar: 9100).'],
       ['impresora_activa',            'false',                                  'Habilitar la impresion fisica directa de tickets desde el servidor via LAN.'],
+      ['impresora_canal',             'directa',                                'Canal de impresion: directa (red LAN ESC/POS), sistema (dialogo del navegador) o bluetooth.'],
+      ['impresora_ancho_papel',       '58',                                     'Ancho del papel termico en milimetros: 58 (32 caracteres) o 80 (48 caracteres).'],
       ['tv_escala_turnos',            '100',                                    'Escala porcentual para el tamano de los numeros de turno en pantalla TV, compatibilidad (75-140).'],
       ['tv_escala_principal',         '100',                                    'Escala porcentual del numero de turno principal en pantalla TV (75-140).'],
       ['tv_escala_secundaria',        '100',                                    'Escala porcentual de turnos anteriores y banner de mesa en TV (75-140).'],

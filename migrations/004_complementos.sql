@@ -77,6 +77,16 @@ VALUES
     'tv_opacidad_secundaria',
     '100',
     'Opacidad del fondo de las cuatro tarjetas de turnos anteriores en pantalla TV. Entero de 20 a 100; 100 = completamente opaco (sin cambio visual).'
+  ),
+  (
+    'impresora_canal',
+    'directa',
+    'Canal de impresion: directa (red LAN ESC/POS), sistema (dialogo del navegador) o bluetooth.'
+  ),
+  (
+    'impresora_ancho_papel',
+    '58',
+    'Ancho del papel termico en milimetros: 58 (32 caracteres) o 80 (48 caracteres).'
   )
 ON CONFLICT (clave) DO NOTHING;
 

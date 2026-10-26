@@ -11,62 +11,65 @@
   <link rel="icon" href="data:,">
 </head>
 <body class="min-h-full flex flex-col justify-between bg-app text-slate-800 antialiased font-sans select-none"
-      x-data="kioskoView">
+      x-data="kioskoView" x-cloak>
 
-  <!-- ── 1. HEADER INSTITUCIONAL COMPACTO ── -->
-  <header class="w-full max-w-4xl mx-auto px-6 py-4 flex items-center justify-between flex-shrink-0">
-    <div class="flex items-center space-x-3">
-      <div class="w-10 h-10 rounded-xl bg-white border border-slate-300 shadow-xs flex items-center justify-center text-blue-700">
+  <!-- ── 1. HEADER INSTITUCIONAL COMPACTO Y RESPONSIVO ── -->
+  <header class="w-full max-w-4xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-2.5 sm:gap-4 flex-shrink-0">
+    <div class="flex items-center space-x-2.5 sm:space-x-3">
+      <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white border border-slate-300 shadow-xs flex items-center justify-center text-blue-700 flex-shrink-0">
         <svg class="w-5 h-5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 2L3 7v6c0 5.25 3.75 10.15 9 11.35 5.25-1.2 9-6.1 9-11.35V7l-9-5z" />
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v5" /><circle cx="12" cy="16" r="1" fill="currentColor" />
         </svg>
       </div>
       <div>
-        <h1 class="text-sm font-bold tracking-tight text-slate-900 leading-none">Matrículas 2026</h1>
-        <p class="text-xs text-slate-500 font-medium mt-1" x-text="subtituloHeader"></p>
+        <h1 class="text-xs sm:text-sm font-bold tracking-tight text-slate-900 leading-none">Matrículas 2026</h1>
+        <p class="text-[11px] sm:text-xs text-slate-500 font-medium mt-0.5 sm:mt-1" x-text="subtituloHeader"></p>
       </div>
     </div>
 
-    <div class="flex items-center gap-2">
+    <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 justify-end">
       <template x-if="esTablet">
-        <div class="flex items-center gap-2">
-          <span class="pill pill-primary text-xs font-bold">Modo asistido</span>
+        <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <span class="pill pill-primary text-[11px] sm:text-xs font-bold px-2 sm:px-2.5 py-1 whitespace-nowrap">Modo asistido</span>
           <button type="button"
+                  x-show="impresoraServidorActiva"
                   @click="abrirModalImpresora()"
-                  class="pill text-xs font-semibold cursor-pointer transition-all hover:opacity-90 flex items-center gap-1.5 shadow-2xs"
+                  class="pill text-[11px] sm:text-xs font-semibold cursor-pointer transition-all hover:opacity-90 flex items-center gap-1.5 shadow-2xs whitespace-nowrap px-2.5 py-1"
                   :class="badgeImpresoraClases"
                   :title="badgeImpresoraTitle"
                   aria-label="Configuración de impresora de tickets">
-            <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <svg class="w-3.5 h-3.5 stroke-[1.8] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24-1.076-.673-2.13-1.27-3.104m12.1 0c-.597.974-1.03 2.028-1.27 3.104M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-18 0A2.25 2.25 0 015.25 14.25h13.5A2.25 2.25 0 0121 16.5m-18 0h18" />
             </svg>
-            <span x-text="badgeImpresoraTexto"></span>
+            <span class="hidden sm:inline" x-text="badgeImpresoraTexto"></span>
+            <span class="sm:hidden" x-text="badgeImpresoraTextoMobile"></span>
           </button>
           <a href="/index.html"
-             class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-700 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+             class="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-700 text-[11px] sm:text-xs font-semibold transition-all shadow-2xs cursor-pointer whitespace-nowrap"
              title="Regresar a pantalla de inicio / login"
              aria-label="Regresar a pantalla de inicio">
-            <svg class="w-3.5 h-3.5 stroke-[2] text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-3.5 h-3.5 stroke-[2] text-slate-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
             </svg>
-            <span>Salir al inicio</span>
+            <span class="hidden sm:inline">Salir al inicio</span>
+            <span class="sm:hidden">Inicio</span>
           </a>
         </div>
       </template>
-      <div class="pill" :class="wsConectado ? 'pill-success' : 'pill-warning'">
-        <span class="w-2 h-2 rounded-full" :class="wsConectado ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'"></span>
-        <span class="text-xs font-semibold" x-text="estadoConexionTexto"></span>
+      <div class="pill text-[11px] sm:text-xs px-2 sm:px-2.5 py-1 whitespace-nowrap" :class="wsConectado ? 'pill-success' : 'pill-warning'">
+        <span class="w-2 h-2 rounded-full flex-shrink-0" :class="wsConectado ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'"></span>
+        <span class="font-semibold" x-text="estadoConexionTexto"></span>
       </div>
     </div>
   </header>
 
   <!-- ── 2. CANVAS CENTRAL TÁCTIL ── -->
-  <main class="flex-1 flex items-center justify-center px-4 py-6">
-    <div class="card max-w-md w-full p-8 text-center transition-all duration-300">
+  <main class="flex-1 flex items-center justify-center px-3 sm:px-4 py-4 sm:py-6">
+    <div class="card max-w-md w-full p-4 sm:p-6 md:p-8 text-center transition-all duration-300 shadow-sm">
 
       <!-- MENSAJE DE ADVERTENCIA / ERROR -->
-      <div x-show="errorMessage" x-cloak class="alert-danger mb-5 flex items-start gap-2.5 text-left">
+      <div x-show="errorMessage" x-cloak class="alert-danger mb-4 sm:mb-5 flex items-start gap-2.5 text-left">
         <svg class="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5 stroke-[2]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
         </svg>
@@ -81,22 +84,22 @@
       </div>
 
       <!-- ESTADO 1: BIENVENIDA / SOLICITAR TURNO TÁCTIL -->
-      <section x-show="step === 'welcome'" class="space-y-6">
-        <div class="pill uppercase" :class="esTablet ? 'pill-primary' : 'pill-neutral'">
+      <section x-show="step === 'welcome'" class="space-y-5 sm:space-y-6">
+        <div class="pill uppercase text-[11px] sm:text-xs py-0.5 px-3" :class="esTablet ? 'pill-primary' : 'pill-neutral'">
           <span x-text="modoUsoBadgeTexto"></span>
         </div>
 
-        <div class="space-y-2">
-          <h2 class="text-2xl font-bold tracking-tight text-slate-900"
+        <div class="space-y-1.5 sm:space-y-2">
+          <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900"
               x-text="tituloBienvenida"></h2>
           <p class="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto"
-             x-text="descripcionBienvenida">
+              x-text="descripcionBienvenida">
           </p>
         </div>
 
         <!-- AVISO INFORMATIVO PARA ESTUDIANTES CUANDO EL SISTEMA ESTÁ EN MODALIDAD ASISTIDA -->
         <template x-if="!esTablet && (kioskoModoUso === 'asistido' || kioskoModoUso === 'empleado')">
-          <div class="p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs text-left space-y-1.5">
+          <div class="p-3.5 sm:p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs text-left space-y-1.5">
             <div class="flex items-center gap-2 font-bold text-blue-900">
               <svg class="w-4 h-4 text-blue-600 flex-shrink-0 stroke-[2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
@@ -122,11 +125,11 @@
           <button @click="generarTurno()" :disabled="isGenerating || !kioskoActivo || topeAlcanzado || !wsConectado" type="button"
                   :title="esTablet ? 'Asignar siguiente turno' : 'Tomar mi turno'"
                   :aria-label="esTablet ? 'Asignar siguiente turno' : 'Tomar mi turno'"
-                  class="btn-call flex items-center justify-center space-x-2.5"
+                  class="btn-call w-full min-h-[48px] h-12 sm:h-14 text-base sm:text-lg flex items-center justify-center space-x-2.5"
                   :class="!wsConectado ? 'opacity-50 cursor-not-allowed' : ''">
             <template x-if="!isGenerating">
               <div class="flex items-center space-x-2.5">
-                <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <svg class="w-5 h-5 stroke-[2] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 010 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 010-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375z" />
                 </svg>
                 <span x-text="textoBotonGenerar"></span>
@@ -134,7 +137,7 @@
             </template>
             <template x-if="isGenerating">
               <div class="flex items-center space-x-2">
-                <svg class="w-5 h-5 animate-spin stroke-[2]" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                <svg class="w-5 h-5 animate-spin stroke-[2] flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
                   <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"></path>
                 </svg>
                 <span>Asignando turno...</span>
@@ -154,45 +157,44 @@
       </section>
 
       <!-- ESTADO 2: TICKET GENERADO / COMPROBANTE CON QR (ÁREA IMPRIMIBLE) -->
-      <section x-show="step === 'ticket'" class="space-y-5" @click="reiniciarAutoReset()">
-        <div class="ticket-print-area space-y-4">
-          <div class="pill pill-neutral uppercase tracking-wider no-print">
+      <section x-show="step === 'ticket'" class="space-y-3.5 sm:space-y-4" @click="reiniciarAutoReset()">
+        <div class="ticket-print-area space-y-3 sm:space-y-3.5">
+          <div class="pill pill-neutral text-[11px] sm:text-xs uppercase tracking-wider py-0.5 px-3 no-print">
             <span>Tu turno asignado</span>
           </div>
 
           <div>
-            <span class="font-mono-num text-7xl font-black text-slate-900 tracking-tight block select-all"
+            <span class="font-mono-num text-5xl sm:text-6xl md:text-7xl font-black text-slate-900 tracking-tight block select-all leading-none my-1"
                   x-text="formatTicket(ticketData.numero)">--</span>
             <div class="mt-1 text-xs text-slate-500 font-medium">Atención de Matrículas 2026</div>
           </div>
 
-          <div class="card-subtle grid grid-cols-2 divide-x divide-slate-200 py-3 px-2">
+          <div class="card-subtle grid grid-cols-2 divide-x divide-slate-200 py-2 sm:py-2.5 px-2">
             <div class="flex flex-col items-center justify-center px-2">
               <span class="font-bold text-xs text-slate-800" x-text="personasAntesTexto">--</span>
-              <span class="text-xs text-slate-400 mt-0.5">En cola previa</span>
+              <span class="text-[11px] sm:text-xs text-slate-400 mt-0.5">En cola previa</span>
             </div>
             <div class="flex flex-col items-center justify-center px-2">
               <span class="font-bold text-xs text-slate-800" x-text="tiempoEstimadoTexto">--</span>
-              <span class="text-xs text-slate-400 mt-0.5">Tiempo estimado</span>
+              <span class="text-[11px] sm:text-xs text-slate-400 mt-0.5">Tiempo estimado</span>
             </div>
           </div>
 
           <!-- CONTENEDOR QR O ENLACE FALLBACK -->
-          <div class="card-subtle p-3.5 border-dashed flex flex-col items-center justify-center">
-            <div id="kiosko-qr-container" class="bg-white p-2.5 rounded-lg border border-slate-200 shadow-xs flex items-center justify-center min-w-[200px] min-h-[200px]"></div>
+          <div class="card-subtle p-2.5 sm:p-3 border-dashed flex flex-col items-center justify-center">
+            <div id="kiosko-qr-container" class="bg-white p-1.5 sm:p-2 rounded-lg border border-slate-200 shadow-xs flex items-center justify-center min-w-[160px] min-h-[160px] sm:min-w-[190px] sm:min-h-[190px]"></div>
 
             <template x-if="qrFallback">
-              <div class="mt-3 p-3 bg-slate-50 rounded-lg text-left w-full border border-slate-200 text-xs">
+              <div class="mt-2.5 p-2.5 bg-slate-50 rounded-lg text-left w-full border border-slate-200 text-xs">
                 <p class="font-semibold text-slate-800">Seguimiento en línea:</p>
                 <a :href="ticketData.tracking_url" target="_blank" rel="noopener noreferrer"
                    class="text-blue-600 underline break-all text-xs block mt-1" x-text="ticketData.tracking_url"></a>
               </div>
             </template>
 
-            <p class="text-xs text-slate-600 font-medium mt-2 no-print">Escanea para seguir tu turno desde el celular</p>
+            <p class="text-[11px] sm:text-xs text-slate-600 font-medium mt-1.5 no-print">Escanea para seguir tu turno desde el celular</p>
           </div>
         </div>
-
 
         <!-- ACCIONES -->
         <div class="space-y-2 no-print">
@@ -202,10 +204,10 @@
             <div class="space-y-2">
               <button @click="asignarSiguiente()" :disabled="isGenerating" type="button"
                       title="Asignar turno al siguiente estudiante" aria-label="Asignar turno al siguiente"
-                      class="btn-call w-full flex items-center justify-center space-x-2.5">
+                      class="btn-call w-full min-h-[48px] h-12 sm:h-14 text-base sm:text-lg flex items-center justify-center space-x-2.5">
                 <template x-if="!isGenerating">
                   <div class="flex items-center space-x-2.5">
-                    <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <svg class="w-5 h-5 stroke-[2] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
                     </svg>
                     <span>Asignar siguiente</span>
@@ -213,7 +215,7 @@
                 </template>
                 <template x-if="isGenerating">
                   <div class="flex items-center space-x-2">
-                    <svg class="w-5 h-5 animate-spin stroke-[2]" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                    <svg class="w-5 h-5 animate-spin stroke-[2] flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
                       <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"></path>
                     </svg>
                     <span>Asignando...</span>
@@ -234,31 +236,31 @@
 
               <!-- Cuenta regresiva + auto-reset -->
               <div x-show="cuentaRegresiva > 0"
-                   class="flex items-center justify-center gap-2 text-xs text-slate-500 font-medium">
+                   class="flex items-center justify-center gap-1.5 text-xs text-slate-500 font-medium py-0.5">
                 <svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <span>Vuelve a inicio en <span class="font-mono-num font-bold text-slate-700" x-text="cuentaRegresiva"></span>s</span>
               </div>
 
-              <!-- Acciones de Impresión en Tablet: Reimprimir copia o Imprimir manual -->
-              <div class="grid grid-cols-2 gap-2">
-                <!-- Si hay impresora habilitada y la impresión automática está activa: botón "Reimprimir copia" -->
-                <template x-if="tieneImpresoraHabilitada && impresionAutomatica">
-                  <button @click="imprimirTicket(true)" :disabled="isPrinting" type="button"
-                          title="Imprimir una copia adicional del comprobante" aria-label="Reimprimir copia"
-                          class="btn-ghost btn-sm flex items-center justify-center space-x-1.5 border border-slate-300">
+              <!-- Acciones Secundarias en Tablet: Imprimir voucher (solo si impresión manual está activa) y Cancelar/Volver -->
+              <div :class="(impresoraServidorActiva && tieneImpresoraHabilitada && !impresionAutomatica) ? 'grid grid-cols-2 gap-2' : 'flex flex-col gap-2'">
+                <!-- Si la impresión manual está activa en admin y hay impresora configurada: Botón "Imprimir voucher" -->
+                <template x-if="impresoraServidorActiva && tieneImpresoraHabilitada && !impresionAutomatica">
+                  <button @click="imprimirTicket(false)" :disabled="isPrinting" type="button"
+                          title="Enviar comprobante a la impresora" aria-label="Imprimir voucher"
+                          class="btn-ghost btn-sm min-h-[48px] h-12 flex items-center justify-center space-x-1.5 border border-slate-300 text-slate-800 font-semibold cursor-pointer">
                     <template x-if="!isPrinting">
                       <div class="flex items-center space-x-1.5">
-                        <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                        <svg class="w-4 h-4 stroke-[1.8] text-slate-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24-1.076-.673-2.13-1.27-3.104m12.1 0c-.597.974-1.03 2.028-1.27 3.104M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-18 0A2.25 2.25 0 015.25 14.25h13.5A2.25 2.25 0 0121 16.5m-18 0h18" />
                         </svg>
-                        <span>Reimprimir copia</span>
+                        <span>Imprimir voucher</span>
                       </div>
                     </template>
                     <template x-if="isPrinting">
                       <div class="flex items-center space-x-1.5">
-                        <svg class="w-3.5 h-3.5 animate-spin stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg class="w-4 h-4 animate-spin stroke-[1.8] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"></path>
                         </svg>
                         <span>Imprimiendo...</span>
@@ -267,46 +269,10 @@
                   </button>
                 </template>
 
-                <!-- Si hay impresora habilitada y la impresión automática está inactiva: botón "Imprimir ticket" -->
-                <template x-if="tieneImpresoraHabilitada && !impresionAutomatica">
-                  <button @click="imprimirTicket(false)" :disabled="isPrinting" type="button"
-                          title="Enviar a impresora de tickets" aria-label="Imprimir ticket"
-                          class="btn-ghost btn-sm flex items-center justify-center space-x-1.5 border border-slate-300">
-                    <template x-if="!isPrinting">
-                      <div class="flex items-center space-x-1.5">
-                        <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24-1.076-.673-2.13-1.27-3.104m12.1 0c-.597.974-1.03 2.028-1.27 3.104M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-18 0A2.25 2.25 0 015.25 14.25h13.5A2.25 2.25 0 0121 16.5m-18 0h18" />
-                        </svg>
-                        <span>Imprimir ticket</span>
-                      </div>
-                    </template>
-                    <template x-if="isPrinting">
-                      <div class="flex items-center space-x-1.5">
-                        <svg class="w-3.5 h-3.5 animate-spin stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"></path>
-                        </svg>
-                        <span>Enviando...</span>
-                      </div>
-                    </template>
-                  </button>
-                </template>
-
-                <!-- Si NO hay impresora habilitada: botón para configurar -->
-                <template x-if="!tieneImpresoraHabilitada">
-                  <button @click="abrirModalImpresora()" type="button"
-                          title="Configurar impresora" aria-label="Configurar impresora"
-                          class="btn-ghost btn-sm flex items-center justify-center space-x-1.5 text-slate-600 border border-slate-300">
-                    <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M10.34 15.84c-.388-.497-.61-1.127-.61-1.78a2.5 2.5 0 114.77 1.05m-3.9 4.74h3.04a1 1 0 001-1v-2.07a1 1 0 00-.29-.71l-1.42-1.42a1 1 0 00-1.41 0l-1.42 1.42a1 1 0 00-.29.71V19.9a1 1 0 001 1z" />
-                    </svg>
-                    <span>Configurar</span>
-                  </button>
-                </template>
-
                 <button @click="volverABienvenida()" type="button"
-                        title="Cancelar y volver al inicio" aria-label="Cancelar"
-                        class="btn-ghost btn-sm border border-slate-300">
-                  Cancelar
+                        title="Volver a la pantalla inicial" aria-label="Volver al inicio"
+                        class="btn-ghost btn-sm min-h-[48px] h-12 flex items-center justify-center border border-slate-300 text-slate-700 font-medium cursor-pointer">
+                  <span x-text="(impresoraServidorActiva && tieneImpresoraHabilitada && !impresionAutomatica) ? 'Cancelar' : 'Volver al inicio'"></span>
                 </button>
               </div>
             </div>
@@ -317,15 +283,15 @@
             <div class="space-y-2">
               <button @click="iniciarSeguimiento(ticketData.token); step = 'seguimiento'" type="button"
                       title="Ver posición en fila y recibir aviso cuando te llamen"
-                      class="btn-call w-full h-12 text-sm flex items-center justify-center space-x-2">
-                <svg class="w-4 h-4 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      class="btn-call w-full min-h-[48px] h-12 text-sm sm:text-base font-bold flex items-center justify-center space-x-2">
+                <svg class="w-4 h-4 stroke-[2] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
                 </svg>
                 <span>Seguir mi turno en vivo</span>
               </button>
               <button @click="volverABienvenida()" type="button"
                       title="Volver a la pantalla de inicio" aria-label="Volver a la pantalla de inicio"
-                      class="btn-ghost btn-sm w-full">
+                      class="btn-ghost btn-sm min-h-[44px] h-11 w-full text-xs sm:text-sm font-medium">
                 Pantalla de inicio (Tomar otro turno)
               </button>
             </div>
@@ -473,9 +439,9 @@
           <div class="ml-3 flex-1 text-xs">
             <div class="font-bold text-slate-900 flex items-center justify-between">
               <span>Impresora Térmica en Red LAN (TCP / ESC-POS)</span>
-              <span class="pill pill-primary text-[10px] py-0.5 px-2">Recomendado</span>
+              <span class="pill pill-primary text-[10px] py-0.5 px-2">Recomendado para red LAN</span>
             </div>
-            <p class="text-slate-500 mt-0.5">Envío directo de bytes ESC/POS al puerto 9100 de la impresora en red.</p>
+            <p class="text-slate-500 mt-0.5">Envío directo de bytes ESC/POS al puerto 9100 de la impresora en red. Compatible de forma nativa en red local HTTP.</p>
             <div x-show="canalImpresion === 'servidor'" class="mt-2.5 pt-2 border-t border-slate-200/80 space-y-2">
               <div class="text-[11px] text-slate-600">
                 <span>IP general del sistema: </span>
@@ -492,46 +458,62 @@
         </label>
 
         <!-- Opción 2: Bluetooth Térmico -->
-        <label class="flex items-start p-3 rounded-xl border cursor-pointer transition-all"
-               :class="canalImpresion === 'bluetooth' ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500/20' : 'border-slate-200 hover:border-slate-300 bg-white'">
-          <input type="radio" name="canalImpresion" value="bluetooth" x-model="canalImpresion" class="mt-1 text-blue-600 focus:ring-blue-500">
+        <label class="flex items-start p-3 rounded-xl border transition-all"
+               :class="bluetoothBloqueadoPorHttp
+                 ? 'border-slate-200 bg-slate-50/75 opacity-70 cursor-not-allowed'
+                 : (canalImpresion === 'bluetooth' ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500/20 cursor-pointer' : 'border-slate-200 hover:border-slate-300 bg-white cursor-pointer')">
+          <input type="radio" name="canalImpresion" value="bluetooth" x-model="canalImpresion"
+                 :disabled="bluetoothBloqueadoPorHttp || !bluetoothDisponible"
+                 class="mt-1 text-blue-600 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
           <div class="ml-3 flex-1 text-xs">
             <div class="font-bold text-slate-900 flex items-center justify-between">
               <span>Impresora Térmica Bluetooth (Web Bluetooth)</span>
-              <span class="pill text-[10px] py-0.5 px-2" :class="bluetoothConectado ? 'pill-success' : 'pill-neutral'"
-                    x-text="bluetoothConectado ? 'Conectado' : 'Sin conectar'"></span>
+              <template x-if="bluetoothBloqueadoPorHttp">
+                <span class="pill pill-warning text-[10px] py-0.5 px-2 font-semibold">Requiere HTTPS</span>
+              </template>
+              <template x-if="!bluetoothBloqueadoPorHttp">
+                <span class="pill text-[10px] py-0.5 px-2" :class="bluetoothConectado ? 'pill-success' : 'pill-neutral'"
+                      x-text="bluetoothConectado ? 'Conectado' : 'Sin conectar'"></span>
+              </template>
             </div>
-            <p class="text-slate-500 mt-0.5">Impresión directa desde la tablet a impresoras Bluetooth portátiles (58mm/80mm).</p>
+            <p class="text-slate-500 mt-0.5">Impresión directa desde el navegador a impresoras Bluetooth portátiles (58mm/80mm).</p>
 
-            <div x-show="canalImpresion === 'bluetooth'" class="mt-2.5 pt-2 border-t border-slate-200/80 space-y-2">
-              <template x-if="!bluetoothDisponible">
-                <div class="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[11px]">
-                  Web Bluetooth no está habilitado en este navegador. Utilice Google Chrome o Microsoft Edge en Android/Windows.
-                </div>
-              </template>
+            <template x-if="bluetoothBloqueadoPorHttp">
+              <div class="mt-2.5 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-relaxed flex items-start gap-2">
+                <svg class="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5 stroke-[2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                </svg>
+                <span><strong>Requiere HTTPS.</strong> En red HTTP use <strong>Impresión LAN (TCP/IP)</strong> o <strong>Controlador del Sistema</strong>.</span>
+              </div>
+            </template>
 
-              <template x-if="bluetoothDisponible">
-                <div class="flex items-center gap-2">
-                  <template x-if="!bluetoothConectado">
-                    <button type="button" @click="conectarBluetooth()" :disabled="conectandoBluetooth"
-                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs active:scale-[0.98] transition-all cursor-pointer">
-                      <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                      </svg>
-                      <span x-text="conectandoBluetooth ? 'Buscando...' : 'Vincular y conectar impresora'"></span>
+            <template x-if="!bluetoothBloqueadoPorHttp && !bluetoothDisponible">
+              <div class="mt-2.5 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[11px]">
+                Web Bluetooth no está habilitado en este navegador. Utilice Google Chrome o Microsoft Edge en Android/Windows con HTTPS o localhost.
+              </div>
+            </template>
+
+            <div x-show="canalImpresion === 'bluetooth' && !bluetoothBloqueadoPorHttp && bluetoothDisponible" class="mt-2.5 pt-2 border-t border-slate-200/80 space-y-2">
+              <div class="flex items-center gap-2">
+                <template x-if="!bluetoothConectado">
+                  <button type="button" @click="conectarBluetooth()" :disabled="conectandoBluetooth"
+                          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs active:scale-[0.98] transition-all cursor-pointer">
+                    <svg class="w-3.5 h-3.5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                    </svg>
+                    <span x-text="conectandoBluetooth ? 'Buscando...' : 'Vincular y conectar impresora'"></span>
+                  </button>
+                </template>
+                <template x-if="bluetoothConectado">
+                  <div class="flex items-center justify-between w-full">
+                    <span class="text-xs font-semibold text-emerald-700" x-text="bluetoothDispositivoNombre || 'Impresora Conectada'"></span>
+                    <button type="button" @click="desconectarBluetooth()"
+                            class="text-[11px] text-rose-600 hover:text-rose-800 font-semibold underline cursor-pointer">
+                      Desconectar
                     </button>
-                  </template>
-                  <template x-if="bluetoothConectado">
-                    <div class="flex items-center justify-between w-full">
-                      <span class="text-xs font-semibold text-emerald-700" x-text="bluetoothDispositivoNombre || 'Impresora Conectada'"></span>
-                      <button type="button" @click="desconectarBluetooth()"
-                              class="text-[11px] text-rose-600 hover:text-rose-800 font-semibold underline cursor-pointer">
-                        Desconectar
-                      </button>
-                    </div>
-                  </template>
-                </div>
-              </template>
+                  </div>
+                </template>
+              </div>
             </div>
           </div>
         </label>
@@ -541,8 +523,11 @@
                :class="canalImpresion === 'sistema' ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500/20' : 'border-slate-200 hover:border-slate-300 bg-white'">
           <input type="radio" name="canalImpresion" value="sistema" x-model="canalImpresion" class="mt-1 text-blue-600 focus:ring-blue-500">
           <div class="ml-3 flex-1 text-xs">
-            <span class="font-bold text-slate-900 block">Controlador del Sistema (Ventana / Diálogo nativo)</span>
-            <p class="text-slate-500 mt-0.5">Abre la ventana estándar de impresión del navegador para impresoras USB instaladas en el equipo.</p>
+            <div class="font-bold text-slate-900 flex items-center justify-between">
+              <span>Controlador del Sistema (Ventana / Diálogo nativo)</span>
+              <span class="pill pill-neutral text-[10px] py-0.5 px-2 font-medium">Nativo</span>
+            </div>
+            <p class="text-slate-500 mt-0.5">Abre la ventana estándar de impresión del navegador para impresoras USB instaladas en el equipo. Compatible con red local HTTP.</p>
           </div>
         </label>
 

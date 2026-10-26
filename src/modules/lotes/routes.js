@@ -22,9 +22,15 @@ module.exports = async function lotesRoutes (fastify) {
                 ELSE 0
               END AS progreso_pct,
               lv.numero_hasta - lv.ultimo_numero_llamado AS vouchers_restantes,
-              (SELECT COALESCE(MAX(t.numero), 0) FROM turnos t WHERE t.lote_id = lv.id) AS max_emitido
+              COALESCE(tm.max_emitido, 0)::int AS max_emitido
        FROM lotes_voucher lv
        LEFT JOIN usuarios u ON lv.creado_por = u.id AND u.eliminado_en IS NULL
+       LEFT JOIN (
+         SELECT lote_id, COALESCE(MAX(numero), 0) AS max_emitido
+         FROM turnos
+         WHERE lote_id IS NOT NULL
+         GROUP BY lote_id
+       ) tm ON tm.lote_id = lv.id
        WHERE lv.estado != 'eliminado' AND lv.eliminado_en IS NULL
        ORDER BY lv.numero_lote DESC`
     )
@@ -567,8 +573,24 @@ module.exports = async function lotesRoutes (fastify) {
 
     if (!lote) return reply.status(404).send({ error: 'Lote no encontrado o ya eliminado' })
 
-    // Si el lote nunca tuvo llamados y está en estado preparado, se puede eliminar físicamente o lógicamente
-    // Si ya tuvo llamados, se marca eliminado permanentemente para no romper el historial de vouchers
+    // Validar que no esté activo en sala
+    if (lote.estado === 'activo') {
+      return reply.status(409).send({
+        error: `No se puede eliminar el Lote ${lote.numero_lote} porque está activo actualmente en sala. Debe pausarlo o cerrarlo primero.`
+      })
+    }
+
+    // Validar que no se haya usado (sin turnos emitidos ni vouchers llamados)
+    const { rows: [{ total_turnos }] } = await fastify.db.query(
+      `SELECT COUNT(*)::int AS total_turnos FROM turnos WHERE lote_id = $1`,
+      [loteId]
+    )
+    if (lote.ultimo_numero_llamado > 0 || total_turnos > 0) {
+      return reply.status(409).send({
+        error: `No se puede eliminar el Lote ${lote.numero_lote} porque ya ha sido utilizado (${lote.ultimo_numero_llamado} vouchers llamados). Los lotes con actividad deben cerrarse para preservar la trazabilidad.`
+      })
+    }
+
     const { rows: [loteEliminado] } = await fastify.db.query(
       `UPDATE lotes_voucher
        SET estado = 'eliminado', eliminado_en = NOW()
@@ -583,9 +605,13 @@ module.exports = async function lotesRoutes (fastify) {
       [loteId, request.user.id, request.ip, JSON.stringify({ tipo: 'LOTE_ELIMINADO', numero_lote: lote.numero_lote })]
     )
 
-    await fastify.broadcast('admin:all', 'lote_actualizado', { lote_eliminado_id: loteId })
+    await Promise.allSettled([
+      fastify.broadcast('admin:all', 'lote_actualizado', { lote_eliminado_id: loteId }),
+      fastify.broadcast('admin:all', 'lote_eliminado', { id: loteId, numero_lote: lote.numero_lote }),
+      fastify.broadcast('tv:global', 'lote_eliminado', { id: loteId, numero_lote: lote.numero_lote })
+    ])
 
-    return reply.send({ success: true, message: `Lote ${lote.numero_lote} eliminado exitosamente.` })
+    return reply.send({ success: true, message: `Lote ${lote.numero_lote} eliminado exitosamente. Su número ha sido liberado.` })
   })
 }
 

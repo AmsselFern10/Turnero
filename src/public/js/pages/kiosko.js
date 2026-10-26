@@ -86,6 +86,7 @@ export function kioskoView () {
     // Impresión Híbrida (Modo Asistido / Tablet)
     modalImpresora: false,
     canalImpresion: 'servidor', // 'servidor' | 'bluetooth' | 'sistema' | 'ninguno'
+    anchoPapel: 58, // 58 | 80
     ipTabletPersonalizada: '',
     impresoraServidorActiva: false,
     impresoraServidorIp: '',
@@ -190,13 +191,30 @@ export function kioskoView () {
       return this.redLocalOk ? 'Red local LAN conectada' : 'Sin conexión';
     },
 
+    get esHttpNoSeguro () {
+      if (typeof window === 'undefined') return false;
+      const hostname = window.location.hostname || '';
+      const esLocalhost = hostname === 'localhost' ||
+                          hostname === '127.0.0.1' ||
+                          hostname.endsWith('.localhost');
+      return window.location.protocol === 'http:' && !esLocalhost;
+    },
+
+    get bluetoothBloqueadoPorHttp () {
+      return this.esHttpNoSeguro;
+    },
+
     get bluetoothDisponible () {
-      return typeof navigator !== 'undefined' && Boolean(navigator.bluetooth);
+      return typeof navigator !== 'undefined' && Boolean(navigator.bluetooth) && !this.bluetoothBloqueadoPorHttp;
     },
 
     get tieneImpresoraHabilitada () {
+      if (!this.impresoraServidorActiva) return false;
       if (this.canalImpresion === 'ninguno') return false;
-      if (this.canalImpresion === 'bluetooth') return this.bluetoothConectado;
+      if (this.canalImpresion === 'bluetooth') {
+        if (this.bluetoothBloqueadoPorHttp) return false;
+        return this.bluetoothConectado;
+      }
       if (this.canalImpresion === 'servidor') {
         return Boolean((this.ipTabletPersonalizada || this.impresoraServidorIp).trim());
       }
@@ -206,8 +224,12 @@ export function kioskoView () {
 
     get badgeImpresoraTexto () {
       if (!this.esTablet) return '';
+      if (!this.impresoraServidorActiva) return 'Impresión desactivada';
       if (this.canalImpresion === 'ninguno') return 'Sin impresora';
       if (this.canalImpresion === 'bluetooth') {
+        if (this.bluetoothBloqueadoPorHttp) {
+          return 'Impresión por red LAN recomendada';
+        }
         return this.bluetoothConectado
           ? (this.bluetoothDispositivoNombre || 'Bluetooth')
           : 'BT Desconectado';
@@ -220,11 +242,34 @@ export function kioskoView () {
       return 'Impresora';
     },
 
+    get badgeImpresoraTextoMobile () {
+      if (!this.esTablet) return '';
+      if (!this.impresoraServidorActiva) return 'Inactiva';
+      if (this.canalImpresion === 'ninguno') return 'Sin impr.';
+      if (this.canalImpresion === 'bluetooth') {
+        if (this.bluetoothBloqueadoPorHttp) {
+          return 'LAN recomendada';
+        }
+        return this.bluetoothConectado
+          ? (this.bluetoothDispositivoNombre || 'BT')
+          : 'BT Descon.';
+      }
+      if (this.canalImpresion === 'servidor') {
+        const ip = (this.ipTabletPersonalizada || this.impresoraServidorIp).trim();
+        return ip ? 'LAN' : 'LAN Sin IP';
+      }
+      if (this.canalImpresion === 'sistema') return 'SO';
+      return 'Impresora';
+    },
+
     get badgeImpresoraClases () {
       if (this.canalImpresion === 'ninguno') {
         return 'bg-slate-100 text-slate-500 border-slate-200';
       }
       if (this.canalImpresion === 'bluetooth') {
+        if (this.bluetoothBloqueadoPorHttp) {
+          return 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100';
+        }
         return this.bluetoothConectado
           ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
           : 'bg-amber-50 text-amber-700 border-amber-200';
@@ -242,7 +287,10 @@ export function kioskoView () {
     },
 
     get badgeImpresoraTitle () {
-      return 'Configurar canal de impresión (Bluetooth, LAN o Sistema)';
+      if (this.canalImpresion === 'bluetooth' && this.bluetoothBloqueadoPorHttp) {
+        return 'Web Bluetooth requiere HTTPS en red LAN. Se recomienda usar Impresora en Red LAN (TCP/ESC-POS). Clic para configurar.';
+      }
+      return 'Configurar canal de impresión (LAN, Sistema o Bluetooth)';
     },
 
     /**
@@ -417,6 +465,15 @@ export function kioskoView () {
         if (res.impresora_puerto !== undefined) {
           this.impresoraServidorPuerto = parseInt(res.impresora_puerto, 10) || 9100;
         }
+        if (res.impresora_ancho_papel !== undefined) {
+          this.anchoPapel = parseInt(res.impresora_ancho_papel, 10) || 58;
+        }
+        if (res.impresora_canal !== undefined) {
+          const guardado = localStorage.getItem('turnero_kiosko_canal_impresion');
+          if (!guardado) {
+            this.canalImpresion = res.impresora_canal;
+          }
+        }
 
         if (!this.kioskoActivo) {
           this.errorMessage = 'El servicio digital de turnos no está activo actualmente. Solicite su voucher físico.';
@@ -520,9 +577,14 @@ export function kioskoView () {
           this.iniciarCuentaRegresiva(15);
 
           // Manejo del estado de impresión automática
-          if (this.impresionAutomatica && this.tieneImpresoraHabilitada) {
+          if (this.impresoraServidorActiva && this.impresionAutomatica && this.tieneImpresoraHabilitada) {
             if (this.canalImpresion === 'bluetooth') {
               this.imprimirTicket(false);
+            } else if (this.canalImpresion === 'sistema') {
+              const num = this.formatTicket(data.numero);
+              const numLimpio = num.replace('#', '');
+              this._abrirVentanaImpresion(num, numLimpio);
+              this.avisoImpresion = 'Abriendo diálogo de impresión del sistema.';
             } else if (this.canalImpresion === 'servidor' && this.ipTabletPersonalizada) {
               this.imprimirTicket(false);
             } else if (data.impresion) {
@@ -594,12 +656,16 @@ export function kioskoView () {
       container.innerHTML = '';
       this.qrFallback = false;
 
+      // Dimensiones proporcionales: 160px en celulares angostos, 190px en tablets/pantallas amplias
+      const anchoPantalla = typeof window !== 'undefined' ? window.innerWidth : 400;
+      const dim = anchoPantalla < 420 ? 160 : 190;
+
       if (window.QRCode) {
         try {
           new window.QRCode(container, {
             text: trackingUrl,
-            width: 200,
-            height: 200,
+            width: dim,
+            height: dim,
             colorDark: '#0F172A',
             colorLight: '#FFFFFF',
             correctLevel: window.QRCode.CorrectLevel.M
@@ -625,6 +691,11 @@ export function kioskoView () {
         }
         this.ipTabletPersonalizada = (localStorage.getItem('turnero_kiosko_impresora_ip') || '').trim();
       } catch (_) {}
+
+      // Si está en red HTTP LAN no segura y el canal era Bluetooth, conmutar por defecto a red LAN
+      if (this.bluetoothBloqueadoPorHttp && this.canalImpresion === 'bluetooth') {
+        this.canalImpresion = 'servidor';
+      }
 
       if (this.bluetoothDisponible && !this.bluetoothPrinter) {
         this.bluetoothPrinter = new WebBluetoothThermalPrinter({
@@ -669,6 +740,10 @@ export function kioskoView () {
     },
 
     async conectarBluetooth () {
+      if (this.bluetoothBloqueadoPorHttp) {
+        this.errorPrueba = 'Web Bluetooth requiere conexión HTTPS. En red HTTP use Impresión LAN o Controlador del Sistema.';
+        return;
+      }
       if (!this.bluetoothPrinter) {
         this.errorPrueba = 'Web Bluetooth no está disponible en este dispositivo.';
         return;
@@ -699,39 +774,43 @@ export function kioskoView () {
       this.mensajePrueba = '';
       this.errorPrueba = '';
       const ahora = new Date();
+      const testTrackingUrl = this.ticketData.tracking_url || `${window.location.origin}/kiosko.html?token=prueba-999`;
       const ticketPrueba = {
         numero: 999,
         formato: '#999',
-        modulo: 'Prueba de Impresión',
-        tracking_url: window.location.origin,
+        modulo: 'Módulo General de Matrículas',
+        tracking_url: testTrackingUrl,
         fecha: ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }),
         hora: ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
       };
 
       try {
         if (this.canalImpresion === 'bluetooth') {
+          if (this.bluetoothBloqueadoPorHttp) {
+            throw new Error('Web Bluetooth requiere HTTPS en conexiones de red. En red HTTP use Impresión LAN o Controlador del Sistema.');
+          }
           if (!this.bluetoothConectado || !this.bluetoothPrinter) {
             throw new Error('Primero vincule y conecte la impresora Bluetooth.');
           }
-          const bytes = construirVoucherESCPOS(ticketPrueba);
+          const bytes = construirVoucherESCPOS(ticketPrueba, this.anchoPapel || 58);
           await this.bluetoothPrinter.imprimir(bytes);
           this.mensajePrueba = 'Comprobante de prueba enviado vía Bluetooth.';
-        } else if (this.canalImpresion === 'servidor') {
+        } else if (this.canalImpresion === 'servidor' || this.canalImpresion === 'directa') {
           const ipDestino = (this.ipTabletPersonalizada || this.impresoraServidorIp).trim();
           if (!ipDestino) {
-            throw new Error('No hay dirección IP configurada para la impresora en red.');
+            throw new Error('No hay dirección IP configurada para la impresora de tickets en red.');
           }
           await api.post('/kiosko/imprimir', {
             numero: 999,
             formato: '#999',
-            modulo: 'Prueba de Impresión',
-            tracking_url: window.location.origin,
+            modulo: 'Módulo General de Matrículas',
+            tracking_url: testTrackingUrl,
             ip: ipDestino,
             puerto: this.impresoraServidorPuerto
           }, { public: true });
           this.mensajePrueba = `Comprobante de prueba enviado a ${ipDestino}.`;
         } else if (this.canalImpresion === 'sistema') {
-          this._abrirVentanaImpresion('#999', '999');
+          this._abrirVentanaImpresion('#999', '999', ticketPrueba);
           this.mensajePrueba = 'Abriendo ventana de impresión del sistema.';
         } else {
           throw new Error('La impresión está desactivada.');
@@ -767,6 +846,9 @@ export function kioskoView () {
       try {
         if (this.esTablet) {
           if (this.canalImpresion === 'bluetooth') {
+            if (this.bluetoothBloqueadoPorHttp) {
+              throw new Error('Web Bluetooth requiere HTTPS en red LAN. Use Impresión LAN o Controlador del Sistema.');
+            }
             if (!this.bluetoothConectado || !this.bluetoothPrinter) {
               throw new Error('Impresora Bluetooth no conectada. Conéctela desde el icono de impresora en el encabezado.');
             }
@@ -827,31 +909,62 @@ export function kioskoView () {
      * Usado como flujo principal en celular y como fallback en tablet.
      * Diseñado estrictamente para rollos térmicos continuos (58mm y 80mm) sin desborde de páginas.
      */
-    _abrirVentanaImpresion (num, numLimpio) {
-      const trackingUrl = this.ticketData.tracking_url || '';
+    _abrirVentanaImpresion (num, numLimpio, datosOverride = null) {
+      const trackingUrl = datosOverride?.tracking_url || this.ticketData.tracking_url || '';
       const ahora = new Date();
-      const fecha = ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
-      const hora  = ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      const fecha = datosOverride?.fecha || ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const hora  = datosOverride?.hora || ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      const modulo = datosOverride?.modulo || 'Módulo General de Matrículas';
+      const numeroTexto = datosOverride?.formato || num;
+      const anchoMm = parseInt(datosOverride?.anchoPapel || this.anchoPapel, 10) === 80 ? 72 : 48;
+      const qrPx = parseInt(datosOverride?.anchoPapel || this.anchoPapel, 10) === 80 ? 125 : 100;
 
-      // Capturar QR existente como data URL
-      const qrContainer = document.getElementById('kiosko-qr-container');
-      const qrCanvas = qrContainer?.querySelector('canvas');
-      const qrImg    = qrContainer?.querySelector('img');
+      // Capturar QR existente como data URL si no hay override
       let qrHtml = '';
-      if (qrCanvas) {
-        try { qrHtml = `<img src="${qrCanvas.toDataURL('image/png')}" width="115" height="115" alt="QR">`; } catch (_) {}
-      } else if (qrImg?.src) {
-        qrHtml = `<img src="${qrImg.src}" width="115" height="115" alt="QR">`;
+      if (!datosOverride) {
+        const qrContainer = document.getElementById('kiosko-qr-container');
+        const qrCanvas = qrContainer?.querySelector('canvas');
+        const qrImg    = qrContainer?.querySelector('img');
+        if (qrCanvas) {
+          try { qrHtml = `<img src="${qrCanvas.toDataURL('image/png')}" width="${qrPx}" height="${qrPx}" alt="QR">`; } catch (_) {}
+        } else if (qrImg?.src) {
+          qrHtml = `<img src="${qrImg.src}" width="${qrPx}" height="${qrPx}" alt="QR">`;
+        }
+      }
+
+      // Si no hay QR capturado del DOM o hay override, generarlo ahora mismo
+      if (!qrHtml && window.QRCode) {
+        try {
+          const tempDiv = document.createElement('div');
+          const targetUrl = trackingUrl || `${window.location.origin}/kiosko.html?modo=estudiante`;
+          new window.QRCode(tempDiv, {
+            text: targetUrl,
+            width: qrPx + 40,
+            height: qrPx + 40,
+            colorDark: '#000000',
+            colorLight: '#FFFFFF',
+            correctLevel: window.QRCode.CorrectLevel.M
+          });
+          const c = tempDiv.querySelector('canvas');
+          const im = tempDiv.querySelector('img');
+          if (c) {
+            qrHtml = `<img src="${c.toDataURL('image/png')}" width="${qrPx}" height="${qrPx}" alt="QR">`;
+          } else if (im?.src) {
+            qrHtml = `<img src="${im.src}" width="${qrPx}" height="${qrPx}" alt="QR">`;
+          }
+        } catch (e) {
+          console.warn('[Kiosko] Fallo al generar QR dinámico para impresión:', e);
+        }
       }
 
       const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Voucher-${numLimpio}</title>
+  <title></title>
   <style>
     @page {
-      margin: 0;
+      margin: 0mm !important;
       size: auto;
     }
     *, *::before, *::after {
@@ -861,21 +974,26 @@ export function kioskoView () {
     }
     html, body {
       width: 100%;
+      height: auto;
+      min-height: 0;
+      margin: 0 !important;
+      padding: 0 !important;
       background: #FFFFFF;
       color: #000000;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Courier New", monospace;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
+      overflow: hidden;
     }
     body {
-      padding: 2mm 0;
+      padding: 1mm 0 0 0;
       text-align: center;
     }
     .voucher {
-      width: 52mm;
-      max-width: 52mm;
+      width: ${anchoMm}mm;
+      max-width: ${anchoMm}mm;
       margin: 0 auto;
-      padding: 2mm 1mm;
+      padding: 1mm 0 2mm 0;
       text-align: center;
       page-break-inside: avoid;
       break-inside: avoid;
@@ -897,10 +1015,10 @@ export function kioskoView () {
     .sep {
       border: none;
       border-top: 1px dashed #000000;
-      margin: 2.5mm 0;
+      margin: 2mm 0;
     }
     .numero {
-      font-size: 38pt;
+      font-size: 32pt;
       font-weight: 900;
       font-family: monospace;
       line-height: 1;
@@ -914,26 +1032,26 @@ export function kioskoView () {
       line-height: 1.2;
     }
     .qr {
-      margin: 2mm auto;
+      margin: 1.5mm auto;
       display: block;
     }
     .qr img {
       display: block;
       margin: 0 auto;
-      width: 110px;
-      height: 110px;
+      width: ${qrPx}px;
+      height: ${qrPx}px;
     }
     .qr-label {
       font-size: 6.5pt;
       color: #444444;
-      margin-top: 1.5mm;
+      margin-top: 1mm;
       line-height: 1.2;
     }
     .pie {
       font-size: 6.5pt;
       color: #444444;
       line-height: 1.3;
-      margin-top: 2mm;
+      margin-top: 1.5mm;
     }
   </style>
 </head>
@@ -942,8 +1060,8 @@ export function kioskoView () {
     <div class="inst">MATRÍCULAS 2026</div>
     <div class="sub">Turno Digital de Atención</div>
     <hr class="sep">
-    <div class="numero">${num}</div>
-    <div class="modulo">Módulo General de Matrículas</div>
+    <div class="numero">${numeroTexto}</div>
+    <div class="modulo">${modulo}</div>
     <hr class="sep">
     ${qrHtml ? `<div class="qr">${qrHtml}<div class="qr-label">Escanea para seguir tu turno</div></div>` : ''}
     <div class="pie">${fecha} • ${hora}<br>Válido solo para hoy</div>
@@ -982,8 +1100,6 @@ export function kioskoView () {
       }
 
       this.mostrarToast(`Voucher ${num} enviado al diálogo de impresión`);
-      document.title = `Voucher-${numLimpio}`;
-      setTimeout(() => { document.title = this.tituloOriginal; }, 2500);
     },
 
     /**
@@ -1156,8 +1272,16 @@ export function kioskoView () {
           } else {
             this.errorMessage = '';
           }
+        } else if (payload.clave === 'impresora_activa') {
+          this.impresoraServidorActiva = String(payload.valor).toLowerCase() === 'true';
         } else if (payload.clave === 'kiosko_impresion_automatica') {
           this.impresionAutomatica = String(payload.valor).toLowerCase() === 'true';
+        } else if (payload.clave === 'impresora_ancho_papel') {
+          this.anchoPapel = parseInt(payload.valor, 10) || 58;
+        } else if (payload.clave === 'impresora_ip') {
+          this.impresoraServidorIp = (payload.valor || '').trim();
+        } else if (payload.clave === 'impresora_puerto') {
+          this.impresoraServidorPuerto = parseInt(payload.valor, 10) || 9100;
         }
       });
 
@@ -1495,8 +1619,9 @@ function registerKioskoWithAlpine() {
   }
 }
 
-if (typeof window !== 'undefined' && window.Alpine) {
-  registerKioskoWithAlpine();
-} else if (typeof document !== 'undefined') {
+if (typeof document !== 'undefined') {
   document.addEventListener('alpine:init', registerKioskoWithAlpine);
+  if (typeof window !== 'undefined' && window.Alpine) {
+    registerKioskoWithAlpine();
+  }
 }

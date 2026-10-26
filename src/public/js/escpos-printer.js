@@ -33,14 +33,6 @@ export const ESCPOS_CMD = {
 
 const encoder = new TextEncoder();
 
-/**
- * Convierte un string en Uint8Array con salto de línea.
- * @param {string} str 
- * @returns {Uint8Array}
- */
-export function encodeText(str) {
-  return encoder.encode(str + '\n');
-}
 
 /**
  * Concatena múltiples Uint8Array en uno solo.
@@ -74,10 +66,10 @@ export function generarComandosQRESCPOS(url) {
     ESCPOS_CMD.ALIGN_CENTER,
     // Modelo 2: GS ( k 0x04 0x00 0x31 0x41 0x32 0x00
     new Uint8Array([GS, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00]),
-    // Tamaño de módulo (5 puntos): GS ( k 0x03 0x00 0x31 0x43 0x05
-    new Uint8Array([GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x05]),
-    // Corrección de error M: GS ( k 0x03 0x00 0x31 0x45 0x31
-    new Uint8Array([GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31]),
+    // Tamaño de módulo (3 puntos para 58mm y 80mm): GS ( k 0x03 0x00 0x31 0x43 0x03
+    new Uint8Array([GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x03]),
+    // Corrección de error L (más compacto y rápido): GS ( k 0x03 0x00 0x31 0x45 0x30
+    new Uint8Array([GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x30]),
     // Almacenar datos: GS ( k pL pH 0x31 0x50 0x30 <data>
     new Uint8Array([GS, 0x28, 0x6B, pL, pH, 0x31, 0x50, 0x30]),
     data,
@@ -88,16 +80,45 @@ export function generarComandosQRESCPOS(url) {
 }
 
 /**
- * Construye el buffer binario ESC/POS para el ticket térmico.
- * @param {object} ticket 
+ * Sanitiza texto eliminando viñetas y caracteres no compatibles con ESC/POS
+ */
+function sanitizarTexto(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/\u2022/g, '-')
+    .replace(/[–—]/g, '-')
+    .replace(/[""]/g, '"')
+    .replace(/['']/g, "'");
+}
+
+/**
+ * Convierte un string en Uint8Array con salto de línea (usando sanitización).
+ * @param {string} str 
  * @returns {Uint8Array}
  */
-export function construirVoucherESCPOS(ticket = {}) {
+export function encodeText(str) {
+  return encoder.encode(sanitizarTexto(str) + '\n');
+}
+
+/**
+ * Construye el buffer binario ESC/POS para el ticket térmico.
+ * @param {object} ticket 
+ * @param {number|string} [ancho=58] - 58 u 80 milímetros
+ * @returns {Uint8Array}
+ */
+export function construirVoucherESCPOS(ticket = {}, ancho = 58) {
+  const es80mm = String(ancho) === '80';
+  const divider = es80mm
+    ? '------------------------------------------------'
+    : '--------------------------------';
+  const qrSize = es80mm ? 4 : 3;
+
   const ahora = new Date();
   const fechaStr = ticket.fecha || ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const horaStr  = ticket.hora  || ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  const fechaYHora = fechaStr && horaStr ? `${fechaStr} - ${horaStr}` : (fechaStr || horaStr);
   const formato  = ticket.formato || `#${String(ticket.numero || 0).padStart(3, '0')}`;
-  const modulo   = ticket.modulo || 'Modulo General de Matriculas';
+  const modulo   = ticket.modulo || 'Módulo General de Matrículas';
   const url      = ticket.tracking_url || '';
 
   const partes = [
@@ -106,14 +127,14 @@ export function construirVoucherESCPOS(ticket = {}) {
 
     // Encabezado
     ESCPOS_CMD.BOLD_ON,
-    encodeText('MATRICULAS 2026'),
+    encodeText('MATRÍCULAS 2026'),
     ESCPOS_CMD.BOLD_OFF,
-    encodeText('Turno Digital'),
+    encodeText('Turno Digital de Atención'),
     ESCPOS_CMD.LINE_FEED,
 
-    encodeText('--------------------------------'),
+    encodeText(divider),
 
-    // Número de turno colosal
+    // Número de turno en gran formato
     ESCPOS_CMD.FONT_LARGE,
     ESCPOS_CMD.BOLD_ON,
     encodeText(formato),
@@ -127,7 +148,7 @@ export function construirVoucherESCPOS(ticket = {}) {
     ESCPOS_CMD.NORMAL_SIZE,
     ESCPOS_CMD.LINE_FEED,
 
-    encodeText('--------------------------------'),
+    encodeText(divider),
 
     // Código QR nativo ESC/POS
     ...generarComandosQRESCPOS(url),
@@ -135,7 +156,7 @@ export function construirVoucherESCPOS(ticket = {}) {
     // Instrucción y URL
     ESCPOS_CMD.ALIGN_CENTER,
     ESCPOS_CMD.BOLD_ON,
-    encodeText('Consulta tu turno:'),
+    encodeText('Escanea para seguir tu turno'),
     ESCPOS_CMD.BOLD_OFF
   ];
 
@@ -146,8 +167,8 @@ export function construirVoucherESCPOS(ticket = {}) {
 
   // Pie y corte
   partes.push(
-    encodeText(`${fechaStr} ${horaStr}`),
-    encodeText('Valido solo para hoy'),
+    encodeText(fechaYHora),
+    encodeText('Válido solo para hoy'),
     ESCPOS_CMD.LINE_FEED,
     ESCPOS_CMD.LINE_FEED,
     ESCPOS_CMD.LINE_FEED,

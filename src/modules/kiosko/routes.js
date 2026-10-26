@@ -68,16 +68,17 @@ module.exports = async function kioskoRoutes (fastify) {
       // Broadcast no bloqueante a administradores, operarios y smartphones en espera
       setImmediate(async () => {
         try {
-          const { rows: [{ count: enEspera }] } = await fastify.db.query(
-            `SELECT COUNT(*)::int AS count FROM turnos
+          const { rows: [esperaData] } = await fastify.db.query(
+            `SELECT
+               COUNT(*)::int AS count,
+               (SELECT numero FROM turnos
+                WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()
+                ORDER BY sesion ASC, numero ASC LIMIT 1) AS proximo
+             FROM turnos
              WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()`
           )
-          const { rows: [proximoRow] } = await fastify.db.query(
-            `SELECT numero FROM turnos
-             WHERE estado = 'esperando' AND origen = 'kiosko_web' AND fecha_turno = fn_fecha_hoy()
-             ORDER BY sesion ASC, numero ASC LIMIT 1`
-          )
-          const proximo = proximoRow ? proximoRow.numero : null
+          const enEspera = esperaData?.count || 0
+          const proximo = esperaData?.proximo ?? null
           await Promise.allSettled([
             fastify.broadcast('admin:all', 'kiosko_turno_generado', {
               numero: resultado.numero,
@@ -105,13 +106,18 @@ module.exports = async function kioskoRoutes (fastify) {
         try {
           const { rows: cfgRows } = await fastify.db.query(
             `SELECT clave, valor FROM configuracion
-             WHERE clave IN ('kiosko_impresion_automatica', 'impresora_activa', 'impresora_ip', 'impresora_puerto')`
+             WHERE clave IN ('kiosko_impresion_automatica', 'impresora_activa', 'impresora_ip', 'impresora_puerto', 'impresora_canal', 'impresora_ancho_papel')`
           )
           const cfgMap = {}
           for (const r of cfgRows) cfgMap[r.clave] = r.valor
 
-          const impresoraActiva = cfgMap.impresora_activa === 'true' || cfgMap.kiosko_impresion_automatica === 'true'
-          if (impresoraActiva) {
+          const canal = cfgMap.impresora_canal || 'directa'
+          const impresionAutomatica = cfgMap.kiosko_impresion_automatica === 'true'
+          const impresoraActiva = cfgMap.impresora_activa === 'true'
+          const anchoPapel = cfgMap.impresora_ancho_papel || '58'
+
+          // Solo enviar directo por red TCP si el canal configurado es 'directa'
+          if (impresionAutomatica && impresoraActiva && canal === 'directa') {
             const { imprimirTicketESCPOS } = require('./printer')
             const ahora = new Date()
             try {
@@ -122,7 +128,7 @@ module.exports = async function kioskoRoutes (fastify) {
                 tracking_url: resultado.tracking_url || '',
                 fecha: ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }),
                 hora:  ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
-              }, { forzar: true })
+              }, { forzar: true, anchoPapel })
               resultado.impresion = { ok: true, mensaje: 'Comprobante impreso de inmediato.' }
               fastify.log.info({ numero: resultado.numero }, '[Kiosko] Impresión automática OK')
             } catch (printErr) {
@@ -131,11 +137,11 @@ module.exports = async function kioskoRoutes (fastify) {
                 ok: false,
                 codigo: printErr.code || 'ERROR_IMPRESORA',
                 mensaje: printErr.code === 'IMPRESORA_INACTIVA' || printErr.code === 'IP_NO_CONFIGURADA'
-                  ? 'Impresora no configurada o inactiva en el sistema.'
+                  ? 'Impresora de tickets no configurada o inactiva en el sistema.'
                   : printErr.code === 'ECONNREFUSED'
-                    ? 'No se pudo conectar a la impresora. Verifique que esté encendida.'
+                    ? 'No se pudo conectar a la impresora de tickets. Verifique que esté encendida.'
                     : printErr.code === 'TIMEOUT'
-                      ? 'La impresora no respondió a tiempo.'
+                      ? 'La impresora de tickets no respondió a tiempo.'
                       : `Error de impresora: ${printErr.message}`
               }
             }

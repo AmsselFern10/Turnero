@@ -512,6 +512,9 @@ BEGIN
                NEW.rol IS DISTINCT FROM 'admin'
            )) THEN
             
+            -- Serializar transacciones concurrentes a nivel de base de datos
+            PERFORM pg_advisory_xact_lock(hashtext('turnero_admin_guard'));
+
             SELECT COUNT(*) INTO v_otros_admins
             FROM usuarios
             WHERE rol = 'admin'

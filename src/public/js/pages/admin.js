@@ -99,6 +99,7 @@ export function adminView() {
     },
 
     subTabConfig: 'todos',
+    subTabReportes: 'resumen',
     _guardandoSeccion: {
       kiosko: false,
       impresora: false,
@@ -184,6 +185,8 @@ export function adminView() {
       impresora_ip: '',
       impresora_puerto: 9100,
       impresora_activa: false,
+      impresora_canal: 'directa',
+      impresora_ancho_papel: '58',
       tv_escala_principal: 100,
       tv_escala_secundaria: 100,
       tv_escala_turnos: 100,
@@ -215,6 +218,13 @@ export function adminView() {
     _configSnapshot: null,
     kioskoUltimoNumero: 0,
     _reiniciandoContadorKiosko: false,
+    todasLasIpsLan: [],
+    modoIpManual: false,
+    mostrarIpsVirtuales: false,
+    mostrarConfigRedAvanzada: false,
+    _probandoConectividad: false,
+    resultadoConectividad: null,
+    modalInfoModo: null,
 
     filtroReporte: {
       fecha: new Date().toISOString().slice(0, 10),
@@ -446,7 +456,10 @@ export function adminView() {
     get urlTabletPorton() {
       const base = (this.config?.kiosko_url_base || this.config?.kiosko_url_publica || '').trim();
       if (base) {
-        const urlLimpia = base.replace(/\/+$/, '');
+        let urlLimpia = base.replace(/\/+$/, '');
+        if (!/^https?:\/\//i.test(urlLimpia)) {
+          urlLimpia = `http://${urlLimpia}`;
+        }
         const sinKiosko = urlLimpia.endsWith('/kiosko.html') ? urlLimpia : `${urlLimpia}/kiosko.html`;
         return `${sinKiosko}?modo=tablet`;
       }
@@ -456,11 +469,27 @@ export function adminView() {
     get urlEstudianteQR() {
       const base = (this.config?.kiosko_url_base || this.config?.kiosko_url_publica || '').trim();
       if (base) {
-        const urlLimpia = base.replace(/\/+$/, '');
+        let urlLimpia = base.replace(/\/+$/, '');
+        if (!/^https?:\/\//i.test(urlLimpia)) {
+          urlLimpia = `http://${urlLimpia}`;
+        }
         const sinKiosko = urlLimpia.endsWith('/kiosko.html') ? urlLimpia : `${urlLimpia}/kiosko.html`;
         return `${sinKiosko}?modo=estudiante`;
       }
       return typeof window !== 'undefined' ? `${window.location.origin}/kiosko.html?modo=estudiante` : '/kiosko.html?modo=estudiante';
+    },
+
+    // Alerta visual anti-error: detecta si la URL configurada o por defecto utiliza localhost o 127.0.0.1
+    get advertenciaLocalhostKiosko() {
+      const urlBase = (this.config?.kiosko_url_base || '').toLowerCase().trim();
+      if (urlBase) {
+        return urlBase.includes('localhost') || urlBase.includes('127.0.0.1') || urlBase.includes('::1');
+      }
+      if (typeof window !== 'undefined' && window.location) {
+        const host = window.location.hostname.toLowerCase();
+        return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+      }
+      return false;
     },
 
     copiarAlPortapapeles(texto, label = 'Enlace') {
@@ -479,6 +508,27 @@ export function adminView() {
         document.execCommand('copy');
         document.body.removeChild(temp);
         showToast(`${label} copiado al portapapeles`, 'success');
+      }
+    },
+
+    get ipsFisicas() {
+      if (!Array.isArray(this.todasLasIpsLan)) return [];
+      return this.todasLasIpsLan.filter(c => !c.esVirtual);
+    },
+
+    get ipsVirtuales() {
+      if (!Array.isArray(this.todasLasIpsLan)) return [];
+      return this.todasLasIpsLan.filter(c => !!c.esVirtual);
+    },
+
+    get ipSeleccionadaActual() {
+      const url = (this.config?.kiosko_url_base || '').trim();
+      if (!url) return '';
+      try {
+        const parsed = new URL(url.startsWith('http') ? url : `http://${url}`);
+        return parsed.hostname;
+      } catch (_) {
+        return '';
       }
     },
 
@@ -502,6 +552,10 @@ export function adminView() {
 
     get kioskoHasChanges() {
       if (!this._configSnapshot) return false;
+      const activoActual = !!this.config?.kiosko_web_activo;
+      const activoSnap = !!this._configSnapshot?.kiosko_web_activo;
+      const modoGenActual = this.config?.modo_generacion_turnos || (activoActual ? 'kiosko_web' : 'voucher_fisico');
+      const modoGenSnap = this._configSnapshot?.modo_generacion_turnos || (activoSnap ? 'kiosko_web' : 'voucher_fisico');
       const modoActual = this.config?.kiosko_modo_uso || 'asistido';
       const modoSnap = this._configSnapshot?.kiosko_modo_uso || 'asistido';
       const topeActual = Number(this.config?.kiosko_tope_diario) || 0;
@@ -512,6 +566,8 @@ export function adminView() {
       const urlPubSnap = (this._configSnapshot?.kiosko_url_publica || '').trim();
 
       return (
+        activoActual !== activoSnap ||
+        modoGenActual !== modoGenSnap ||
         modoActual !== modoSnap ||
         topeActual !== topeSnap ||
         urlBaseActual !== urlBaseSnap ||
@@ -521,12 +577,18 @@ export function adminView() {
 
     get impresoraHasChanges() {
       if (!this._configSnapshot) return false;
-      const ipActual = (this.config?.impresora_ip || '').trim();
-      const ipSnap = (this._configSnapshot?.impresora_ip || '').trim();
-      const puertoActual = Number(this.config?.impresora_puerto) || 9100;
-      const puertoSnap = Number(this._configSnapshot?.impresora_puerto) || 9100;
+      const activaActual = !!this.config?.impresora_activa;
+      const activaSnap = !!this._configSnapshot?.impresora_activa;
+      const anchoActual = this.config?.impresora_ancho_papel || '58';
+      const anchoSnap = this._configSnapshot?.impresora_ancho_papel || '58';
+      const autoActual = !!this.config?.kiosko_impresion_automatica;
+      const autoSnap = !!this._configSnapshot?.kiosko_impresion_automatica;
 
-      return ipActual !== ipSnap || puertoActual !== puertoSnap;
+      return (
+        activaActual !== activaSnap ||
+        anchoActual !== anchoSnap ||
+        autoActual !== autoSnap
+      );
     },
 
     get fondoHasChanges() {
@@ -816,6 +878,9 @@ export function adminView() {
 
     validarKioskoUrlBase() {
       this.erroresValidacion.cfgKioskoUrlBase = this.validarUrlKiosko(this.config?.kiosko_url_base);
+      if (this.modalCartelQR) {
+        this.renderizarQrEstudiante();
+      }
       return !this.erroresValidacion.cfgKioskoUrlBase;
     },
 
@@ -1007,9 +1072,10 @@ export function adminView() {
       const lote = data.lote || null;
       const hasta = lote ? (parseInt(lote.numero_hasta, 10) || 0) : 0;
       const llamados = lote ? (parseInt(lote.ultimo_numero_llamado, 10) || 0) : 0;
+      const segEspera = data.promedio_espera_seg ?? data.promedio_seg;
       this.kpis = {
         atendidos_hoy: parseInt(data.atendidos_hoy, 10) || 0,
-        espera_promedio_min: data.promedio_seg != null ? (data.promedio_seg / 60).toFixed(1) : '--',
+        espera_promedio_min: segEspera != null ? (segEspera / 60).toFixed(1) : '--',
         mesas_activas: parseInt(data.mesas_activas, 10) || 0,
         vouchers_restantes: lote ? Math.max(0, hasta - llamados) : 0,
         turnos_en_espera: parseInt(data.turnos_en_espera, 10) || 0
@@ -1071,6 +1137,8 @@ export function adminView() {
         this.config.impresora_ip = c.impresora_ip || '';
         this.config.impresora_puerto = parseInt(c.impresora_puerto || '9100', 10) || 9100;
         this.config.impresora_activa = c.impresora_activa === 'true' || c.impresora_activa === true;
+        this.config.impresora_canal = c.impresora_canal || 'directa';
+        this.config.impresora_ancho_papel = c.impresora_ancho_papel || '58';
         this.config.kiosko_impresion_automatica = c.kiosko_impresion_automatica === 'true' || c.kiosko_impresion_automatica === true;
         const escalaBase = parseInt(c.tv_escala_turnos || '100', 10) || 100;
         this.config.tv_escala_principal = parseInt(c.tv_escala_principal || String(escalaBase), 10) || 100;
@@ -1083,6 +1151,18 @@ export function adminView() {
         this.config.fondo_imagen_activa = c.fondo_imagen_activa === 'true' || c.fondo_imagen_activa === true;
         this.config.fondo_imagen_escala = parseInt(c.fondo_imagen_escala || '100', 10) || 100;
         this.kioskoUltimoNumero = res.kiosko_ultimo_numero || 0;
+      }
+      if (res && Array.isArray(res.ips_lan)) {
+        this.todasLasIpsLan = res.ips_lan;
+      }
+      if (typeof window !== 'undefined' && window.location.hostname) {
+        const host = window.location.hostname;
+        if (host !== 'localhost' && host !== '127.0.0.1' && host !== '::1') {
+          const existe = this.todasLasIpsLan.some(item => item.ip === host);
+          if (!existe) {
+            this.todasLasIpsLan.unshift({ ip: host, iface: 'navegador' });
+          }
+        }
       }
       this.validarFondoUrl();
       this._configSnapshot = { ...this.config };
@@ -1452,13 +1532,13 @@ export function adminView() {
       }
       this._pedirConfirmacion({
         titulo: `Eliminar Lote ${numeroLote}`,
-        subtitulo: 'Acción destructiva permanente',
-        mensaje: `¿Estás seguro de eliminar el Lote ${numeroLote}?`,
-        impacto: 'Esta acción es irreversible y eliminará el registro del lote.',
+        subtitulo: 'Retiro de lote sin utilizar',
+        mensaje: `¿Deseas retirar el Lote ${numeroLote}? El lote sin usar desaparecerá de las listas y su número quedará libre para reutilizarse.`,
+        impacto: 'El historial se conservará en la base de datos para auditoría. Solo se pueden eliminar lotes que nunca hayan sido utilizados.',
         esIrreversible: true,
         reforzada: true,
         textoEsperado: String(numeroLote).trim(),
-        botonTexto: 'Eliminar Lote Definitivamente',
+        botonTexto: 'Eliminar Lote',
         botonClase: 'btn-danger btn-sm',
         tipo: 'peligro',
         accion: async () => {
@@ -1636,9 +1716,9 @@ export function adminView() {
       const label = mesa ? `Mesa ${mesa.numero}` : 'la mesa';
       this._pedirConfirmacion({
         titulo: `Inactivar ${label}`,
-        subtitulo: 'Inactivación y liberación de operador',
-        mensaje: `¿Deseas inactivar ${label}? La ventanilla quedará inactiva y su operador será liberado.`,
-        impacto: 'La mesa no podrá operar hasta ser activada de nuevo. Los turnos históricos se preservan.',
+        subtitulo: 'Inactivación de ventanilla',
+        mensaje: `¿Deseas inactivar ${label}? La ventanilla no estará disponible para llamar turnos y el operador asignado será liberado. Podrás reactivarla en cualquier momento.`,
+        impacto: 'Conserva su número y todo su historial de turnos.',
         botonTexto: 'Inactivar Mesa',
         botonClase: 'btn-danger btn-sm',
         tipo: 'peligro',
@@ -1673,7 +1753,8 @@ export function adminView() {
       const maxNum = this.mesas.reduce((max, m) => Math.max(max, parseInt(m.numero, 10) || 0), 0);
       this.nuevaMesa = {
         numero: maxNum + 1,
-        nombre: `Mesa ${maxNum + 1}`
+        nombre: `Mesa ${maxNum + 1}`,
+        estado: 'activa'
       };
       this.modalMesa = true;
     },
@@ -1694,15 +1775,16 @@ export function adminView() {
       this._loading = true;
       const num = parseInt(this.nuevaMesa.numero, 10);
       const nombre = (this.nuevaMesa.nombre || '').trim() || `Mesa ${num}`;
+      const estado = this.nuevaMesa.estado || 'inactiva';
       try {
-        await api.post('/mesas', { numero: num, nombre });
+        await api.post('/mesas', { numero: num, nombre, estado });
         this.notificar({
           tipo: 'success',
           titulo: 'Ventanilla creada',
-          mensaje: `Mesa ${num} creada exitosamente`
+          mensaje: `Mesa ${num} creada exitosamente como ${estado === 'activa' ? 'activa' : 'inactiva'}`
         });
         this.modalMesa = false;
-        await this.cargarMesas();
+        await Promise.allSettled([this.cargarMesas(), this.cargarKPIs()]);
       } catch (err) {
         this.notificar({
           tipo: 'error',
@@ -1788,13 +1870,13 @@ export function adminView() {
       }
       this._pedirConfirmacion({
         titulo: `Eliminar Mesa ${mesaNumero}`,
-        subtitulo: 'Acción destructiva permanente',
-        mensaje: `¿Estás seguro de eliminar permanentemente la Mesa ${mesaNumero}?`,
-        impacto: 'Esta acción es irreversible y liberará el número de ventanilla.',
+        subtitulo: 'Retiro de ventanilla',
+        mensaje: `¿Deseas retirar la Mesa ${mesaNumero}? La ventanilla desaparecerá de las pantallas y su número quedará libre para reutilizarse.`,
+        impacto: 'El historial de turnos y métricas se conservará en la base de datos para reportes y auditoría.',
         esIrreversible: true,
         reforzada: true,
         textoEsperado: String(mesaNumero).trim(),
-        botonTexto: 'Eliminar Mesa Definitivamente',
+        botonTexto: 'Eliminar Mesa',
         botonClase: 'btn-danger btn-sm',
         tipo: 'peligro',
         accion: async () => {
@@ -2001,8 +2083,8 @@ export function adminView() {
         this._pedirConfirmacion({
           titulo: `Desactivar a ${usr.username}`,
           subtitulo: 'Suspensión de acceso',
-          mensaje: `¿Deseas desactivar la cuenta de ${usr.nombre_completo || usr.username}? El usuario no podrá iniciar sesión.`,
-          impacto: 'Se cerrará cualquier sesión activa y no podrá operar hasta ser reactivado.',
+          mensaje: `¿Deseas desactivar la cuenta de ${usr.nombre_completo || usr.username}? Se cerrará su sesión activa y no podrá operar hasta ser reactivado. Conserva su nombre de usuario e historial.`,
+          impacto: 'Conserva su nombre de usuario e historial de atenciones.',
           botonTexto: 'Desactivar Usuario',
           botonClase: 'btn-danger btn-sm',
           tipo: 'peligro',
@@ -2088,15 +2170,34 @@ export function adminView() {
         });
         return;
       }
+
+      const usr = this.usuarios.find(u => u.id === usrId || String(u.id) === String(usrId));
+      if (usr && usr.en_atencion_actual > 0) {
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Acción rechazada',
+          mensaje: `No se puede eliminar a ${username} porque tiene un turno en atención actualmente. Finalice o cancele la atención antes de retirarlo.`
+        });
+        return;
+      }
+
+      const tieneHistorial = usr && (Number(usr.total_atenciones) > 0);
+      const subtituloModal = tieneHistorial
+        ? `Usuario con ${usr.total_atenciones} turno(s) en historial`
+        : 'Retiro de cuenta de usuario';
+      const mensajeModal = tieneHistorial
+        ? `El usuario ${username} cuenta con ${usr.total_atenciones} atenciones registradas en el historial. Se recomienda desactivarlo para suspender su acceso sin retirar la cuenta.`
+        : `¿Deseas retirar al usuario ${username}? La cuenta desaparecerá de las pantallas y su nombre de usuario quedará libre para reutilizarse.`;
+
       this._pedirConfirmacion({
         titulo: `Eliminar usuario ${username}`,
-        subtitulo: 'Acción destructiva permanente',
-        mensaje: `¿Estás seguro de eliminar permanentemente al usuario ${username}?`,
-        impacto: 'Esta acción es irreversible. Se revocarán todas sus sesiones de trabajo.',
+        subtitulo: subtituloModal,
+        mensaje: mensajeModal,
+        impacto: 'El historial de atenciones se conservará en la base de datos para auditoría y reportes.',
         esIrreversible: true,
         reforzada: true,
         textoEsperado: String(username).trim(),
-        botonTexto: 'Eliminar Usuario Definitivamente',
+        botonTexto: 'Eliminar Usuario',
         botonClase: 'btn-danger btn-sm',
         tipo: 'peligro',
         accion: async () => {
@@ -2203,6 +2304,33 @@ export function adminView() {
     },
 
     /**
+     * Selecciona uno de los 3 modos de operación excluyentes
+     * @param {'fisico' | 'asistido' | 'estudiante'} modo
+     */
+    seleccionarModoOperacion(modo) {
+      if (modo === 'fisico') {
+        this.config.kiosko_web_activo = false;
+        this.config.modo_generacion_turnos = 'voucher_fisico';
+      } else if (modo === 'asistido') {
+        this.config.kiosko_web_activo = true;
+        this.config.modo_generacion_turnos = 'kiosko_web';
+        this.config.kiosko_modo_uso = 'asistido';
+      } else if (modo === 'estudiante') {
+        this.config.kiosko_web_activo = true;
+        this.config.modo_generacion_turnos = 'kiosko_web';
+        this.config.kiosko_modo_uso = 'estudiante';
+      }
+    },
+
+    getModoOperacionActual() {
+      if (!this.config?.kiosko_web_activo || this.config?.modo_generacion_turnos !== 'kiosko_web') {
+        return 'fisico';
+      }
+      if (this.config?.kiosko_modo_uso === 'asistido') return 'asistido';
+      return 'estudiante';
+    },
+
+    /**
      * Guardar parámetros de emisión del Kiosko Digital
      */
     async guardarKioskoParams() {
@@ -2221,25 +2349,30 @@ export function adminView() {
       if (this._guardandoSeccion.kiosko) return;
       this._guardandoSeccion.kiosko = true;
 
+      const activo = !!this.config.kiosko_web_activo;
+      const modoGen = activo ? 'kiosko_web' : 'voucher_fisico';
       const tope = parseInt(this.config.kiosko_tope_diario, 10);
-      const modo = this.config.kiosko_modo_uso;
+      const modo = this.config.kiosko_modo_uso || 'asistido';
       const urlBase = (this.config.kiosko_url_base || '').trim();
       const urlPublica = (this.config.kiosko_url_publica || '').trim();
       const impresionAuto = this.config.kiosko_impresion_automatica ? 'true' : 'false';
 
       try {
         await Promise.all([
+          api.patch('/admin/configuracion/kiosko_web_activo', { valor: String(activo) }),
+          api.patch('/admin/configuracion/modo_generacion_turnos', { valor: modoGen }),
           api.patch('/admin/configuracion/kiosko_tope_diario', { valor: String(tope) }),
           api.patch('/admin/configuracion/kiosko_modo_uso', { valor: modo }),
           api.patch('/admin/configuracion/kiosko_url_base', { valor: urlBase }),
           api.patch('/admin/configuracion/kiosko_url_publica', { valor: urlPublica }),
           api.patch('/admin/configuracion/kiosko_impresion_automatica', { valor: impresionAuto })
         ]);
+        this.config.modo_generacion_turnos = modoGen;
         this._configSnapshot = { ...this.config };
         this.notificar({
           tipo: 'success',
-          titulo: 'Ajustes de Kiosko Guardados',
-          mensaje: 'Modalidad de uso, límite diario, URLs de acceso e impresión automática actualizados correctamente.'
+          titulo: 'Ajustes de Emisión Guardados',
+          mensaje: 'Modo de operación, límites y enlaces del sistema actualizados correctamente.'
         });
       } catch (err) {
         this.notificar({
@@ -2249,6 +2382,153 @@ export function adminView() {
         });
       } finally {
         this._guardandoSeccion.kiosko = false;
+      }
+    },
+
+    /**
+     * Aplica con un solo clic una de las IPs LAN seleccionadas en el servidor
+     */
+    usarIpLan(candidata) {
+      if (!candidata || !candidata.ip) return;
+      const ip = candidata.ip;
+      let port = '';
+      let proto = 'http:';
+
+      if (typeof window !== 'undefined') {
+        if (window.location.port) port = `:${window.location.port}`;
+        if (window.location.protocol) proto = window.location.protocol;
+      }
+
+      // Si ya hay una URL configurada con puerto específico, preservamos su puerto y protocolo
+      if (this.config?.kiosko_url_base) {
+        try {
+          const actual = new URL(this.config.kiosko_url_base.startsWith('http') ? this.config.kiosko_url_base : `http://${this.config.kiosko_url_base}`);
+          if (actual.port) port = `:${actual.port}`;
+          if (actual.protocol) proto = actual.protocol;
+        } catch (_) {}
+      }
+
+      this.config.kiosko_url_base = `${proto}//${ip}${port}/kiosko.html`;
+      this.validarKioskoUrlBase();
+      this.resultadoConectividad = null;
+      if (this.modalCartelQR) {
+        this.renderizarQrEstudiante();
+      }
+    },
+
+    /**
+     * Prueba la conectividad en vivo con la dirección configurada para el Kiosko
+     */
+    async probarConectividadKiosko() {
+      const url = (this.config?.kiosko_url_base || '').trim();
+      if (!url) {
+        this.notificar({
+          tipo: 'warning',
+          titulo: 'Dirección requerida',
+          mensaje: 'Seleccione un adaptador o ingrese una dirección antes de probar conectividad.'
+        });
+        return;
+      }
+
+      this._probandoConectividad = true;
+      this.resultadoConectividad = null;
+
+      try {
+        const urlCompleta = url.startsWith('http') ? url : `http://${url}`;
+        const parsed = new URL(urlCompleta);
+        const inicio = performance.now();
+
+        // 1. Diagnóstico estructurado en el backend
+        let resServidor = { ok: true, esLocalhost: parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' };
+        try {
+          resServidor = await api.post('/admin/red-probar-ip', { url: urlCompleta });
+        } catch (_) {}
+
+        // 2. Comprobación directa vía fetch con timeout de 2.5s desde el navegador
+        let respondioHttp = false;
+        try {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 2500);
+          await fetch(urlCompleta, { method: 'HEAD', mode: 'no-cors', signal: ctrl.signal });
+          clearTimeout(timer);
+          respondioHttp = true;
+        } catch (_) {
+          respondioHttp = !!resServidor.ok;
+        }
+
+        const duracion = Math.max(1, Math.round(performance.now() - inicio));
+
+        if (resServidor.esLocalhost) {
+          this.resultadoConectividad = {
+            ok: false,
+            tipo: 'alerta',
+            mensaje: `La dirección (${parsed.hostname}) es localhost. Solo funcionará en esta computadora, no en tablets ni celulares.`
+          };
+          this.notificar({
+            tipo: 'warning',
+            titulo: 'Advertencia Localhost',
+            mensaje: 'Esta dirección solo funciona localmente. Elija una IP de la red Wi-Fi/Ethernet.'
+          });
+        } else {
+          this.resultadoConectividad = {
+            ok: true,
+            tipo: 'exito',
+            mensaje: `Conexión verificada • Responde en ${duracion} ms (${resServidor.interfaz_detectada || 'Red Local'})`
+          };
+          this.notificar({
+            tipo: 'success',
+            titulo: 'Conexión Exitosa',
+            mensaje: `La dirección ${parsed.hostname} responde correctamente en la red local.`
+          });
+        }
+      } catch (err) {
+        this.resultadoConectividad = {
+          ok: false,
+          tipo: 'error',
+          mensaje: err.mensaje || err.message || 'No se pudo contactar el servidor en esa dirección. Verifique la IP o el firewall.'
+        };
+        this.notificar({
+          tipo: 'error',
+          titulo: 'Fallo de Conexión',
+          mensaje: 'No fue posible alcanzar la dirección de red especificada.'
+        });
+      } finally {
+        this._probandoConectividad = false;
+      }
+    },
+
+    /**
+     * Escanea nuevamente las interfaces de red del servidor
+     */
+    async detectarIpsLan() {
+      try {
+        const res = await api.get('/admin/red-ips');
+        if (res && Array.isArray(res.ips_lan)) {
+          this.todasLasIpsLan = res.ips_lan;
+        }
+        if (typeof window !== 'undefined' && window.location.hostname) {
+          const host = window.location.hostname;
+          if (host !== 'localhost' && host !== '127.0.0.1' && host !== '::1') {
+            const existe = this.todasLasIpsLan.some(item => item.ip === host);
+            if (!existe) {
+              this.todasLasIpsLan.unshift({
+                ip: host,
+                iface: 'navegador',
+                tipo: 'otro',
+                esVirtual: false,
+                etiqueta: 'Host Actual'
+              });
+            }
+          }
+        }
+        const fisicas = this.todasLasIpsLan.filter(c => !c.esVirtual);
+        this.notificar({
+          tipo: 'success',
+          titulo: 'Red Escaneada',
+          mensaje: `Se detectaron ${fisicas.length} adaptadores físicos (${this.todasLasIpsLan.length} totales en el servidor).`
+        });
+      } catch (err) {
+        console.warn('[ADMIN] Error al detectar IPs LAN:', err);
       }
     },
 
@@ -2302,6 +2582,20 @@ export function adminView() {
     },
 
     /**
+     * Muestra el modal con el detalle operativo de la modalidad de emisión
+     */
+    abrirModalInfoModo(modo) {
+      this.modalInfoModo = modo;
+    },
+
+    /**
+     * Cierra el modal de información de modalidad
+     */
+    cerrarModalInfoModo() {
+      this.modalInfoModo = null;
+    },
+
+    /**
      * Muestra el modal con el código QR grande para estudiantes
      */
     abrirCartelQR() {
@@ -2331,9 +2625,9 @@ export function adminView() {
     },
 
     /**
-     * Dispara la impresión aislada del cartel en exactamente 1 sola página con QR en gran formato
+     * Dispara la impresión aislada del cartel de QR (en formato A4/hoja o formato ticket para térmica)
      */
-    imprimirCartel() {
+    imprimirCartel(formato = 'hoja') {
       const container = document.getElementById('cartel-qr-code');
       const imgEl = container ? container.querySelector('img') : null;
       const canvasEl = container ? container.querySelector('canvas') : null;
@@ -2364,253 +2658,430 @@ export function adminView() {
 
       const doc = printFrame.contentWindow.document;
       doc.open();
-      doc.write(`
-        <!DOCTYPE html>
-        <html lang="es">
-        <head>
-          <meta charset="utf-8">
-          <title>Cartel QR - Matrículas 2026</title>
-          <style>
-            @page {
-              size: portrait;
-              margin: 0;
-            }
-            * {
-              box-sizing: border-box;
-              margin: 0;
-              padding: 0;
-            }
-            html, body {
-              width: 100%;
-              height: 100%;
-              margin: 0;
-              padding: 0;
-              background: #ffffff;
-              color: #0f172a;
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-              overflow: hidden;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-            }
-            body {
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              padding: 10mm;
-            }
-            .cartel-sheet {
-              width: 100%;
-              max-width: 620px;
-              margin: 0 auto;
-              height: calc(100vh - 20mm);
-              max-height: 255mm;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: space-between;
-              text-align: center;
-              padding: 12mm 14mm;
-              border: 3.5px solid #0f172a;
-              border-radius: 28px;
-              page-break-inside: avoid;
-              break-inside: avoid;
-            }
-            .pill-header {
-              display: inline-block;
-              padding: 8px 22px;
-              background: #eff6ff;
-              border: 2px solid #bfdbfe;
-              border-radius: 9999px;
-              color: #1d4ed8;
-              font-size: 14px;
-              font-weight: 800;
-              letter-spacing: 1.5px;
-              text-transform: uppercase;
-            }
-            .title {
-              font-size: 32px;
-              font-weight: 900;
-              color: #0f172a;
-              line-height: 1.15;
-              letter-spacing: -0.5px;
-              margin-top: 14px;
-            }
-            .subtitle {
-              font-size: 15px;
-              color: #475569;
-              font-weight: 500;
-              margin-top: 6px;
-              max-width: 460px;
-              line-height: 1.35;
-            }
-            .qr-wrapper {
-              margin: 16px 0;
-              padding: 18px;
-              background: #ffffff;
-              border: 3px solid #0f172a;
-              border-radius: 22px;
-              display: inline-flex;
-              align-items: center;
-              justify-content: center;
-              box-shadow: 0 4px 10px rgba(0,0,0,0.06);
-            }
-            .qr-wrapper img {
-              width: 320px !important;
-              height: 320px !important;
-              display: block;
-              image-rendering: -webkit-optimize-contrast;
-              image-rendering: crisp-edges;
-            }
-            .url-container {
-              width: 100%;
-              max-width: 500px;
-              background: #f8fafc;
-              border: 1.5px dashed #cbd5e1;
-              border-radius: 12px;
-              padding: 10px 14px;
-            }
-            .url-label {
-              font-size: 10px;
-              text-transform: uppercase;
-              font-weight: 700;
-              color: #64748b;
-              letter-spacing: 1px;
-              margin-bottom: 2px;
-            }
-            .url-text {
-              font-family: monospace;
-              font-size: 14px;
-              font-weight: 700;
-              color: #1d4ed8;
-              word-break: break-all;
-            }
-            .instructions-box {
-              width: 100%;
-              max-width: 500px;
-              background: #f0fdf4;
-              border: 1.5px solid #bbf7d0;
-              border-radius: 14px;
-              padding: 12px 18px;
-              text-align: left;
-              margin-top: 12px;
-            }
-            .instructions-title {
-              font-size: 12px;
-              font-weight: 800;
-              color: #166534;
-              margin-bottom: 4px;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-            }
-            .instructions-list {
-              font-size: 12px;
-              color: #15803d;
-              font-weight: 600;
-              line-height: 1.45;
-              padding-left: 18px;
-            }
-            .instructions-list li {
-              margin-bottom: 2px;
-            }
-            .footer-note {
-              font-size: 11px;
-              color: #94a3b8;
-              font-weight: 600;
-              margin-top: 8px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="cartel-sheet">
-            <div>
-              <div class="pill-header">Proceso de Matrículas 2026</div>
-              <h1 class="title">Toma tu turno desde el celular</h1>
-              <p class="subtitle">Apunta con la cámara de tu teléfono al código QR para ingresar al autoservicio y seguir tu turno en vivo.</p>
-            </div>
 
-            <div class="qr-wrapper">
-              <img src="${qrDataUrl}" alt="Código QR de Acceso">
-            </div>
-
-            <div class="url-container">
-              <div class="url-label">Enlace Directo:</div>
+      if (formato === 'ticket') {
+        const anchoMm = parseInt(this.config.impresora_ancho_papel, 10) === 80 ? 72 : 48;
+        const qrSize = parseInt(this.config.impresora_ancho_papel, 10) === 80 ? 140 : 110;
+        doc.write(`
+          <!DOCTYPE html>
+          <html lang="es">
+          <head>
+            <meta charset="utf-8">
+            <title></title>
+            <style>
+              @page {
+                size: auto;
+                margin: 0mm !important;
+              }
+              * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+              }
+              html, body {
+                width: 100%;
+                height: auto;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff;
+                color: #000000;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Courier New", monospace;
+                overflow: hidden;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+              body {
+                text-align: center;
+                padding: 1.5mm 0 2mm 0;
+              }
+              .ticket-qr {
+                width: ${anchoMm}mm;
+                max-width: ${anchoMm}mm;
+                margin: 0 auto;
+                text-align: center;
+                page-break-inside: avoid;
+                break-inside: avoid;
+                page-break-after: avoid;
+                break-after: avoid;
+              }
+              .inst {
+                font-size: 8.5pt;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                line-height: 1.2;
+              }
+              .sub {
+                font-size: 7pt;
+                color: #333333;
+                margin-top: 1mm;
+              }
+              .sep {
+                border: none;
+                border-top: 1px dashed #000000;
+                margin: 2mm 0;
+              }
+              .qr-box {
+                margin: 2mm auto;
+                display: block;
+              }
+              .qr-box img {
+                display: block;
+                margin: 0 auto;
+                width: ${qrSize}px !important;
+                height: ${qrSize}px !important;
+                image-rendering: -webkit-optimize-contrast;
+                image-rendering: crisp-edges;
+              }
+              .qr-label {
+                font-size: 7.5pt;
+                font-weight: 700;
+                color: #000000;
+                line-height: 1.2;
+                margin-top: 1.5mm;
+              }
+              .url-text {
+                font-family: monospace;
+                font-size: 6.5pt;
+                color: #333333;
+                word-break: break-all;
+                margin-top: 1mm;
+                line-height: 1.2;
+              }
+              .pie {
+                font-size: 6pt;
+                color: #555555;
+                margin-top: 2mm;
+                line-height: 1.3;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="ticket-qr">
+              <div class="inst">MATRÍCULAS 2026</div>
+              <div class="sub">Autoservicio de Turnos</div>
+              <hr class="sep">
+              <div class="qr-box">
+                <img src="${qrDataUrl}" alt="Código QR">
+              </div>
+              <div class="qr-label">Escanea para tomar tu turno</div>
               <div class="url-text">${urlTexto}</div>
+              <hr class="sep">
+              <div class="pie">Sistema de Turnos • Turnero 2026</div>
             </div>
+          </body>
+          </html>
+        `);
+      } else {
+        doc.write(`
+          <!DOCTYPE html>
+          <html lang="es">
+          <head>
+            <meta charset="utf-8">
+            <title></title>
+            <style>
+              @page {
+                size: portrait;
+                margin: 0mm !important;
+              }
+              * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+              }
+              html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+                background: #ffffff;
+                color: #0f172a;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                overflow: hidden;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+              body {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 10mm;
+              }
+              .cartel-sheet {
+                width: 100%;
+                max-width: 620px;
+                margin: 0 auto;
+                height: calc(100vh - 20mm);
+                max-height: 255mm;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: space-between;
+                text-align: center;
+                padding: 12mm 14mm;
+                border: 3.5px solid #0f172a;
+                border-radius: 28px;
+                page-break-inside: avoid;
+                break-inside: avoid;
+              }
+              .pill-header {
+                display: inline-block;
+                padding: 8px 22px;
+                background: #eff6ff;
+                border: 2px solid #bfdbfe;
+                border-radius: 9999px;
+                color: #1d4ed8;
+                font-size: 14px;
+                font-weight: 800;
+                letter-spacing: 1.5px;
+                text-transform: uppercase;
+              }
+              .title {
+                font-size: 32px;
+                font-weight: 900;
+                color: #0f172a;
+                line-height: 1.15;
+                letter-spacing: -0.5px;
+                margin-top: 14px;
+              }
+              .subtitle {
+                font-size: 15px;
+                color: #475569;
+                font-weight: 500;
+                margin-top: 6px;
+                max-width: 460px;
+                line-height: 1.35;
+              }
+              .qr-wrapper {
+                margin: 16px 0;
+                padding: 18px;
+                background: #ffffff;
+                border: 3px solid #0f172a;
+                border-radius: 22px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+              }
+              .qr-wrapper img {
+                width: 320px !important;
+                height: 320px !important;
+                display: block;
+                image-rendering: -webkit-optimize-contrast;
+                image-rendering: crisp-edges;
+              }
+              .url-container {
+                width: 100%;
+                max-width: 500px;
+                background: #f8fafc;
+                border: 1.5px dashed #cbd5e1;
+                border-radius: 12px;
+                padding: 10px 14px;
+              }
+              .url-label {
+                font-size: 10px;
+                text-transform: uppercase;
+                font-weight: 700;
+                color: #64748b;
+                letter-spacing: 1px;
+                margin-bottom: 2px;
+              }
+              .url-text {
+                font-family: monospace;
+                font-size: 14px;
+                font-weight: 700;
+                color: #1d4ed8;
+                word-break: break-all;
+              }
+              .instructions-box {
+                width: 100%;
+                max-width: 500px;
+                background: #f0fdf4;
+                border: 1.5px solid #bbf7d0;
+                border-radius: 14px;
+                padding: 12px 18px;
+                text-align: left;
+                margin-top: 12px;
+              }
+              .instructions-title {
+                font-size: 12px;
+                font-weight: 800;
+                color: #166534;
+                margin-bottom: 4px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+              }
+              .instructions-list {
+                font-size: 12px;
+                color: #15803d;
+                font-weight: 600;
+                line-height: 1.45;
+                padding-left: 18px;
+              }
+              .instructions-list li {
+                margin-bottom: 2px;
+              }
+              .footer-note {
+                font-size: 11px;
+                color: #94a3b8;
+                font-weight: 600;
+                margin-top: 8px;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="cartel-sheet">
+              <div>
+                <div class="pill-header">Proceso de Matrículas 2026</div>
+                <h1 class="title">Toma tu turno desde el celular</h1>
+                <p class="subtitle">Apunta con la cámara de tu teléfono al código QR para ingresar al autoservicio y seguir tu turno en vivo.</p>
+              </div>
 
-            <div class="instructions-box">
-              <div class="instructions-title">Instrucciones para el postulante:</div>
-              <ol class="instructions-list">
-                <li>Conéctate al Wi-Fi del campus o usa tus datos móviles.</li>
-                <li>Abre la cámara de tu celular y escanea este código.</li>
-                <li>Presiona &ldquo;Tomar mi turno&rdquo; y mantén la pantalla encendida.</li>
-              </ol>
-            </div>
+              <div class="qr-wrapper">
+                <img src="${qrDataUrl}" alt="Código QR de Acceso">
+              </div>
 
-            <div class="footer-note">
-              Sistema Institucional de Gestión de Turnos • Turnero 2026
+              <div class="url-container">
+                <div class="url-label">Enlace Directo:</div>
+                <div class="url-text">${urlTexto}</div>
+              </div>
+
+              <div class="instructions-box">
+                <div class="instructions-title">Instrucciones para el postulante:</div>
+                <ol class="instructions-list">
+                  <li>Conéctate al Wi-Fi del campus o usa tus datos móviles.</li>
+                  <li>Abre la cámara de tu celular y escanea este código.</li>
+                  <li>Presiona &ldquo;Tomar mi turno&rdquo; y mantén la pantalla encendida.</li>
+                </ol>
+              </div>
+
+              <div class="footer-note">
+                Sistema Institucional de Gestión de Turnos • Turnero 2026
+              </div>
             </div>
-          </div>
-        </body>
-        </html>
-      `);
+          </body>
+          </html>
+        `);
+      }
       doc.close();
 
+      const tituloPrevio = document.title;
       setTimeout(() => {
+        try { document.title = ''; } catch (_) {}
         printFrame.contentWindow.focus();
         printFrame.contentWindow.print();
         setTimeout(() => {
+          try { document.title = tituloPrevio; } catch (_) {}
           printFrame.remove();
         }, 5000);
       }, 350);
     },
 
     /**
-     * Envía un ticket de prueba (#000) con QR a la impresora térmica LAN
+     * Prueba el formato visual del ticket (#000) abriendo el diálogo de impresión con el ancho configurado (58mm u 80mm)
      */
     async imprimirTicketPrueba() {
       if (this._imprimiendoPrueba) return;
-      if (!this.wsConnected) {
-        this.notificar({
-          tipo: 'error',
-          titulo: 'Sin conexión',
-          mensaje: 'Sin conexión con el servidor. No se puede enviar la orden de impresión.'
-        });
-        return;
-      }
-
-      const ip = (this.config.impresora_ip || '').trim();
-      const puerto = this.config.impresora_puerto || 9100;
-
-      if (!ip) {
-        this.notificar({
-          tipo: 'warning',
-          titulo: 'IP requerida',
-          mensaje: 'Ingrese la dirección IP de la impresora antes de imprimir la prueba.'
-        });
-        return;
-      }
-
       this._imprimiendoPrueba = true;
+
       try {
-        const res = await api.post('/admin/impresora/probar', { ip, puerto });
-        this.notificar({
-          tipo: 'success',
-          titulo: 'Ticket de Prueba Enviado',
-          mensaje: res.mensaje || 'Se envió el ticket #000 a la impresora térmica LAN.'
-        });
+        const ahora = new Date();
+        const fecha = ahora.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const hora = ahora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        const testUrl = (this.config.kiosko_url_base || window.location.origin).replace(/\/$/, '') + '/kiosko.html?token=prueba-000';
+        const anchoMm = parseInt(this.config.impresora_ancho_papel, 10) === 80 ? 72 : 48;
+        const qrPx = parseInt(this.config.impresora_ancho_papel, 10) === 80 ? 125 : 100;
+
+        let qrHtml = '';
+        if (window.QRCode) {
+          try {
+            const tempDiv = document.createElement('div');
+            new window.QRCode(tempDiv, {
+              text: testUrl,
+              width: qrPx + 40,
+              height: qrPx + 40,
+              colorDark: '#000000',
+              colorLight: '#FFFFFF',
+              correctLevel: window.QRCode.CorrectLevel.M
+            });
+            const c = tempDiv.querySelector('canvas');
+            const im = tempDiv.querySelector('img');
+            if (c) qrHtml = `<img src="${c.toDataURL('image/png')}" width="${qrPx}" height="${qrPx}" alt="QR">`;
+            else if (im?.src) qrHtml = `<img src="${im.src}" width="${qrPx}" height="${qrPx}" alt="QR">`;
+          } catch (_) {}
+        }
+
+        const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title></title>
+  <style>
+    @page { margin: 0mm !important; size: auto; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: auto; min-height: 0; margin: 0 !important; padding: 0 !important;
+      background: #FFFFFF; color: #000000;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Courier New", monospace;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow: hidden;
+    }
+    body { padding: 1mm 0 0 0; text-align: center; }
+    .voucher {
+      width: ${anchoMm}mm; max-width: ${anchoMm}mm; margin: 0 auto; padding: 1mm 0 2mm 0;
+      text-align: center; page-break-inside: avoid; break-inside: avoid; page-break-after: avoid; break-after: avoid;
+    }
+    .inst { font-size: 8.5pt; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; line-height: 1.2; }
+    .sub { font-size: 7pt; color: #333333; margin-top: 1mm; }
+    .sep { border: none; border-top: 1px dashed #000000; margin: 2mm 0; }
+    .numero { font-size: 32pt; font-weight: 900; font-family: monospace; line-height: 1; letter-spacing: -1px; margin: 1.5mm 0; }
+    .modulo { font-size: 7.5pt; font-weight: 600; color: #222222; line-height: 1.2; }
+    .qr { margin: 1.5mm auto; display: block; }
+    .qr img { display: block; margin: 0 auto; width: ${qrPx}px; height: ${qrPx}px; }
+    .qr-label { font-size: 6.5pt; color: #444444; margin-top: 1mm; line-height: 1.2; }
+    .pie { font-size: 6.5pt; color: #444444; line-height: 1.3; margin-top: 1.5mm; }
+  </style>
+</head>
+<body>
+  <div class="voucher">
+    <div class="inst">MATRÍCULAS 2026</div>
+    <div class="sub">Turno Digital de Atención</div>
+    <hr class="sep">
+    <div class="numero">#000</div>
+    <div class="modulo">Prueba de Formato (${this.config.impresora_ancho_papel || '58'}mm)</div>
+    <hr class="sep">
+    ${qrHtml ? `<div class="qr">${qrHtml}<div class="qr-label">Escanea para seguir tu turno</div></div>` : ''}
+    <div class="pie">${fecha} • ${hora}<br>Válido solo para hoy</div>
+  </div>
+</body>
+</html>`;
+
+        const win = window.open('', '_blank', 'width=340,height=520,toolbar=no,menubar=no,status=no');
+        if (!win) {
+          this.notificar({ tipo: 'warning', titulo: 'Ventana bloqueada', mensaje: 'Permita las ventanas emergentes para ver la prueba de formato de ticket.' });
+          return;
+        }
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+        let impreso = false;
+        const printIt = () => {
+          if (impreso) return;
+          impreso = true;
+          try { win.focus(); win.print(); } catch (_) {}
+          setTimeout(() => { try { win.close(); } catch (_) {} }, 400);
+        };
+        if (win.document.readyState === 'complete') setTimeout(printIt, 150);
+        else { win.onload = () => setTimeout(printIt, 150); setTimeout(printIt, 600); }
+        this.notificar({ tipo: 'info', titulo: 'Diálogo de Impresión', mensaje: `Mostrando formato de ticket #000 (${this.config.impresora_ancho_papel || '58'} mm).` });
       } catch (err) {
-        this.notificar({
-          tipo: 'error',
-          titulo: 'Fallo al Imprimir Prueba',
-          mensaje: err.mensaje || err.message || 'No se pudo comunicar con la impresora térmica en red.'
-        });
+        this.notificar({ tipo: 'error', titulo: 'Error en Prueba', mensaje: err.message || 'No se pudo generar la prueba de ticket.' });
       } finally {
         this._imprimiendoPrueba = false;
       }
     },
 
     /**
-     * Guardar configuración de la impresora de tickets LAN
+     * Guardar configuración global de la impresora de tickets
      */
     async guardarImpresoraParams() {
       if (!this.wsConnected) {
@@ -2621,24 +3092,25 @@ export function adminView() {
         });
         return;
       }
-      if (!this.validarImpresoraPuerto() || !this.cfgImpresoraValida) return;
 
       if (this._guardandoSeccion.impresora) return;
       this._guardandoSeccion.impresora = true;
 
-      const puerto = parseInt(this.config.impresora_puerto, 10);
-      const ip = (this.config.impresora_ip || '').trim();
+      const activa = !!this.config.impresora_activa;
+      const anchoPapel = this.config.impresora_ancho_papel || '58';
+      const impresionAuto = !!this.config.kiosko_impresion_automatica;
 
       try {
         await Promise.all([
-          api.patch('/admin/configuracion/impresora_ip', { valor: ip }),
-          api.patch('/admin/configuracion/impresora_puerto', { valor: String(puerto) })
+          api.patch('/admin/configuracion/impresora_activa', { valor: String(activa) }),
+          api.patch('/admin/configuracion/impresora_ancho_papel', { valor: anchoPapel }),
+          api.patch('/admin/configuracion/kiosko_impresion_automatica', { valor: String(impresionAuto) })
         ]);
         this._configSnapshot = { ...this.config };
         this.notificar({
           tipo: 'success',
-          titulo: 'Impresora Guardada',
-          mensaje: 'Dirección IP y puerto de la impresora térmica actualizados correctamente.'
+          titulo: 'Ajustes Guardados',
+          mensaje: 'Configuración global y formato de comprobantes actualizados correctamente.'
         });
       } catch (err) {
         this.notificar({
@@ -3334,6 +3806,7 @@ export function adminView() {
 
       this.ws.on('kpi_update', recargarEnVivo);
       this.ws.on('turno_llamado', recargarEnVivo);
+      this.ws.on('turno_rellamado', recargarEnVivo);
       this.ws.on('turno_cancelado', recargarEnVivo);
       this.ws.on('kiosko_turno_generado', recargarEnVivo);
       this.ws.on('contador_kiosko_reiniciado', async (payload) => {
@@ -3346,10 +3819,19 @@ export function adminView() {
         await recargarEnVivo();
         await this.cargarUsuarios();
       });
+      this.ws.on('usuario_creado', async () => {
+        await this.cargarUsuarios();
+      });
+      this.ws.on('usuario_actualizado', async () => {
+        await this.cargarUsuarios();
+        await this.cargarMesas();
+      });
       this.ws.on('usuario_eliminado', async () => {
         await this.cargarUsuarios();
         await this.cargarMesas();
       });
+      this.ws.on('lote_creado', recargarEnVivo);
+      this.ws.on('lote_eliminado', recargarEnVivo);
       this.ws.on('lote_actualizado', recargarEnVivo);
 
       this.ws.on('lote_agotado', async (p) => {
