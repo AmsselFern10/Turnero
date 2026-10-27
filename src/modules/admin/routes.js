@@ -21,7 +21,7 @@ module.exports = async function adminRoutes (fastify) {
           ROUND(AVG(duracion_espera_seg)   FILTER (WHERE estado = 'atendido' AND duracion_espera_seg IS NOT NULL))   AS promedio_espera_seg,
           ROUND(AVG(duracion_atencion_seg) FILTER (WHERE estado = 'atendido' AND duracion_atencion_seg IS NOT NULL)) AS promedio_atencion_seg
         FROM turnos
-        WHERE creado_en >= date_trunc('day', NOW())
+        WHERE estado = 'en_atencion' OR fecha_turno = fn_fecha_hoy() OR creado_en >= date_trunc('day', NOW())
       `),
       fastify.db.query(`
         SELECT id, numero_lote, numero_desde, numero_hasta, ultimo_numero_llamado, estado,
@@ -179,11 +179,11 @@ module.exports = async function adminRoutes (fastify) {
       campos.push(`rol = $${i++}`)
       vals.push(request.body.rol)
     }
-    if (userId === request.user.id) {
+    if (Number(userId) === Number(request.user.id)) {
       if (request.body.activo === false) {
         return reply.status(400).send({ error: 'No puede desactivar su propia cuenta mientras tiene la sesión activa.' })
       }
-      if (request.body.rol !== undefined && request.body.rol !== 'admin') {
+      if (request.body.rol !== undefined) {
         return reply.status(400).send({ error: 'No puede modificar ni revocar su propio rol de administrador.' })
       }
     }
@@ -341,7 +341,7 @@ module.exports = async function adminRoutes (fastify) {
     const userId = parseInt(request.params.id)
 
     // 1. Nadie puede eliminar su propia cuenta
-    if (userId === request.user.id) {
+    if (Number(userId) === Number(request.user.id)) {
       return reply.status(400).send({ error: 'No puede eliminar su propia cuenta mientras tiene la sesión activa.' })
     }
 
@@ -1177,6 +1177,12 @@ module.exports = async function adminRoutes (fastify) {
        VALUES ($1, 'CONFIG_MODIFICADA', $2, $3)`,
       [request.user.id, request.ip, JSON.stringify({ clave, valor })]
     )
+
+    // Invalidar cache de estado de kiosko tras cualquier cambio de configuración
+    try {
+      const { invalidarCacheEstado } = require('../kiosko/service')
+      if (typeof invalidarCacheEstado === 'function') invalidarCacheEstado()
+    } catch (_) {}
 
     await Promise.all([
       fastify.broadcast('admin:all', 'config_actualizada', { clave, valor }),

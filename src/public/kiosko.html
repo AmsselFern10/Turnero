@@ -31,7 +31,9 @@
     <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 justify-end">
       <template x-if="esTablet">
         <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          <span class="pill pill-primary text-[11px] sm:text-xs font-bold px-2 sm:px-2.5 py-1 whitespace-nowrap">Modo asistido</span>
+          <span class="pill text-[11px] sm:text-xs font-bold px-2 sm:px-2.5 py-1 whitespace-nowrap"
+                :class="(kioskoModoUso === 'estudiante' || !kioskoActivo) ? 'pill-neutral text-slate-500 border-slate-300' : 'pill-primary'"
+                x-text="(kioskoModoUso === 'estudiante' || !kioskoActivo) ? 'Modo inactivo' : 'Modo asistido'"></span>
           <button type="button"
                   x-show="impresoraServidorActiva"
                   @click="abrirModalImpresora()"
@@ -97,6 +99,21 @@
           </p>
         </div>
 
+        <!-- AVISO INFORMATIVO PARA TABLET CUANDO EL SISTEMA ESTÁ EN MODALIDAD ESTUDIANTIL -->
+        <template x-if="esTablet && kioskoModoUso === 'estudiante'">
+          <div class="p-3.5 sm:p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs text-left space-y-1.5">
+            <div class="flex items-center gap-2 font-bold text-amber-900">
+              <svg class="w-4 h-4 text-amber-600 flex-shrink-0 stroke-[2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+              <span>Modalidad Estudiantil activa</span>
+            </div>
+            <p class="text-xs text-amber-800 leading-relaxed">
+              La modalidad asistida en tablet está desactivada. La atención se realiza mediante autoservicio estudiantil móvil escaneando el código QR oficial.
+            </p>
+          </div>
+        </template>
+
         <!-- AVISO INFORMATIVO PARA ESTUDIANTES CUANDO EL SISTEMA ESTÁ EN MODALIDAD ASISTIDA -->
         <template x-if="!esTablet && (kioskoModoUso === 'asistido' || kioskoModoUso === 'empleado')">
           <div class="p-3.5 sm:p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs text-left space-y-1.5">
@@ -120,8 +137,8 @@
           </div>
         </template>
 
-        <!-- BOTÓN DE ACCIÓN HABILITADO PARA TABLET O PARA ESTUDIANTES EN AUTOSERVICIO -->
-        <template x-if="esTablet || kioskoModoUso === 'estudiante'">
+        <!-- BOTÓN DE ACCIÓN HABILITADO EXCLUSIVAMENTE SI EL MODO ES COMPATIBLE -->
+        <template x-if="modoPermiteEmision">
           <button @click="generarTurno()" :disabled="isGenerating || !kioskoActivo || topeAlcanzado || !wsConectado" type="button"
                   :title="esTablet ? 'Asignar siguiente turno' : 'Tomar mi turno'"
                   :aria-label="esTablet ? 'Asignar siguiente turno' : 'Tomar mi turno'"
@@ -144,6 +161,13 @@
               </div>
             </template>
           </button>
+        </template>
+
+        <!-- SI ES TABLET Y ESTÁ EN MODO ESTUDIANTE: INDICADOR CLARO DE BLOQUEO -->
+        <template x-if="esTablet && kioskoModoUso === 'estudiante'">
+          <div class="p-3 text-center rounded-xl bg-slate-100 border border-slate-200 text-slate-500 font-medium text-xs">
+            Emisión en tablet deshabilitada (Atención opera en modo Estudiantil)
+          </div>
         </template>
 
         <!-- SI NO ES TABLET Y ESTÁ EN MODO ASISTIDO: INDICADOR CLARO SIN BOTÓN FALSO -->
@@ -202,26 +226,36 @@
           <!-- MODO TABLET: botón principal inmediato + cuenta regresiva -->
           <template x-if="esTablet">
             <div class="space-y-2">
-              <button @click="asignarSiguiente()" :disabled="isGenerating" type="button"
-                      title="Asignar turno al siguiente estudiante" aria-label="Asignar turno al siguiente"
-                      class="btn-call w-full min-h-[48px] h-12 sm:h-14 text-base sm:text-lg flex items-center justify-center space-x-2.5">
-                <template x-if="!isGenerating">
-                  <div class="flex items-center space-x-2.5">
-                    <svg class="w-5 h-5 stroke-[2] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-                    </svg>
-                    <span>Asignar siguiente</span>
-                  </div>
-                </template>
-                <template x-if="isGenerating">
-                  <div class="flex items-center space-x-2">
-                    <svg class="w-5 h-5 animate-spin stroke-[2] flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                      <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"></path>
-                    </svg>
-                    <span>Asignando...</span>
-                  </div>
-                </template>
-              </button>
+              <template x-if="modoPermiteEmision">
+                <button @click="asignarSiguiente()" :disabled="isGenerating || !modoPermiteEmision" type="button"
+                        title="Asignar turno al siguiente estudiante" aria-label="Asignar turno al siguiente"
+                        class="btn-call w-full min-h-[48px] h-12 sm:h-14 text-base sm:text-lg flex items-center justify-center space-x-2.5">
+                  <template x-if="!isGenerating">
+                    <div class="flex items-center space-x-2.5">
+                      <svg class="w-5 h-5 stroke-[2] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+                      </svg>
+                      <span>Asignar siguiente</span>
+                    </div>
+                  </template>
+                  <template x-if="isGenerating">
+                    <div class="flex items-center space-x-2">
+                      <svg class="w-5 h-5 animate-spin stroke-[2] flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"></path>
+                      </svg>
+                      <span>Asignando...</span>
+                    </div>
+                  </template>
+                </button>
+              </template>
+
+              <!-- Si la tablet queda inhabilitada porque el modo activo es estudiantil -->
+              <template x-if="!modoPermiteEmision">
+                <div class="p-3 text-center rounded-xl bg-amber-50 border border-amber-200 text-amber-800 font-medium text-xs space-y-1">
+                  <div class="font-bold">Modalidad asistida pausada</div>
+                  <div>El sistema opera actualmente en modo Estudiantil (Móvil). No se pueden emitir más turnos desde la tablet.</div>
+                </div>
+              </template>
 
               <!-- Aviso de estado de impresión -->
               <template x-if="avisoImpresion">

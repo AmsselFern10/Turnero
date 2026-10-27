@@ -78,13 +78,13 @@
         <!-- TOP: Banner Proximo Turno en Espera (Compacto y centrado en la parte superior) -->
         <div class="w-full flex justify-center flex-shrink-0">
           <div x-show="proximoNumero !== null"
-            class="tv-hero-callout w-fit max-w-[95%] bg-blue-50/50 border border-blue-200/90 rounded-2xl px-5 sm:px-6 md:px-7 py-2 sm:py-2.5 flex items-center shadow-xs min-w-0 gap-3 sm:gap-4 md:gap-5 transition-opacity duration-200"
+            class="tv-hero-callout w-fit max-w-[95%] bg-blue-50/50 border border-blue-200/90 rounded-2xl px-6 sm:px-7 md:px-8 py-3 sm:py-3.5 md:py-4 flex items-center shadow-xs min-w-0 gap-3.5 sm:gap-4.5 md:gap-5 transition-opacity duration-200"
             :class="{ '!bg-amber-50/80 !border-amber-300': glowState === 'rellamado' }">
-            <div class="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
+            <div class="flex items-center space-x-2.5 sm:space-x-3.5 min-w-0">
               <div
-                class="p-1.5 sm:p-2 bg-blue-100/80 border border-blue-200/90 text-blue-700 rounded-xl flex items-center justify-center flex-shrink-0"
+                class="p-2 sm:p-2.5 bg-blue-100/80 border border-blue-200/90 text-blue-700 rounded-xl flex items-center justify-center flex-shrink-0"
                 :class="{ '!bg-amber-100 !border-amber-300 !text-amber-700': glowState === 'rellamado' }">
-                <svg class="w-4 h-4 sm:w-5 sm:h-5 stroke-[1.8]" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                <svg class="w-5 h-5 sm:w-6 sm:h-6 stroke-[1.8]" fill="none" viewBox="0 0 24 24" stroke="currentColor"
                   aria-hidden="true">
                   <path stroke-linecap="round" stroke-linejoin="round"
                     d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -98,7 +98,7 @@
               </div>
             </div>
             <div
-              class="bg-white border-2 border-blue-300/80 px-4 sm:px-6 py-1 rounded-xl shadow-xs flex items-center justify-center flex-shrink-0"
+              class="bg-white border-2 border-blue-300/80 px-4 sm:px-6 py-1.5 sm:py-2.5 rounded-xl shadow-xs flex items-center justify-center flex-shrink-0"
               :class="{ '!border-amber-400': glowState === 'rellamado' }">
               <span class="tv-prox-num font-mono-num font-black text-blue-700 tracking-tight whitespace-nowrap"
                 :class="{ '!text-amber-700': glowState === 'rellamado' }" x-text="formatTicket(proximoNumero)">--</span>
@@ -122,12 +122,12 @@
 
           <!-- BANNER DIRÍJASE A MESA X (Justo debajo del número, ancho ajustado a su contenido, centrado) -->
           <div
-            class="tv-hero-bottom w-fit max-w-[95%] rounded-2xl py-2.5 sm:py-3 md:py-3.5 px-5 sm:px-7 md:px-8 flex items-center justify-center shadow-xs transition-colors duration-300 min-w-0 gap-3 sm:gap-4 md:gap-5 mt-3 sm:mt-5 md:mt-6"
+            class="tv-hero-bottom w-fit max-w-[95%] rounded-2xl py-3.5 sm:py-4.5 md:py-5.5 px-6 sm:px-8 md:px-10 flex items-center justify-center shadow-xs transition-colors duration-300 min-w-0 gap-3.5 sm:gap-4.5 md:gap-6 mt-3 sm:mt-5 md:mt-6"
             :class="{ '!bg-amber-50/80 !border-amber-300': glowState === 'rellamado' }">
             <div
-              class="w-10 h-10 sm:w-12 sm:h-12 md:w-13 md:h-13 rounded-xl bg-blue-100/90 border border-blue-200/90 flex items-center justify-center shadow-xs flex-shrink-0"
+              class="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-xl bg-blue-100/90 border border-blue-200/90 flex items-center justify-center shadow-xs flex-shrink-0"
               :class="{ '!bg-amber-100 !border-amber-300 !text-amber-700': glowState === 'rellamado' }">
-              <svg class="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 stroke-[1.8] text-blue-700"
+              <svg class="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 stroke-[1.8] text-blue-700"
                 :class="{ '!text-amber-700': glowState === 'rellamado' }" fill="none" viewBox="0 0 24 24"
                 stroke="currentColor" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round"
@@ -137,7 +137,7 @@
             <span
               class="tv-banner-text font-bold text-lg sm:text-xl md:text-2xl lg:text-3xl uppercase tracking-wider text-slate-700 whitespace-nowrap flex-shrink-0">DIRÍJASE
               A</span>
-            <div class="h-6 sm:h-8 md:h-9 w-0.5 bg-slate-300/80 mx-1 flex-shrink-0"
+            <div class="h-8 sm:h-10 md:h-12 w-0.5 bg-slate-300/80 mx-1 flex-shrink-0"
               :class="{ '!bg-amber-300': glowState === 'rellamado' }"></div>
             <span
               class="tv-mesa font-mono-num font-black leading-none text-blue-700 tracking-wide whitespace-nowrap flex-shrink-0"

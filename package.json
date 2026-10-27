@@ -12,8 +12,10 @@
     "migrate": "node scripts/recrear_desde_cero.js",
     "seed": "node scripts/seed.js",
     "reset": "node scripts/reset.js",
-    "test": "node tests/offline-docker-audit.test.js",
+    "test": "node tests/offline_docker_audit.test.js",
     "test:suite": "node scripts/run_tests.js",
+    "test:bd": "node scripts/run_bd_tests.js",
+    "test:rt": "node scripts/run_rt_tests.js",
     "lint": "eslint src --ext .js",
     "build:css": "tailwindcss -i ./src/public/css/tailwind-input.css -o ./src/public/css/tailwind.css --minify",
     "watch:css": "tailwindcss -i ./src/public/css/tailwind-input.css -o ./src/public/css/tailwind.css --watch"
@@ -44,6 +46,7 @@
   "devDependencies": {
     "eslint": "^8.57.0",
     "nodemon": "^3.1.4",
+    "playwright": "^1.64.1",
     "tailwindcss": "^3.4.19"
   }
 }

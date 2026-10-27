@@ -19,6 +19,7 @@ const AUDIT_ACCIONES = {
   TURNO_RELLAMADO:        'TURNO_RELLAMADO',
   TURNO_REZAGADO:         'TURNO_REZAGADO',
   ATENCION_FINALIZADA:    'ATENCION_FINALIZADA',
+  TURNO_FINALIZADO:       'TURNO_FINALIZADO',
   TURNO_CANCELADO:        'TURNO_CANCELADO',
 
   // ── Lote ───────────────────────────────────────────────────────────────────

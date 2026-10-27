@@ -337,12 +337,19 @@ async function generarTurno (fastify, { ip, idempotencyKey, deviceId, esTablet, 
     })
   }
 
-  // Si la modalidad activa es asistida, celulares en modo estudiante no pueden generar turnos
+  // Validación estricta y excluyente de modalidad activa (Asistido vs Estudiantil)
   const modoUso = cfg.kiosko_modo_uso || 'asistido'
   if (!esTablet && (modoUso === 'asistido' || modoUso === 'empleado')) {
     throw Object.assign(new Error('La emisión de turnos desde dispositivos móviles no está habilitada. Por favor solicite su turno en el módulo de atención asistida.'), {
       statusCode: 403,
       codigo: 'modo_asistido_activo'
+    })
+  }
+
+  if (esTablet && modoUso === 'estudiante') {
+    throw Object.assign(new Error('La modalidad asistida en tablet no está habilitada. El sistema opera actualmente en modo Estudiantil (Autoservicio Móvil vía QR).'), {
+      statusCode: 403,
+      codigo: 'modo_estudiante_activo'
     })
   }
 

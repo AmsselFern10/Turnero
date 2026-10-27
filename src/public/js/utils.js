@@ -188,13 +188,16 @@ export async function playCallChime() {
     const ctx = _getAudioCtx();
     if (!ctx) return;
 
-    // Anti-solapamiento: si el chime anterior todavía suena, omitir
+    if (ctx.state === 'suspended') {
+      try { await ctx.resume(); } catch (_) {}
+    }
+
+    // Si el chime anterior aún está concluyendo su resonancia, esperar brevemente antes de iniciar el nuevo
     if (ctx.currentTime < _chimeEndTime) {
       const restante = Math.max(0, (_chimeEndTime - ctx.currentTime) * 1000);
       if (restante > 0) {
-        await new Promise(r => setTimeout(r, Math.min(restante, 400)));
+        await new Promise(r => setTimeout(r, Math.min(restante, 250)));
       }
-      return;
     }
 
     // Intentar bell.mp3 (solo UNA descarga de red; si falló antes, usa síntesis)

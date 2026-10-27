@@ -447,6 +447,10 @@ BEGIN
         END IF;
     END IF;
 
+    IF v_turno.fecha_turno <> v_fecha_hoy THEN
+        RAISE EXCEPTION 'El turno #% corresponde a una jornada anterior y no puede ser atendido', v_turno.numero USING ERRCODE = 'P0001';
+    END IF;
+
     v_llamado_en := NOW();
     UPDATE turnos
     SET estado = 'en_atencion', mesa_id = p_mesa_id, operador_id = p_operador_id,

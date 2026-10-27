@@ -16,9 +16,15 @@
 -- ---------------------------------------------------------------------------
 DO $$
 BEGIN
-    IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'turnero_app') THEN
-        REVOKE UPDATE, DELETE ON audit_log FROM turnero_app;
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'turnero_app') THEN
+        CREATE ROLE turnero_app WITH LOGIN PASSWORD 'turnero';
     END IF;
+    EXECUTE format('GRANT CONNECT ON DATABASE %I TO turnero_app', current_database());
+    GRANT USAGE ON SCHEMA public TO turnero_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO turnero_app;
+    GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO turnero_app;
+    REVOKE UPDATE, DELETE, TRUNCATE ON audit_log FROM turnero_app;
+    REVOKE CREATE ON SCHEMA public FROM turnero_app;
 END;
 $$;
 

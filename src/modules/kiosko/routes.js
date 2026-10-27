@@ -161,6 +161,17 @@ module.exports = async function kioskoRoutes (fastify) {
     let resultadoFinal
     try {
       resultadoFinal = await operacion
+    } catch (err) {
+      if (err.statusCode && err.codigo) {
+        return reply.status(err.statusCode).send({
+          statusCode: err.statusCode,
+          codigo: err.codigo,
+          error: { codigo: err.codigo, mensaje: err.message },
+          mensaje: err.message,
+          message: err.message
+        })
+      }
+      throw err
     } finally {
       if (cacheKey && fastify._idempotencyPromises) {
         fastify._idempotencyPromises.delete(cacheKey)

@@ -123,7 +123,7 @@ let _ultimoAudio = { texto: '', timestamp: 0 };
  * @param {number|string} params.mesa_numero - Número de mesa (ej. 1)
  * @returns {Promise<void>} Resuelve exactamente al terminar la voz (onend) o timeout de 3.5s.
  */
-export function speakCall({ numero, mesa_numero }) {
+export function speakCall({ numero, mesa_numero, esRellamado = false, forzar = false }) {
   return new Promise((resolve) => {
     if (!_speechEnabled || typeof window === 'undefined' || !('speechSynthesis' in window)) {
       return resolve();
@@ -139,10 +139,9 @@ export function speakCall({ numero, mesa_numero }) {
     const texto = `Turno ${numLimpio}, Mesa ${mesaLimpia}`;
 
     const ahora = Date.now();
-    // Guardia anti-duplicación estricta (10s): si el mismo anuncio fue emitido hace menos de 10 segundos,
-    // descartar la emisión repetida para evitar que suene dos veces
-    if (_ultimoAudio.texto === texto && (ahora - _ultimoAudio.timestamp < 10000)) {
-      console.warn(`[SPEECH] Ignorando locución duplicada para "${texto}" (${ahora - _ultimoAudio.timestamp}ms transcurridos)`);
+    // Guardia anti-duplicación estricta (10s): evita re-llamados continuos o ráfagas repetidas para el mismo turno en menos de 10s
+    if (!forzar && _ultimoAudio.texto === texto && (ahora - _ultimoAudio.timestamp < 10000)) {
+      console.warn(`[SPEECH] Ignorando locución repetida para "${texto}" (${ahora - _ultimoAudio.timestamp}ms transcurridos - mínimo 10s)`);
       return resolve();
     }
     _ultimoAudio = { texto, timestamp: ahora };
@@ -150,16 +149,20 @@ export function speakCall({ numero, mesa_numero }) {
     try {
       const ss = window.speechSynthesis;
 
-      // Cancelar cualquier audio anterior acumulado para que nunca se encimen dos voces
-      try { ss.cancel(); } catch (_) {}
-
-      if (!_cachedVoice) {
-        _seleccionarVozEspanola();
-      }
-
       // Si la síntesis quedó en pausa por el navegador, reanudar
       if (ss && ss.paused) {
         try { ss.resume(); } catch (_) {}
+      }
+
+      // Cancelar cualquier audio anterior acumulado para que nunca se encimen dos voces
+      const estabaHablando = ss.speaking || ss.pending;
+      if (estabaHablando) {
+        try { ss.cancel(); } catch (_) {}
+        try { ss.resume(); } catch (_) {}
+      }
+
+      if (!_cachedVoice) {
+        _seleccionarVozEspanola();
       }
 
       const utterance = new SpeechSynthesisUtterance(texto);
@@ -219,7 +222,15 @@ export function speakCall({ numero, mesa_numero }) {
       // que avanza la cola independientemente del audio. Por eso speakCall solo necesita
       // señalar el fin real de la voz (onend/onerror) o el timeout de 3.5 s.
       // Un setTimeout corto here desfasaría la voz de la tarjeta visual.
-      window.speechSynthesis.speak(utterance);
+      if (estabaHablando) {
+        setTimeout(() => {
+          if (_activeUtterance === utterance) {
+            window.speechSynthesis.speak(utterance);
+          }
+        }, 25);
+      } else {
+        window.speechSynthesis.speak(utterance);
+      }
 
     } catch (err) {
       console.warn('[SPEECH] Excepción en speakCall:', err);

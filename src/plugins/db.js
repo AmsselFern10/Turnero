@@ -24,8 +24,11 @@ const { Pool } = require('pg')
  *   const { rows } = await app.db.query('SELECT ...', [params])
  */
 async function dbPlugin (fastify) {
+  const connectionString = process.env.DATABASE_URL ||
+    `postgresql://${process.env.DB_USER || 'postgres'}:${encodeURIComponent(process.env.DB_PASSWORD || 'turnero')}@${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT_EXPOSED || process.env.PGBOUNCER_PORT_EXPOSED || '5432'}/${process.env.DB_NAME || 'turnero'}`
+
   const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString,
     max:              parseInt(process.env.DB_POOL_MAX || '20', 10), // pgBouncer soporta hasta 100 clientes; 20 por instancia permite concurrencia sin saturar
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000

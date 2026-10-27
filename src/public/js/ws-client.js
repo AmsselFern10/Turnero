@@ -273,6 +273,16 @@ export class TurneroWSClient {
           return;
         }
 
+        // Código 4409: Sesión duplicada (abierta en otra ventana o dispositivo)
+        if (event.code === 4409) {
+          console.warn('[WS] Sesión cerrada por duplicidad (abierta en otra ventana). Cancelando reconexión.');
+          this.isForcedClosed = true;
+          this._notifyStatus('DESCONECTADO');
+          this._dispatchAuthError(4409, event.reason || 'Sesión abierta en otra ventana');
+          this._dispatch('sesion_duplicada', { reason: event.reason || 'Sesión abierta en otra ventana' });
+          return;
+        }
+
         // Código 4403: Canal prohibido (IDOR detectado por servidor)
         if (event.code === 4403) {
           console.error('[WS] Error 4403: Acceso denegado al canal solicitado.');

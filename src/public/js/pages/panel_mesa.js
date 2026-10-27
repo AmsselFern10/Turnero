@@ -449,6 +449,7 @@ export function panelMesaView() {
         this.turnoActual = turno;
         this.proximoNumero = proximo_numero ?? null;
         this.vouchersRestantes = vouchers_restantes ?? 0;
+        this._ultimoRellamadoTs = null;
 
         if (es_idempotente) {
           // El turno ya había sido asignado en este mismo instante (reintento o coalescing de red)
@@ -639,17 +640,20 @@ export function panelMesaView() {
         return;
       }
 
-      // Guardia de tiempo mínimo: no permitir re-llamar si el turno acaba de ser llamado
-      // y probablemente aún no ha aparecido en la TV (la TV puede tener varios turnos en cola)
-      const MIN_SEGUNDOS_RELLAMADO = 8;
-      if (this.turnoActual.llamado_en) {
-        const segsDesdeCallado = (Date.now() - new Date(this.turnoActual.llamado_en).getTime()) / 1000;
-        if (segsDesdeCallado < MIN_SEGUNDOS_RELLAMADO) {
-          const restantes = Math.ceil(MIN_SEGUNDOS_RELLAMADO - segsDesdeCallado);
+      // Guardia de tiempo mínimo: esperar al menos 10 segundos entre llamados del mismo turno (coherente con la TV)
+      const MIN_SEGUNDOS_RELLAMADO = 10;
+      const ultimoAnuncio = Math.max(
+        this.turnoActual.llamado_en ? new Date(this.turnoActual.llamado_en).getTime() : 0,
+        this._ultimoRellamadoTs || 0
+      );
+      if (ultimoAnuncio > 0) {
+        const segsDesdeAnuncio = (Date.now() - ultimoAnuncio) / 1000;
+        if (segsDesdeAnuncio < MIN_SEGUNDOS_RELLAMADO) {
+          const restantes = Math.ceil(MIN_SEGUNDOS_RELLAMADO - segsDesdeAnuncio);
           showToast({
-            message: `El turno #${this.turnoActual.numero} aún no ha aparecido en la TV. Espera ${restantes}s antes de re-llamar.`,
+            message: `El turno #${this.turnoActual.numero} fue anunciado recientemente. Espera ${restantes}s antes de re-llamar.`,
             type: 'warning',
-            duration: 4000
+            duration: 3500
           });
           return;
         }
@@ -661,6 +665,7 @@ export function panelMesaView() {
           mesa_id: this.mesa.id
         });
 
+        this._ultimoRellamadoTs = Date.now();
         this.triggerRecall(this.turnoActual);
 
         showToast({
@@ -977,6 +982,32 @@ export function panelMesaView() {
     },
 
     /**
+     * Cierra la consola y redirige al login cuando se abre la misma ventanilla en otra ventana.
+     */
+    _cerrarPorSesionDuplicada(mensaje) {
+      if (this._cerrandoPorDuplicidad) return;
+      this._cerrandoPorDuplicidad = true;
+      if (this.ws) {
+        try { this.ws.disconnect(); } catch (_) {}
+      }
+      sessionStorage.removeItem('turnero_mesa');
+      sessionStorage.removeItem('mesa_seleccionada');
+      sessionStorage.removeItem('mesa_id');
+      sessionStorage.removeItem('mesa_numero');
+      sessionStorage.removeItem('mesa_nombre');
+
+      showToast({
+        message: mensaje || 'Esta ventanilla fue abierta en otra ventana o dispositivo. Cerrando sesión local...',
+        type: 'warning',
+        duration: 3500
+      });
+
+      setTimeout(() => {
+        window.location.href = '/index.html?sesion_cerrada=1';
+      }, 1500);
+    },
+
+    /**
      * Ejecución interna de logout: desconecta WS y limpia sesión en todas las pestañas.
      * La mesa NO se libera al cerrar sesión; permanece asignada al operador.
      */
@@ -1182,6 +1213,11 @@ export function panelMesaView() {
           api.clearSession(true);
           return;
         }
+        if (code === 4409) {
+          // Sesión cerrada por duplicidad: se abrió en otra ventana/dispositivo
+          this._cerrarPorSesionDuplicada(reason || 'Se ha abierto una nueva sesión para esta ventanilla en otra ventana.');
+          return;
+        }
         try {
           const me = await api.get('/auth/me');
           if (me?.usuario?.mesa_asignada) {
@@ -1212,6 +1248,11 @@ export function panelMesaView() {
         } catch (_) {
           api.clearSession(true);
         }
+      });
+
+      // Evento de sesión duplicada: se abrió la misma ventanilla en otra pestaña o PC
+      this.ws.on('sesion_duplicada', (payload) => {
+        this._cerrarPorSesionDuplicada(payload?.mensaje);
       });
 
       // Evento de turno llamado para esta mesa (idempotente)

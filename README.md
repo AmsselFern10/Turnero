@@ -1,370 +1,325 @@
-# Turnero de Matriculas 2026
+# Turnero de Matrículas 2026 (v2.1)
 
-Sistema digital de gestion de turnos en tiempo real para procesos masivos de atencion presencial — matriculas, pagos, inscripciones y validacion de documentos.
+Sistema digital de gestión de turnos en tiempo real de alta concurrencia, diseñado para procesos masivos de atención estudiantil y ciudadana (matrículas, inscripciones, cobros y validación de expedientes). 
 
----
-
-## Que problemas resuelve
-
-En jornadas masivas de atencion presencial, cientos de personas acuden simultaneamente y multiples mesas de atencion trabajan en paralelo. Se encontraron los siguientes desafios tecnicos criticos:
+Opera de forma 100% autónoma en redes locales (LAN / Wi-Fi de campus) sin depender de internet ni de servicios en la nube, garantizando tiempos de respuesta menores a 20 ms mediante transacciones atómicas en PostgreSQL, difusión push por WebSockets y control de conexiones con pgBouncer.
 
 ---
 
-### 1. Dos operadores llaman el mismo numero (Race Condition)
+## Índice
 
-**El problema:** Si 10 operadores presionan "Llamar Siguiente" en la misma fraccion de segundo, todos podrian leer el mismo contador en la base de datos y asignar el mismo voucher a distintos estudiantes.
-
-**Como lo resuelve el Turnero:**
-Toda la operacion de llamado se ejecuta en **1 sola transaccion atomica** en PostgreSQL mediante la funcion almacenada `fn_llamar_siguiente()`:
-1. Aplica un bloqueo exclusivo a nivel de fila (`SELECT ... FOR UPDATE`) sobre el lote activo de vouchers.
-2. Mientras la Mesa 1 tiene el bloqueo (tarda menos de 4 ms), las demas mesas esperan en cola en la base de datos.
-3. Lee el contador, le suma 1, actualiza `lotes_voucher`, finaliza el turno anterior de la mesa (`atendido`) e inserta el nuevo turno en `turnos` en estado `en_atencion`.
-4. Libera el bloqueo. La Ventanilla 2 entra inmediatamente y lee el contador ya incrementado.
-
-> **Garantia:** Aunque 20 mesas presionen en el mismo milisegundo, obtienen 20 numeros consecutivos, sin saltos ni duplicados.
+1. [Problemas Críticos que Resuelve](#-problemas-críticos-que-resuelve)
+2. [Arquitectura del Sistema](#-arquitectura-del-sistema)
+3. [Módulos del Sistema](#-módulos-del-sistema)
+4. [Flujo Operativo: Las 3 Modalidades de Emisión](#-flujo-operativo-las-3-modalidades-de-emisión)
+5. [Guía de Instalación y Despliegue](#-guía-de-instalación-y-despliegue)
+   - [A. Servidor de Producción / Linux](#a-servidor-de-producción--linux-recomendado-con-docker)
+   - [B. Servidor Central en Windows (Paso a Paso con IP Fija y LAN)](#b-servidor-central-en-windows-guía-paso-a-paso-para-red-local)
+   - [C. Modo Desarrollo (Hot-Reload)](#c-modo-desarrollo-hot-reload-con-iniciar_devbat)
+6. [Configuración desde el Panel de Administración (24 Parámetros)](#-configuración-desde-el-panel-de-administración)
+7. [Referencia de Comandos y Ejecutables](#-referencia-de-comandos-y-ejecutables)
 
 ---
 
-### 2. El sistema se cae con muchas consultas simultaneas (Pool pgBouncer)
+## ⚡ Problemas Críticos que Resuelve
 
-**El problema:** PostgreSQL asigna un proceso independiente del sistema operativo a cada conexion (consumiendo 5 a 10 MB de RAM por conexion). Si 20 mesas, 4 TVs, el panel de admin y decenas de celulares consultan la base de datos al mismo tiempo, el servidor se satura rapidamente, agota la memoria RAM y comienza a rechazar peticiones.
+### 1. Dos operadores llaman al mismo número (Race Condition)
+- **Problema:** Si 10 operadores presionan *"Llamar Siguiente"* en el mismo milisegundo, una consulta común leería el mismo contador de base de datos y asignaría el mismo voucher a varios estudiantes.
+- **Solución:** Función transaccional atómica en PostgreSQL (`fn_llamar_siguiente`) con bloqueo exclusivo a nivel de fila (`SELECT ... FOR UPDATE`) sobre el lote activo. La primera ventanilla toma el bloqueo (< 4 ms), incrementa el contador, finaliza el turno previo como `atendido`, crea el nuevo registro en `en_atencion` y libera el bloqueo. Las demás mesas esperan su turno ordenadamente.
+- **Garantía:** Cero números duplicados y cero saltos de correlativo bajo cualquier nivel de concurrencia.
 
-**Como lo resuelve el Turnero:**
-Se interpone un pooler de conexiones llamado **pgBouncer** entre Fastify y PostgreSQL, configurado en modo transaccional (`POOL_MODE: transaction`):
+### 2. Saturación de memoria por conexiones simultáneas (pgBouncer)
+- **Problema:** PostgreSQL crea un proceso del sistema operativo por cada conexión cliente (~10 MB RAM por conexión). Decenas de pantallas y celulares colapsarían la base de datos rápidamente.
+- **Solución:** Se interpone **pgBouncer** en modo transaccional (`POOL_MODE: transaction`) entre Fastify y PostgreSQL. Cientos de clientes se comunican con Fastify, pero Fastify comparte un pool estricto de **máximo 10 conexiones reales** a PostgreSQL únicamente durante los milisegundos que dura la transacción activa.
+
+### 3. Varios llamados simultáneos en la TV de auditorio (Cola FIFO)
+- **Problema:** Si 3 ventanillas llaman al mismo tiempo, los anuncios colisionarían en pantalla y la locución por voz se pisaría haciéndose ininteligible.
+- **Solución:** La pantalla de TV (`tv.js`) implementa una **Cola FIFO (First In, First Out)** con secuencia monótona (`seq`). Cada turno se exhibe con un tiempo mínimo garantizado de exposición y locución antes de avanzar al siguiente. Los **re-llamados** reciben prioridad visual inmediata sin alterar el historial, respaldados por un *watchdog* de seguridad de 12 segundos para evitar bloqueos de audio.
+
+### 4. Caídas de red y reconexión masiva (Backoff con Jitter + Snapshot)
+- **Problema:** Si el router se reinicia o se corta un cable, 50 pantallas intentarían reconectar en el mismo segundo exacto, botando el servidor mediante el efecto *Thundering Herd* (avalancha).
+- **Solución:** El cliente WebSocket institucional (`ws-client.js`) utiliza **Backoff Exponencial con Full Jitter**:
+  $$\text{delay} = \min\left(30000, \text{base} \times 2^{\text{intentos}} + \text{random}(0, 1000)\right)$$
+  Al reconectar, solicita un snapshot de sincronización en memoria para ponerse al día sin recargar la página del navegador.
+
+### 5. Doble clic y peticiones repetidas (Idempotencia en Ventanilla y Kiosko)
+- **En Mesa:** Si un operador presiona rápidamente dos veces "Llamar Siguiente", una ventana de protección de 1.5 segundos detecta el turno en curso y devuelve el mismo registro sin avanzar el lote (`es_idempotente: true`).
+- **En Kiosko:** Cada solicitud de turno digital incluye una clave única generada por el cliente (`Idempotency-Key`), evitando generar turnos dobles por toques repetidos o microcortes de red.
+
+### 6. Operación 100% Offline (Sin Internet)
+- Los estilos de Tailwind CSS están precompilados en local.
+- Alpine.js y las tipografías (*Inter* y *JetBrains Mono*) están autoalojadas en WOFF2.
+- **Audio híbrido:** Intenta reproducir el archivo institucional `bell.mp3`. Si falla, la **Web Audio API** del navegador sintetiza en vivo un doble tono senoidal institucional (523.25 Hz Do5 + 659.25 Hz Mi5), seguido de locución con la **Web Speech API** del sistema operativo.
+
+---
+
+## 🏛 Arquitectura del Sistema
+
+El sistema está estructurado en 4 capas desacopladas con comunicación push en tiempo real:
 
 ```
-Decenas de mesas + TVs + Dispositivos
-                 ↓
-     Fastify (Node.js 20 LTS)
-                 ↓
-   pgBouncer (Pool de conexiones)
-                 ↓
-  PostgreSQL 15 ← Maximo 10 conexiones reales
-```
-
-- Los clientes (mesas, TV, admin, kioscos) se comunican con Fastify a traves de hasta 100 conexiones ligeras.
-- Fastify solo toma una de las **10 conexiones reales** de PostgreSQL durante los milisegundos que dura la transaccion activa.
-- Apenas ocurre el `COMMIT`, la conexion real regresa al pool para la siguiente consulta. La base de datos opera relajada con consumo minimo de memoria.
-
----
-
-### 3. Varios turnos queriendo mostrarse en la TV al mismo tiempo (Cola FIFO)
-
-**El problema:** Si 3 ventanillas llaman a sus respectivos estudiantes en el mismo segundo, los eventos llegan a la pantalla casi al unisono. Si se procesaran sin control, el turno 48 pisaria al 47 antes de que nadie pudiera leerlo o escucharlo.
-
-**Como lo resuelve el Turnero:**
-La pantalla publica (`tv.js`) implementa una **maquina de estados con Cola FIFO (First In, First Out)** secuencial:
-1. Cada turno recibido por WebSocket trae un numero de secuencia incremental (`seq`).
-2. Si la TV esta anunciando un turno, los nuevos llamados entrantes se guardan en la cola interna sin perderse ni sobreescribirse.
-3. Cada turno en pantalla respeta un tiempo minimo de exposicion visual y locucion por voz antes de dar paso al siguiente.
-4. Si un operador realiza un **Re-llamado ("Segundo Aviso")**, este tiene prioridad especial sin alterar el orden del historial ni el contador principal.
-5. Cuenta con un **watchdog de seguridad (12s)**: si el navegador experimenta algun retraso de audio, el temporizador destraba la cola automaticamente.
-
----
-
-### 4. Caida o desconexion del sistema (Reconexion + Backoff con Jitter + Snapshot)
-
-**El problema:** Si el cable de red se desconecta, se reinicia el router o el servidor se reinicia, 50 pantallas intentaran reconectarse al mismo segundo exacto. Esto produce el llamado *"Efecto Manada"* (Thundering Herd), saturando y botando el servidor en cuanto intenta levantarse.
-
-**Como lo resuelve el Turnero:**
-El cliente de tiempo real (`ws-client.js`) implementa un protocolo de recuperacion autonoma de grado industrial:
-1. **Backoff Exponencial con Full Jitter:** Cada intento fallido duplica el tiempo de espera base, pero anade un factor aleatorio (`delay = random(500, min(maxDelay, base * 2^intentos))`). Esto dispersa los intentos en el tiempo y evita que los clientes golpeen al servidor a la vez.
-2. **Latido Simetrico (Heartbeat):** Envia un ping/pong cada 30 segundos. Si pasan 60 segundos sin actividad en la red (corte silencioso sin error formal de socket), el cliente reinicia la conexion proactivamente.
-3. **Snapshot de Sincronizacion:** Al reconectar, la pantalla no recarga el navegador (lo que causaria parpadeos o perdida de estado del operador). En su lugar, solicita un `snapshot` en memoria que actualiza inmediatamente el turno actual y el historial reciente.
-
----
-
-### 5. Comunicacion en tiempo real (WebSockets + Broadcast vs. Polling)
-
-**El problema:** El enfoque tradicional de consultar la API cada 2 segundos (*HTTP Polling*) desde 30 dispositivos genera cientos de peticiones por minuto innecesarias, saturando el ancho de banda de la red local y consumiendo ciclos de CPU en el servidor.
-
-**Como lo resuelve el Turnero:**
-Se utiliza comunicacion bidireccional basada en **WebSockets (`@fastify/websocket`)** con arquitectura Push:
-- La conexion se mantiene abierta con sobrecarga minima (un solo handshake TCP inicial).
-- Cuando un operador presiona "Llamar Siguiente", el servidor difunde el mensaje en menos de 10 milisegundos directamente a los clientes suscritos.
-- **Canales segmentados y seguros:**
-  * `tv:global`: Transmision publica para las pantallas de auditorio.
-  * `mesa:<id>`: Canal privado de cada mesa (con proteccion anti-IDOR: un operador no puede espiar otra mesa).
-  * `admin:all`: Canal de supervision con KPIs en tiempo real y alertas de lote bajo.
-  * `kiosko:<token>`: Canal privado de seguimiento para el celular del estudiante.
-- Internamente, Fastify se apoya en **Redis 7 Pub/Sub**, permitiendo escalar horizontalmente a multiples servidores si fuera necesario sin perder la sincronizacion.
-
----
-
-### 6. Doble clic y peticiones repetidas (Idempotencia en Ventanilla y Kiosko)
-
-**El problema:** Un operador ansioso puede presionar dos veces rapidamente el boton "Llamar Siguiente", o un estudiante en una pantalla tactil puede pulsar dos veces "Tomar Turno", provocando que se salten numeros o se impriman vouchers gemelos por error.
-
-**Como lo resuelve el Turnero:**
-El sistema implementa garantias de **Idempotencia** en los dos puntos criticos:
-1. **En Mesa de Atencion (Ventana de 1.5 segundos):** Si el operador presiona el boton en un intervalo menor a 1.5 segundos desde su ultimo llamado, la funcion de base de datos detecta el turno en curso y devuelve exactamente el mismo registro sin avanzar el contador de vouchers y sin registrar un nuevo llamado (retorna la bandera `es_idempotente: true`).
-2. **En Kiosko y Celulares (`Idempotency-Key`):** Cada solicitud de generacion de turno incluye una clave unica generada en el dispositivo. Si la peticion se envia dos veces debido a una reconexion de red o un doble toque, el servidor detecta la clave y responde con el turno ya generado, evitando generar duplicados.
-
----
-
-### 7. Anuncio audiovisual coordinado (Voz sintetica + Campana con fallback offline)
-
-**El problema:** Los navegadores en redes locales sin salida a internet no pueden usar servicios de voz en la nube (Google Cloud TTS, AWS Polly), y si el archivo de audio institucional no carga, la pantalla quedaria muda. Ademas, si dos turnos suenan a la vez, las voces se superpondrian haciendose ininteligibles.
-
-**Como lo resuelve el Turnero:**
-La pantalla cuenta con un motor de audio hibrido que opera 100% desconectado de internet:
-1. **Campana Institucional (Chime):** Intenta reproducir `/assets/audio/bell.mp3`. Si el archivo no estuviera disponible, utiliza la **Web Audio API** nativa del navegador para sintetizar en vivo un doble tono armonizado institucional (Do5 a 523.25 Hz + Mi5 a 659.25 Hz) mediante osciladores senoidales puros.
-2. **Sintesis de Voz Local (Web Speech API):** Al terminar la campana, el navegador pronuncia verbalmente `"Turno 47, Mesa 3"` utilizando las voces locales en espanol instaladas en el sistema operativo.
-3. **Prevencion de Garbage Collection:** Mantiene una referencia en memoria global (`_activeUtterance`) para evitar un error conocido en el motor V8 de Google Chrome, donde la voz se cancelaba abruptamente a mitad de la frase al ser limpiada por el recolector de basura.
-
----
-
-> 📘 **Documentacion Tecnica Detallada:**  
-> ¿Deseas profundizar en las consultas SQL exactas, la explicacion linea por linea de `fn_llamar_siguiente`, el funcionamiento interno de pgBouncer y por que se eligio cada tecnologia?  
-> Consulta la guia completa explicada paso a paso: **[ARQUITECTURA_TECNICA.md](ARQUITECTURA_TECNICA.md)**.
-
----
-
-## Modulos principales
-
-| Modulo | Que hace |
-|---|---|
-| **Panel del Operador** (`/panel_mesa`) | El operador presiona un solo boton: "LLAMAR SIGUIENTE". El sistema finaliza el turno anterior, asigna el proximo numero y lo transmite a todas las pantallas en menos de 20ms. |
-| **Pantalla TV** (`/tv`) | Display pasivo para TV de auditorio. Muestra el turno llamado en texto gigante (legible a 5 metros), historial de los ultimos 4 llamados y reloj en vivo. Nunca queda en blanco — si pierde conexion muestra un banner de "Reconectando" sin borrar los datos. |
-| **Panel Admin** (`/admin`) | Dashboard con metricas en tiempo real: turnos atendidos, tiempo promedio, mesas activas, vouchers restantes. Gestiona lotes de vouchers, mesas, usuarios y configuracion del sistema. |
-| **Kiosko Digital** (`/kiosko`) | Opcional. Permite que personal de recepcion asigne turnos desde una tablet, o que la persona tome su turno desde su celular escaneando un QR. Incluye seguimiento en vivo de posicion en cola. |
-| **Lotes de Vouchers** | El admin crea un lote (ej: 1 al 500) antes de abrir. Los operadores van llamando en orden. El admin puede extender el lote en caliente si se acaban los vouchers fisicos, sin reiniciar ni perder el progreso. |
-
----
-
-## Flujo operativo del sistema
-
-### Flujo general de una jornada típica
-
-```text
-ANTES DE ABRIR
-  Admin crea el lote del día (ej: vouchers 1-500) y activa las mesas de atención
-
-LLEGADA DE ESTUDIANTES (Según la modalidad configurada):
-  • Modo Físico: Personal de recepción entrega papel preimpreso numerado.
-  • Modo Asistido: Empleado en portón con tablet asigna el turno e imprime el ticket al instante.
-  • Modo Estudiante: El estudiante escanea el Cartel QR con su celular y toma su turno digital.
-
-EN VENTANILLAS DE ATENCIÓN
-  Operador presiona "LLAMAR SIGUIENTE"
-    → Transacción atómica: finaliza el turno previo e incrementa el contador de vouchers.
-    → La TV del auditorio muestra "Turno 47 → Mesa 3" con voz sintetizada y campana en < 20ms.
-    → El estudiante con celular recibe alerta sonora y vibración indicándole su ventanilla.
-
-  Si el estudiante no se presenta:
-    Operador presiona "No se presentó" → el turno se cancela y se pasa al siguiente de inmediato.
-
-AL FINALIZAR LA JORNADA
-  Admin pausa el lote si continuará mañana (conservando el correlativo).
-  O cierra el lote definitivamente para comenzar uno nuevo desde el número 1.
+┌────────────────────────────────────────────────────────────────────────┐
+│                   CAPA 1: CLIENTES Y PANTALLAS (LAN)                   │
+│   Operador (panel_mesa) · Pantalla TV (tv) · Admin (admin) · Kiosko    │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ HTTP REST / WebSocket Push (< 10 ms)
+┌───────────────────────────────────▼────────────────────────────────────┐
+│              CAPA 2: SERVIDOR DE APLICACIÓN (FASTIFY 4 LTS)            │
+│   • Router modular (auth, mesas, lotes, turnos, kiosko, admin)         │
+│   • WebSocket Hub segmentado con Heartbeat 30s                         │
+│   • Autenticación JWT (2h) + Refresh Token HttpOnly (7d)               │
+│   • Control de sesión única por usuario y mitigación de fuerza bruta   │
+└──────────────────┬─────────────────────────────────┬───────────────────┘
+                   │                                 │
+┌──────────────────▼───────────────┐ ┌───────────────▼───────────────────┐
+│       CAPA 3: CACHÉ Y PUBSUB     │ │      CAPA 4: POOL Y PERSISTENCIA  │
+│          Redis 7 (In-Memory)     │ │        pgBouncer (Transaction)    │
+│   • Pub/Sub entre instancias     │ │                  │                │
+│   • Blacklist de JWTs revocados  │ │                  ▼                │
+│   • Rate limit por IP            │ │         PostgreSQL 15+            │
+│   • Bloqueos distribuidos        │ │   • Bloqueos FOR UPDATE           │
+│                                  │ │   • Auditoría inmutable (SHA-256) │
+│                                  │ │   • Triggers de cálculo temporal  │
+└──────────────────────────────────┘ └───────────────────────────────────┘
 ```
 
 ---
 
-### Flujos detallados del Kiosko Digital
+## 🧩 Módulos del Sistema
 
-El Kiosko Digital opera bajo dos modalidades exclusivas configurables desde **Admin → Configuración → Modalidad de Uso**:
-
-#### 1. Modalidad Asistida (Consola de Recepción / Tablet de Portería)
-Diseñada para que un empleado o guardia en la entrada emita turnos para los estudiantes:
-1. **Acceso directo:** Al abrir el enlace `/kiosko.html` en la red local LAN, la tablet se identifica como consola de emisión con un botón prominente: **"ASIGNAR SIGUIENTE TURNO"**.
-2. **Emisión en 1 solo clic:** Un toque asigna el siguiente voucher correlativo sin fricciones.
-3. **Comprobante en pantalla durante 15 segundos:** Muestra el número asignado en tipografía gigante (ej. `#047`), código QR de seguimiento para el estudiante y una cuenta regresiva visual (`Vuelve a inicio en 15s`).
-4. **Impresión térmica automática ESC/POS:** Si hay una impresora de red activa y configurada (`impresora_activa = true`), el comprobante físico se imprime de inmediato sin tocar nada más. Si la impresora está inactiva o apagada, la pantalla no se traba: muestra un aviso informativo y permite imprimir con el cuadro nativo del navegador como respaldo.
-5. **Cadencia rápida:** El operador puede pulsar **"ASIGNAR SIGUIENTE"** en cualquier instante sin esperar a que terminen los 15 segundos.
-6. **Seguridad:** Incluye un botón discreto **"Salir a Login"** en la cabecera para regresar a la pantalla de acceso del sistema cuando termine el turno del operador.
-
-#### 2. Modalidad Estudiante (Autoservicio Móvil con Cartel QR)
-Diseñada para que cada estudiante use su propio teléfono inteligente:
-1. **Escaneo del Cartel QR:** El estudiante apunta la cámara de su celular al código QR exhibido en carteles impresos en el recinto (o ingresa a la dirección web de la red local).
-2. **Toma de turno:** Presiona el botón táctil **"TOMAR MI TURNO"** desde su navegador móvil.
-3. **Seguimiento en vivo (Push WebSocket):** Su pantalla pasa automáticamente a la vista de seguimiento personal sin recargar la página.
-4. **Información continua:** Observa cuántas personas están antes que él (*"3 personas antes de ti"*), su posición exacta en cola y el tiempo estimado de espera.
-5. **Alerta de atención inmediata:** Cuando un operador en ventanilla llama su turno, el celular vibra y reproduce un chime sonoro institucional indicándole: *"¡Es tu turno! Dirígete a la Mesa X"*.
+| Módulo | Ruta Backend | Pantalla Frontend | Responsabilidad Principal |
+|---|---|---|---|
+| **Autenticación** | `/auth` | `/index.html` | Login con hash bcrypt (costo 12), selección de ventanilla dinámica, emisión de JWT (2 horas), refresh token en cookie HttpOnly y revocación por sesión única (si una cuenta inicia en otra máquina, se desconectan las pestañas anteriores). |
+| **Mesas** | `/mesas` | `/panel_mesa.html` | Estado de ventanillas (`activa`, `inactiva`, `pausada`), asignación de operadores, indicador de conexión WebSocket en vivo y conmutación de pausas. |
+| **Turnos** | `/turnos` | `/panel_mesa.html` | Consola del operador: botón único *"Llamar Siguiente"*, cronómetro de atención en vivo, re-llamado (*"Segundo Aviso"*), descarte (*"No se presentó"*) y atención de turnos rezagados. |
+| **Lotes de Vouchers** | `/lotes` | `/admin.html` | Control multi-día de correlativos de papel. Permite crear nuevos lotes, pausar al cierre de jornada, cerrar definitivamente y **extender el número hasta en caliente** sin interrumpir la atención. |
+| **Pantalla TV** | `/ws` (Canal `tv:global`) | `/tv.html` | Display pasivo 1080p para auditorio. Exhibe el último llamado en tamaño colosal (legible a más de 5 metros), historial de últimos 4 llamados, reloj sincronizado, campana y síntesis de voz. Banner animado ante pérdida de señal (nunca pantalla en blanco). |
+| **Administración** | `/admin` | `/admin.html` | Dashboard con KPIs en tiempo real (turnos atendidos, tiempo medio, mesas activas, vouchers restantes), tabla de rendimiento con semáforo de eficiencia, CRUD de usuarios, ajuste de parámetros y exportación de reportes CSV. |
+| **Kiosko Digital** | `/kiosko` | `/kiosko.html` | Emisión táctil asistida en tablet o autoservicio móvil mediante escaneo de Cartel QR, con estimación de espera, seguimiento en vivo e impresión térmica de red ESC/POS. |
+| **WebSocket Hub** | `/ws` | `ws-client.js` | Conexión bidireccional push con canales aislados (`tv:global`, `mesa:<id>`, `admin:all`, `kiosko:<token>`), latidos ping/pong cada 30 segundos y control de desconexión silenciosa. |
 
 ---
 
-## Guía de instalación y puesta en marcha
+## 🎟 Flujo Operativo: Las 3 Modalidades de Emisión
 
-Puedes poner en marcha el sistema mediante cualquiera de las siguientes opciones:
+Desde **Admin → Configuración → Flujo de Emisión de Turnos**, el sistema permite alternar entre 3 modalidades institucionales según la infraestructura de la sede:
 
-### Opción A: Instalación Automática (Recomendada — 1 Clic)
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                   MODALIDADES DE EMISIÓN DE TURNOS                     │
+├───────────────────────┬───────────────────────┬────────────────────────┤
+│  1. FÍSICO / TALONARIO │  2. ASISTIDO (TABLET) │ 3. ESTUDIANTIL (MÓVIL) │
+│     (Predeterminado)  │    (Pulsador Entrada) │    (Autoservicio QR)   │
+└───────────────────────┴───────────────────────┴────────────────────────┘
+```
 
-El sistema incluye instaladores automatizados que verifican el entorno, preparan el archivo `.env` de forma segura (preservando valores existentes), compilan estilos, levantan Docker y ejecutan las migraciones y seed inicial:
+### Modalidad 1: Físico / Talonario (Predeterminado)
+- **Cómo opera:** En el portón de acceso, el personal entrega al estudiante un **voucher de papel preimpreso** con un número correlativo (ej. Lote del 1 al 500). El sistema no emite tickets digitales.
+- **En ventanillas:** El operador pulsa *"Llamar Siguiente"*. El sistema avanza el contador del lote activo de vouchers y la TV de auditorio anuncia el número para que el estudiante pase a la ventanilla correspondiente.
+- **Fin de jornada:** El admin pausa el lote. Al día siguiente se reactiva continuando exactamente en el número siguiente (ej. 301).
 
-* **En Windows (Instalación Inicial):**
-  ```powershell
-  powershell -ExecutionPolicy Bypass -File install.ps1
-  ```
+### Modalidad 2: Asistido (Tablet / Pulsador en Recepción)
+- **Cómo opera:** En la entrada se ubica un empleado o guardia con una tablet conectada a la red Wi-Fi del campus abierta en `/kiosko.html`.
+- **Emisión en 1 toque:** Al presionar **"ASIGNAR SIGUIENTE TURNO"**, el sistema genera el turno digital correlativo.
+- **Comprobante en pantalla e impresión térmica:** Muestra el comprobante con número gigante y código QR durante 15 segundos. Si hay una impresora térmica ESC/POS configurada en red, expulsa el ticket físico al instante.
 
-* **Control del Sistema en Windows (Scripts .bat directos):**
-  - **Iniciar el sistema:** Doble clic en `iniciar_sistema.bat` (levanta contenedores Docker o proceso Node en puerto 3000).
-  - **Detener el sistema y liberar puertos:** Doble clic en `detener_sistema.bat` (apaga Docker, detiene PM2, mata procesos colgados en el puerto 3000 y desactiva el auto-inicio de Windows).
-
-* **En Linux / macOS:**
-  ```bash
-  bash install.sh
-  ```
+### Modalidad 3: Estudiantil (Móvil / Autoservicio vía QR)
+- **Cómo opera:** Se colocan carteles impresos en los pasillos con el código QR institucional (descargable desde el panel admin en 1 clic).
+- **Toma de turno desde el celular:** El estudiante escanea el QR con la cámara de su teléfono inteligente y entra a `/kiosko.html` en la red local.
+- **Seguimiento en vivo:** Al pulsar *"Tomar mi Turno"*, la pantalla del celular se transforma en un monitor personal de espera que indica: *"Tu turno es el #47 — 3 personas antes de ti — Espera estimada: 12 min"*.
+- **Alerta vibratoria y sonora:** Cuando la ventanilla lo llama, el celular del estudiante emite un chime sonoro y vibra indicándole la ventanilla exacta a la que debe acudir.
 
 ---
 
-### Opción B: Despliegue Manual con Docker Compose
+## 🚀 Guía de Instalación y Despliegue
 
-Si prefieres realizar el proceso paso a paso:
+### A. Servidor de Producción / Linux (Recomendado con Docker)
 
-1. **Clona el repositorio y entra a la carpeta:**
+#### Requisitos previos:
+- Servidor Linux (Ubuntu 20.04+, Debian 11+, Rocky Linux) o VPS.
+- Docker y Docker Compose instalados.
+
+#### Pasos:
+1. Clonar el repositorio:
    ```bash
-   git clone <url-del-repo>
+   git clone https://github.com/AmsselFern10/Turnero.git
    cd Turnero
    ```
-
-2. **Crea el archivo de variables de entorno:**
+2. Ejecutar el instalador automatizado para Linux:
    ```bash
-   cp .env.example .env
-   # Revisa las variables en .env (DB_PASSWORD, JWT_SECRET, etc.)
+   bash install.sh
    ```
+   *(El script prepara `.env`, genera secretos JWT seguros, levanta los contenedores con Docker Compose, espera a PostgreSQL, corre migraciones y seed inicial).*
 
-3. **Construye y levanta los servicios en segundo plano:**
-   ```bash
-   docker compose up -d --build
+3. Acceder al sistema en: `http://<IP-DEL-SERVIDOR>:3000`
+
+---
+
+### B. Servidor Central en Windows (Guía Paso a Paso para Red Local)
+
+Esta guía permite usar una computadora común con Windows 10 u 11 como servidor central para todo el edificio o sede.
+
+#### Paso 1: Asignar una IP Fija en Windows
+Para evitar que el router cambie la dirección de la máquina al reiniciar:
+1. Presiona `Win + R`, escribe `ncpa.cpl` y pulsa Enter (Conexiones de red).
+2. Clic derecho en tu adaptador de red (**Ethernet** o **Wi-Fi**) → **Propiedades**.
+3. Selecciona **Protocolo de Internet versión 4 (TCP/IPv4)** → **Propiedades**.
+4. Selecciona *"Usar la siguiente dirección IP"* e ingresa una IP estática dentro del rango de tu red universitaria (ejemplo):
+   - **Dirección IP:** `192.168.1.50`
+   - **Máscara de subred:** `255.255.255.0`
+   - **Puerta de enlace predeterminada:** `192.168.1.1`
+   - **Servidor DNS:** `1.1.1.1` (o los DNS de la institución).
+5. Guarda los cambios. Comprueba abriendo PowerShell y ejecutando `ipconfig`.
+
+#### Paso 2: Configurar la IP LAN en el archivo `.env`
+1. Abre el archivo `.env` del proyecto con el Bloc de Notas.
+2. Localiza la variable `HOST_IP` y asigna la IP fija que configuraste:
+   ```env
+   HOST_IP=192.168.1.50
    ```
-   *Esto levanta automáticamente: PostgreSQL 15, Redis 7, pgBouncer y la aplicación Fastify. La base de datos aplica automáticamente las migraciones versionadas de `./migrations`.*
+   *(Esto permite que los códigos QR y los celulares de los estudiantes apunten a la máquina correcta y no a localhost).*
 
-4. **Poblar datos iniciales y usuario administrador (solo la primera vez):**
-   ```bash
-   docker compose exec app node scripts/seed.js
+#### Paso 3: Abrir el Puerto 3000 en el Firewall de Windows
+Para que las demás PCs, tablets y teléfonos conectados al Wi-Fi puedan abrir las páginas:
+1. Abre **PowerShell como Administrador** y ejecuta este comando de una sola línea:
+   ```powershell
+   New-NetFirewallRule -DisplayName "Turnero 2026 HTTP" -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow
    ```
+   *(O hazlo manualmente en el Panel de Control → Firewall de Windows Defender → Reglas de Entrada → Nueva Regla → Puerto TCP 3000 → Permitir la conexión).*
 
-5. **Abre el sistema en el navegador:**
-   ```text
-   http://localhost:3000
-   ```
-
-#### Comandos útiles de Docker:
-```bash
-docker compose logs -f app      # Ver logs en vivo del servidor
-docker compose down             # Detener contenedores (los datos se conservan intactos)
-docker compose down -v          # Detener y borrar base de datos (irreversible)
+#### Paso 4: Ejecutar el Instalador Automático
+En PowerShell, ejecuta:
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1
 ```
+El instalador:
+- Configurará `.env` con claves criptográficas.
+- Levantará los contenedores de Docker (o preparará Node.js nativo si no tienes Docker).
+- Ejecutará las migraciones de base de datos y el seed inicial.
+- **Configura auto-arranque:** El sistema se encenderá automáticamente ante reinicios de la PC.
 
----
-
-### Opción C: Modo Desarrollo Rápido (Node.js local + BD en Docker)
-
-Para desarrolladores que deseen modificar el código con recarga en vivo (hot-reload) sin empaquetar la app en Docker:
-
-1. **Levanta únicamente los servicios de base de datos:**
-   ```bash
-   docker compose up -d db redis pgbouncer
-   ```
-
-2. **Instala dependencias locales:**
-   ```bash
-   npm install
-   ```
-
-3. **Compila los estilos CSS de Tailwind:**
-   ```bash
-   npm run build:css
-   ```
-
-4. **Inicia el servidor en modo desarrollo:**
-   ```bash
-   npm run dev
-   ```
-
----
-
-## Despliegue en red local (LAN) y configuración en Windows
-
-Para instalar el Turnero en una PC con Windows que actúe como servidor central de la sede universitaria:
-
-### 1. Asignar IP fija en Windows
-Para que todas las ventanillas y pantallas siempre ubiquen al servidor en la misma dirección IP:
-1. Abre **Configuración → Red e Internet → Wi-Fi** (o Ethernet).
-2. Haz clic en la red conectada → **Propiedades**.
-3. En **Configuración de IP**, cambia a **Manual (IPv4)** e ingresa los datos de tu red (ejemplo: `192.168.1.50`, máscara `255.255.255.0`, puerta de enlace `192.168.1.1`).
-4. Abre una terminal `cmd` y comprueba con `ipconfig` que aparezca la IP configurada.
-
-### 2. Abrir el puerto 3000 en el Firewall de Windows
-Para que las demás PCs puedan conectarse:
-1. Busca **"Firewall de Windows Defender con seguridad avanzada"**.
-2. Selecciona **Reglas de entrada → Nueva regla**.
-3. Tipo: **Puerto** → Protocolo: **TCP** → Puerto específico: **3000**.
-4. Acción: **Permitir la conexión** → Perfiles: **Dominio** y **Privado**.
-5. Nombre: `Turnero App` → Finalizar.
-
-### 3. URLs de acceso desde cualquier equipo en la misma red Wi-Fi:
-
+#### Paso 5: Puntos de Acceso desde cualquier equipo de la red:
 Reemplazando `192.168.1.50` por la IP fija de tu servidor:
-
-| Dispositivo / Puesto | URL de acceso | Función |
-|---|---|---|
-| **Ventanilla / Operador** | `http://192.168.1.50:3000` | Acceso con usuario y selección de mesa |
-| **TV del Auditorio** | `http://192.168.1.50:3000/tv.html` | Pantalla pública con reloj, historial y voz |
-| **Tablet de Recepción** | `http://192.168.1.50:3000/kiosko.html` | Consola de asignación táctil asistida |
-| **Celular del Estudiante** | `http://192.168.1.50:3000/kiosko.html` | Autoservicio y seguimiento en vivo de turno |
-| **Panel de Administración** | `http://192.168.1.50:3000/admin.html` | Supervisión, lotes, métricas y reportes |
+- **Pantalla de TV (Auditorio):** `http://192.168.1.50:3000/tv.html`
+- **Operadores de Ventanilla:** `http://192.168.1.50:3000/panel_mesa.html`
+- **Panel Administrador:** `http://192.168.1.50:3000/admin.html`
+- **Kiosko / Celular Estudiante:** `http://192.168.1.50:3000/kiosko.html`
 
 ---
 
-## Acceso en Red Local (LAN / Wi-Fi Campus)
+### C. Modo Desarrollo (Hot-Reload con `iniciar_dev.bat`)
 
-El sistema está diseñado para operar con máxima velocidad y autonomía en la red local institucional:
+Si vas a programar o modificar archivos de `src/`:
 
-- **Acceso desde cualquier dispositivo:** Conecta cualquier computadora, tablet o smartphone a la misma red Wi-Fi o cableada del campus e ingresa directamente usando la IP del servidor (ej. `http://192.168.1.100:3000`).
-- **Cartel QR para Estudiantes:** El cartel generado en **Admin → Configuración** apunta directamente a la dirección LAN del kiosko, permitiendo que cualquier alumno conectado a la red universitaria tome su turno al instante.
-- **Sin dependencias externas:** Todo el sistema funciona con 0% de internet; las fuentes, estilos y scripts están completamente autoalojados.
-
----
-
-## Configuración desde el Panel de Administración
-
-Toda la operativa del sistema se configura en vivo desde **Admin → Configuración**:
-
-- **Pantalla TV y Anuncios:** Activar/desactivar locución de voz y ajustar de forma independiente los tamaños del turno principal y del historial de turnos.
-- **Kiosko Digital y Autoservicio:** Activar/desactivar emisión digital, alternar entre Modalidad Asistida y Modalidad Estudiante, definir límite diario y generar el Cartel QR en alta resolución para impresión en 1 sola página.
-- **Impresora Térmica LAN (ESC/POS):** Habilitar/deshabilitar envío de comprobantes por red, configurar IP/puerto (9100) y realizar impresiones de prueba (#000).
-- **Fondo Institucional:** Personalizar el fondo de pantalla en vivo mediante URL o subiendo imágenes directamente desde la PC.
-- **Plan B (Contingencia):** Ajustar en caliente el contador del lote o los tiempos promedio si ocurre un cambio operativo no planificado.
+1. Haz doble clic en **[`iniciar_dev.bat`](file:///c:/Users/windows%2010%20pro/Downloads/Turnero/iniciar_dev.bat)**.
+2. El script levantará automáticamente PostgreSQL, Redis y pgBouncer en Docker en segundo plano, esperará a que respondan y arrancará **Nodemon** en tu terminal local.
+3. Al editar cualquier archivo en `src/`, el servidor se reiniciará en caliente automáticamente.
+4. Para apagar la base de datos y Redis al terminar, haz doble clic en **`detener_sistema.bat`**.
 
 ---
 
-## Estructura del proyecto
+## ⚙️ Configuración desde el Panel de Administración
 
-```text
-src/
-├── modules/         Lógica de negocio del servidor (Fastify)
-│   ├── auth/        Autenticación JWT, cookies HttpOnly, roles y sesiones
-│   ├── turnos/      Llamar siguiente, finalizar, cancelar, historial y métricas
-│   ├── lotes/       Gestión de lotes de vouchers (crear, pausar, extender, cerrar)
-│   ├── mesas/       Gestión de ventanillas y asignación dinámica de operadores
-│   ├── admin/       KPIs en tiempo real, gestión de usuarios, auditoría y reportes Excel
-│   ├── kiosko/      Emisión digital, seguimiento, impresión LAN ESC/POS y carteles QR
-│   └── ws/          Hub de WebSockets con canales segmentados y latidos ping/pong
-│
-└── public/          Frontend desacoplado (HTML5 + Tailwind CSS + Alpine.js)
-    ├── index.html        Pantalla de acceso y selección de mesa
-    ├── panel_mesa.html   Consola ergonómica de ventanilla del operador
-    ├── tv.html           Pantalla pública para auditorio Full HD 1080p
-    ├── admin.html        Panel central de administración y supervisión
-    └── kiosko.html       Kiosko táctil (asistido para tablet / autoservicio para smartphone)
-```
+El sistema almacena 24 parámetros en la tabla `configuracion` de PostgreSQL, editables en caliente sin reiniciar el servidor desde **Admin → Configuración**:
 
----
-
-## Stack tecnológico
-
-| Capa | Tecnología | Propósito |
-|---|---|---|
-| **Servidor backend** | Node.js 20 LTS + Fastify 4.x | Alto rendimiento (~70,000 req/s) con overhead mínimo |
-| **Tiempo real** | WebSocket (`@fastify/websocket`) | Comunicación bidireccional push de baja latencia (< 10ms) |
-| **Base de datos** | PostgreSQL 15 | Transacciones ACID atómicas con bloqueos de fila (`FOR UPDATE`) |
-| **Pool de conexiones** | pgBouncer | Límite estricto de conexiones reales para evitar saturación de RAM |
-| **Caché y mensajería** | Redis 7 | Caché en RAM < 1ms y difusión Pub/Sub entre instancias |
-| **Frontend** | HTML5 Semántico + Tailwind CSS 3 + Alpine.js v3 | Interfaz reactiva ultraligera (< 40KB) sin build steps pesados |
-| **Contenedores** | Docker Compose | Despliegue reproducible con un solo comando en cualquier OS |
+| # | Clave de Configuración | Valor Predeterminado | Qué Hace y Cómo Afecta al Sistema |
+|:---:|---|:---:|---|
+| **1** | `modo_generacion_turnos` | `voucher_fisico` | Define la modalidad general del sistema: `voucher_fisico` (talonario de papel tradicional) o `kiosko_web` (emisión digital por tablet/celular). |
+| **2** | `kiosko_web_activo` | `false` | Habilita o bloquea el acceso a la toma de turnos digitales desde `/kiosko.html`. Si está en `false`, el Kiosko muestra aviso de fuera de servicio. |
+| **3** | `kiosko_modo_uso` | `asistido` | Alterna el comportamiento de `/kiosko.html`: `asistido` (pantalla táctil para empleado con botón de emisión rápida) o `estudiante` (vista para escaneo de cartel QR en celular). |
+| **4** | `alerta_vouchers_restantes` | `20` | Umbral de aviso: cuando en el lote activo queden menos de esta cantidad de vouchers, se emite una alerta roja por WebSocket en la consola de administración. |
+| **5** | `kiosko_tope_diario` | `0` | Límite diario de turnos digitales emitibles por el Kiosko (`0` = ilimitado). Evita sobre-emisión si hay cupos restringidos de atención. |
+| **6** | `mostrar_estimado_espera` | `true` | Muestra u oculta el cálculo de tiempo estimado de espera en la pantalla de TV y en el seguimiento móvil del estudiante. |
+| **7** | `zona_horaria` | `America/Tegucigalpa` | Zona horaria oficial para el registro de auditoría, cronómetros y cortes diarios de atención. |
+| **8** | `kiosko_url_base` | *(vacío)* | Dirección IP/URL de la red local para el Cartel QR. Si se deja vacía, el servidor la detecta automáticamente usando la IP del host. |
+| **9** | `kiosko_url_publica` | *(vacío)* | URL pública opcional (ej. túnel Cloudflare o VPS) si se permite que estudiantes consulten su turno fuera del campus. |
+| **10** | `kiosko_impresion_automatica`| `false` | Si es `true`, al emitir un turno en modo tablet asistido envía la orden de impresión térmica a la impresora LAN de inmediato. |
+| **11** | `voz_anuncio_activa` | `true` | Activa la síntesis de voz en la pantalla de TV del auditorio para pronunciar: *"Turno X, Mesa Y"*. |
+| **12** | `impresora_activa` | `false` | Activa la conexión de impresión física con impresoras térmicas de tickets. |
+| **13** | `impresora_ip` | *(vacío)* | Dirección IP de la impresora térmica en la red local (ej. `192.168.1.200`). |
+| **14** | `impresora_puerto` | `9100` | Puerto TCP estándar para impresoras térmicas de red mediante protocolo RAW/ESC-POS. |
+| **15** | `impresora_canal` | `directa` | Canal de impresión: `directa` (conexión TCP directa por socket), `sistema` (cuadro de impresión del navegador) o `bluetooth`. |
+| **16** | `impresora_ancho_papel` | `58` | Ancho de la bobina de papel térmico: `58` mm (32 columnas) o `80` mm (48 columnas). |
+| **17** | `tv_escala_turnos` | `100` | Escala porcentual global para ajustar tipografías en televisores de distintos tamaños (75% a 140%). |
+| **18** | `tv_escala_principal` | `100` | Tamaño específico del número de turno principal llamado en pantalla TV (permite agrandarlo para auditorios gigantes). |
+| **19** | `tv_escala_secundaria` | `100` | Tamaño de las 4 tarjetas del historial lateral de llamados previos en la TV. |
+| **20** | `tv_opacidad_principal` | `100` | Nivel de opacidad (20 a 100%) del contenedor del turno actual en TV para permitir que luzca la imagen de fondo institucional. |
+| **21** | `tv_opacidad_secundaria` | `100` | Nivel de opacidad (20 a 100%) de las tarjetas del historial en la TV. |
+| **22** | `fondo_imagen_activa` | `false` | Activa o desactiva la visualización de una imagen de fondo institucional en las pantallas. |
+| **23** | `fondo_imagen_url` | *(vacío)* | Ruta relativa o URL web de la fotografía o diseño institucional de fondo. |
+| **24** | `fondo_imagen_escala` | `100` | Nivel de zoom/escala de la imagen de fondo en la TV (50% a 200%). |
 
 ---
 
-Turnero de Matrículas 2026 · v2.1
+## 🛠 Referencia de Comandos y Ejecutables
+
+### 1. Archivos `.bat` (Scripts de Control para Windows)
+
+Ejecutables con doble clic desde el Explorador de Archivos de Windows:
+
+- **[`iniciar_sistema.bat`](file:///c:/Users/windows%2010%20pro/Downloads/Turnero/iniciar_sistema.bat):**  
+  Inicio rápido de producción. Levanta todos los contenedores Docker en segundo plano con política de auto-reinicio, espera hasta 60s a que el endpoint `/health` responda HTTP 200 y presenta los enlaces de acceso listos para uso.
+- **[`iniciar_dev.bat`](file:///c:/Users/windows%2010%20pro/Downloads/Turnero/iniciar_dev.bat):**  
+  Inicio para programadores. Levanta solo PostgreSQL, Redis y pgBouncer en Docker y lanza **Nodemon** en la terminal con recarga en vivo de código.
+- **[`detener_sistema.bat`](file:///c:/Users/windows%2010%20pro/Downloads/Turnero/detener_sistema.bat):**  
+  Apagado total seguro. Detiene contenedores Docker (`docker compose down`), procesos PM2, libera forzosamente el puerto 3000, finaliza procesos `node.exe` residuales y elimina accesos de auto-arranque en Windows.
+- **[`actualizar_sistema.bat`](file:///c:/Users/windows%2010%20pro/Downloads/Turnero/actualizar_sistema.bat):**  
+  Actualizador de versiones. Ejecuta `git stash` preventivo si hay cambios locales, descarga la última versión con `git pull origin main`, detiene la versión vieja, reconstruye imágenes (`docker compose up -d --build`), verifica `/health` y deja el sistema actualizado en línea.
+
+---
+
+### 2. Scripts PowerShell `.ps1` (Automatización Windows)
+
+Ejecutar desde PowerShell (`powershell -ExecutionPolicy Bypass -File <script>`):
+
+- **[`install.ps1`](file:///c:/Users/windows%2010%20pro/Downloads/Turnero/install.ps1):** Instalador autónomo completo para Windows con tolerancia total a fallos y fallback automático a Node.js nativo si Docker no está instalado.
+- **[`scripts/backup.ps1`](file:///c:/Users/windows%2010%20pro/Downloads/Turnero/scripts/backup.ps1):** Genera un respaldo SQL completo de la base de datos con estructura, datos y sentencias `DROP IF EXISTS` en la carpeta `backups/`.
+- **[`scripts/restore.ps1 <archivo.sql>`](file:///c:/Users/windows%2010%20pro/Downloads/Turnero/scripts/restore.ps1):** Restaura un respaldo SQL limpiando previamente el schema public para evitar colisiones de llaves primarias o triggers.
+- **[`scripts/reset.ps1 -Force`](file:///c:/Users/windows%2010%20pro/Downloads/Turnero/scripts/reset.ps1):** Limpia y reinicia la base de datos al estado inicial de fábrica (elimina turnos de prueba y recarga el seed).
+
+---
+
+### 3. Scripts Bash `.sh` (Servidores Linux / macOS / WSL)
+
+Ejecutar desde la terminal Bash (`bash <script>`):
+
+- **[`install.sh`](file:///c:/Users/windows%2010%20pro/Downloads/Turnero/install.sh):** Instalador para servidores Linux. Configura variables, Docker, base de datos y verifica salud del servicio.
+- **[`scripts/backup.sh`](file:///c:/Users/windows%2010%20pro/Downloads/Turnero/scripts/backup.sh):** Realiza un volcado `pg_dump` con compresión limpia en `backups/`.
+- **[`scripts/restore.sh <archivo.sql>`](file:///c:/Users/windows%2010%20pro/Downloads/Turnero/scripts/restore.sh):** Restaura un volcado SQL en PostgreSQL.
+- **[`scripts/reset.sh --yes`](file:///c:/Users/windows%2010%20pro/Downloads/Turnero/scripts/reset.sh):** Reseteo rápido de datos de prueba a estado de fábrica.
+
+---
+
+### 4. Comandos `npm` (Gestión del Proyecto)
+
+- `npm run dev`: Inicia el servidor con Nodemon (vigila cambios en `src/` y reinicia al guardar).
+- `npm start`: Inicia el servidor Node.js en modo producción directo.
+- `npm run build:css`: Precompila el CSS de Tailwind optimizado y minificado en `src/public/css/tailwind.css`.
+- `npm run watch:css`: Compila Tailwind en modo escucha para desarrollo frontend.
+- `npm run test:suite`: Ejecuta la suite completa de 27 pruebas de integración del sistema.
+- `npm run test:bd`: Ejecuta las pruebas de base de datos e invariantes SQL (7 suites).
+- `npm run test:rt`: Ejecuta las pruebas de tiempo real, WebSockets, pgBouncer y sesiones (4 suites críticas).
+
+---
+
+### 5. Scripts de Utilidad Node.js (`scripts/`)
+
+- `node scripts/seed.js`: Puebla la base de datos con usuarios administradores (`admin` / `soporte`, `admin2`), 5 operadores de ventanilla (`op1` a `op5`), 10 mesas iniciales y el Lote 1 de vouchers (1 a 500).
+- `node scripts/init_config.js`: Sincroniza y repara las 24 claves de configuración en PostgreSQL sin alterar las existentes.
+- `node scripts/recrear_desde_cero.js`: Reconstruye el schema completo de PostgreSQL aplicando las migraciones versionadas `001` a `004` en orden estricto.
+- `node scripts/run_migration.js <archivo.sql>`: Aplica una migración SQL individual y muestra el resultado en consola.
+- `node scripts/reset.js`: Trunca las tablas operativas de turnos conservando usuarios y configuración intactos.
+
+---
+
+## 🔒 Credenciales de Acceso Iniciales (Seed)
+
+| Rol | Usuario | Contraseña | Permisos |
+|---|---|---|---|
+| **Administrador 1** | `admin` | `soporte` | Acceso total: KPIs, lotes, mesas, usuarios, configuración y auditoría. |
+| **Administrador 2** | `admin2` | `soporte` | Administrador secundario de respaldo. |
+| **Operadores** | `op1` a `op5` | `Operador2026!` | Acceso a consola de ventanilla para llamar, atender y pausar su mesa. |
+
+---
+
+*Turnero de Matrículas 2026 · Versión 2.1 Institucional · Código modular, desacoplado y resiliente.*

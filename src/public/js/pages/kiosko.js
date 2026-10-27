@@ -132,9 +132,26 @@ export function kioskoView () {
       return `${pos} personas antes de ti`;
     },
 
+    get modoIncompatible () {
+      if (!this.kioskoActivo) return true;
+      const esModoAsistido = this.kioskoModoUso === 'asistido' || this.kioskoModoUso === 'empleado';
+      if (!this.esTablet && esModoAsistido) return true;
+      if (this.esTablet && this.kioskoModoUso === 'estudiante') return true;
+      return false;
+    },
+
+    get modoPermiteEmision () {
+      return this.kioskoActivo && !this.topeAlcanzado && !this.modoIncompatible;
+    },
+
     get subtituloHeader () {
-      return this.esTablet
-        ? 'Modalidad asistida • Emisión de turnos'
+      if (this.esTablet) {
+        return this.kioskoModoUso === 'estudiante'
+          ? 'Modalidad asistida • Deshabilitada'
+          : 'Modalidad asistida • Emisión de turnos';
+      }
+      return (this.kioskoModoUso === 'asistido' || this.kioskoModoUso === 'empleado')
+        ? 'Autoservicio móvil • Deshabilitado'
         : 'Autoservicio • Kiosko estudiantil';
     },
 
@@ -143,22 +160,36 @@ export function kioskoView () {
     },
 
     get modoUsoBadgeTexto () {
-      if (this.esTablet) return 'Atención asistida • Portón';
-      return this.kioskoModoUso === 'asistido' ? 'Modalidad asistida' : 'Emisión de turnos';
+      if (this.esTablet) {
+        return this.kioskoModoUso === 'estudiante'
+          ? 'Atención asistida • Inactiva'
+          : 'Atención asistida • Portón';
+      }
+      return (this.kioskoModoUso === 'asistido' || this.kioskoModoUso === 'empleado')
+        ? 'Modalidad asistida (Solo portería)'
+        : 'Emisión de turnos • Móvil';
     },
 
     get tituloBienvenida () {
-      return this.esTablet
-        ? 'Módulo de asignación de turnos'
-        : 'Bienvenido al proceso de matrícula';
+      if (this.esTablet) {
+        return this.kioskoModoUso === 'estudiante'
+          ? 'Modalidad asistida no disponible'
+          : 'Módulo de asignación de turnos';
+      }
+      if (this.kioskoModoUso === 'asistido' || this.kioskoModoUso === 'empleado') {
+        return 'Atención presencial asistida';
+      }
+      return 'Bienvenido al proceso de matrícula';
     },
 
     get descripcionBienvenida () {
       if (this.esTablet) {
-        return 'Presione el botón para asignar el siguiente turno oficial y emitir el comprobante.';
+        return this.kioskoModoUso === 'estudiante'
+          ? 'El sistema opera actualmente en modo Estudiantil (Autoservicio Móvil vía QR). La asignación de turnos desde tablets está deshabilitada.'
+          : 'Presione el botón para asignar el siguiente turno oficial y emitir el comprobante.';
       }
-      return this.kioskoModoUso === 'asistido'
-        ? 'El proceso se atiende de forma presencial asistida en portería.'
+      return (this.kioskoModoUso === 'asistido' || this.kioskoModoUso === 'empleado')
+        ? 'El proceso se atiende de forma presencial asistida en portería. Solicite su comprobante al personal.'
         : 'Presiona el botón para tomar tu turno correlativo y asignarte a la fila oficial de hoy.';
     },
 
@@ -451,6 +482,23 @@ export function kioskoView () {
     },
 
     /**
+     * Actualiza el mensaje de advertencia o error según la modalidad activa
+     */
+    actualizarMensajesEstado () {
+      if (!this.kioskoActivo) {
+        this.errorMessage = 'El servicio digital de turnos no está activo actualmente. Solicite su voucher físico.';
+      } else if (this.topeAlcanzado) {
+        this.errorMessage = 'Se ha alcanzado el límite diario de turnos para el día de hoy.';
+      } else if (this.esTablet && this.kioskoModoUso === 'estudiante') {
+        this.errorMessage = 'La modalidad asistida en tablet está inhabilitada. El sistema opera actualmente en modo Estudiantil (Autoservicio Móvil vía QR).';
+      } else if (!this.esTablet && (this.kioskoModoUso === 'asistido' || this.kioskoModoUso === 'empleado')) {
+        this.errorMessage = 'La emisión de turnos desde el celular no está habilitada. Por favor solicite su turno en el módulo de atención asistida (portería).';
+      } else {
+        this.errorMessage = '';
+      }
+    },
+
+    /**
      * Consulta el estado del kiosko al abrir la pantalla
      */
     async verificarEstadoKiosko () {
@@ -485,13 +533,7 @@ export function kioskoView () {
           }
         }
 
-        if (!this.kioskoActivo) {
-          this.errorMessage = 'El servicio digital de turnos no está activo actualmente. Solicite su voucher físico.';
-        } else if (this.topeAlcanzado) {
-          this.errorMessage = 'Se ha alcanzado el límite diario de turnos para el día de hoy.';
-        } else {
-          this.errorMessage = '';
-        }
+        this.actualizarMensajesEstado();
       } catch (err) {
         this.redLocalOk = false;
         console.warn('[Kiosko] No se pudo verificar estado del kiosko:', err);
@@ -510,8 +552,10 @@ export function kioskoView () {
      * Generación atómica de turno táctil (RF-GEN-02 con numeración propia e Idempotency-Key)
      */
     async generarTurno () {
-      const esModoAsistido = this.kioskoModoUso === 'asistido' || this.kioskoModoUso === 'empleado';
-      if (this.isGenerating || !this.kioskoActivo || this.topeAlcanzado || (!this.esTablet && esModoAsistido)) return;
+      if (this.isGenerating || !this.modoPermiteEmision) {
+        this.actualizarMensajesEstado();
+        return;
+      }
 
       if (!this.wsConectado) {
         this.errorMessage = 'Sin conexión con el servidor. Emisión de turnos pausada temporalmente.';
@@ -621,8 +665,8 @@ export function kioskoView () {
         const status = err.status || 500;
         const codigo = err.codigo || '';
 
-        if (status === 403 || codigo === 'kiosko_desactivado' || codigo === 'modo_no_kiosko' || codigo === 'modo_asistido_activo') {
-          this.errorMessage = err.message || 'El servicio digital de turnos no está activo. Solicite su voucher físico.';
+        if (status === 403 || codigo === 'kiosko_desactivado' || codigo === 'modo_no_kiosko' || codigo === 'modo_asistido_activo' || codigo === 'modo_estudiante_activo') {
+          this.errorMessage = err.message || err.mensaje || 'El servicio digital de turnos no está activo. Solicite su voucher físico.';
           if (codigo === 'kiosko_desactivado' || codigo === 'modo_no_kiosko') {
             this.kioskoActivo = false;
           }
@@ -1192,12 +1236,17 @@ export function kioskoView () {
 
     /**
      * Tablet: asigna el siguiente turno de inmediato sin pasar por bienvenida.
-     * Limpia el ticket actual y lanza generarTurno() directamente.
+     * Limpia el ticket actual y lanza generarTurno() directamente si el modo está permitido.
      */
     async asignarSiguiente () {
       if (this.autoResetTimer) { clearTimeout(this.autoResetTimer); this.autoResetTimer = null; }
       if (this.cuentaRegresivaTimer) { clearInterval(this.cuentaRegresivaTimer); this.cuentaRegresivaTimer = null; }
       this.cuentaRegresiva = 0;
+      if (!this.modoPermiteEmision) {
+        this.actualizarMensajesEstado();
+        this.step = 'welcome';
+        return;
+      }
       this.errorMessage = '';
       this.ticketData = { numero: null, token: null, creado_en: null, posicion_en_cola: 0, tiempoEstimadoMin: 0, tracking_url: '' };
       this.step = 'welcome';
@@ -1290,19 +1339,19 @@ export function kioskoView () {
         if (!payload) return;
         if (payload.clave === 'kiosko_web_activo') {
           this.kioskoActivo = String(payload.valor).toLowerCase() === 'true';
-          if (!this.kioskoActivo) {
-            this.errorMessage = 'El servicio digital de turnos no está activo actualmente. Solicite su voucher físico.';
-          } else {
-            if (!this.topeAlcanzado) this.errorMessage = '';
+          this.actualizarMensajesEstado();
+        } else if (payload.clave === 'modo_generacion_turnos') {
+          if (payload.valor === 'voucher_fisico') {
+            this.kioskoActivo = false;
+          } else if (payload.valor === 'kiosko_web') {
+            this.kioskoActivo = true;
           }
+          this.actualizarMensajesEstado();
         } else if (payload.clave === 'kiosko_modo_uso') {
           this.kioskoModoUso = payload.valor || 'asistido';
-          const esModoAsistido = this.kioskoModoUso === 'asistido' || this.kioskoModoUso === 'empleado';
-          if (!this.esTablet && esModoAsistido) {
-            this.errorMessage = 'La emisión de turnos desde el celular no está habilitada. Por favor solicite su turno en el módulo de atención asistida.';
-          } else {
-            this.errorMessage = '';
-          }
+          this.actualizarMensajesEstado();
+        } else if (payload.clave === 'kiosko_tope_diario') {
+          this.verificarEstadoKiosko();
         } else if (payload.clave === 'impresora_activa') {
           this.impresoraServidorActiva = String(payload.valor).toLowerCase() === 'true';
         } else if (payload.clave === 'kiosko_impresion_automatica') {

@@ -46,16 +46,16 @@ async function authPlugin (fastify) {
       return reply.status(401).send({ error: 'Token inválido o expirado' })
     }
 
-    // Verificar blacklist (logout)
-    const isBlacklisted = await fastify.redis.get(`bl:${request.user.jti}`)
-    if (isBlacklisted) {
-      return reply.status(401).send({ error: 'Sesión cerrada' })
-    }
-
-    // Verificar si la sesión fue reemplazada por un inicio de sesión más reciente en otro dispositivo (Opción A)
+    // 1. Verificar si la sesión fue reemplazada por un inicio de sesión más reciente en otro dispositivo (Opción A)
     const sesionActivaJti = await fastify.redis.get(`user_active_session:${request.user.id}`)
     if (sesionActivaJti && sesionActivaJti !== request.user.jti) {
       return reply.status(401).send({ error: 'Su sesión fue cerrada porque se inició sesión en otro dispositivo', codigo: 'sesion_reemplazada' })
+    }
+
+    // 2. Verificar blacklist (logout)
+    const isBlacklisted = await fastify.redis.get(`bl:${request.user.jti}`)
+    if (isBlacklisted) {
+      return reply.status(401).send({ error: 'Sesión cerrada' })
     }
 
     // Verificar si la contraseña fue cambiada con posterioridad a la emisión del token

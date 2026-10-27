@@ -106,6 +106,11 @@ CREATE INDEX ix_turnos_mesa_atendidos_hoy
 CREATE INDEX ix_turnos_operador_id
     ON turnos (operador_id);
 
+-- Consultas de rezagados (cancelados) de la jornada actual (evita Seq Scan en volumen).
+CREATE INDEX ix_turnos_rezagados_hoy
+    ON turnos (fecha_turno, finalizado_en DESC)
+    WHERE (estado = 'cancelado');
+
 -- ---------------------------------------------------------------------------
 -- audit_log
 -- ---------------------------------------------------------------------------

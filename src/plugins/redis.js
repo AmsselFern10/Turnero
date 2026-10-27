@@ -14,6 +14,9 @@ const Redis  = require('ioredis')
  * - app.redisSub   → SUBSCRIBE (bloqueado para otros comandos)
  */
 async function redisPlugin (fastify) {
+  const redisUrl = process.env.REDIS_URL ||
+    `redis://:${encodeURIComponent(process.env.REDIS_PASSWORD || 'turnero_redis')}@${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT_EXPOSED || '6379'}`
+
   const opts = {
     lazyConnect:        false,
     connectTimeout:     5000,
@@ -25,13 +28,13 @@ async function redisPlugin (fastify) {
   }
 
   // Cliente principal
-  const redis = new Redis(process.env.REDIS_URL, opts)
+  const redis = new Redis(redisUrl, opts)
 
   redis.on('connect', () => fastify.log.info('✅ Redis conectado'))
   redis.on('error',   (err) => fastify.log.error({ err }, 'Redis — error'))
 
   // Cliente de suscripción (Pub/Sub — canal de WS)
-  const redisSub = new Redis(process.env.REDIS_URL, opts)
+  const redisSub = new Redis(redisUrl, opts)
   redisSub.on('error', (err) => fastify.log.error({ err }, 'RedisSub — error'))
 
   // Verificar conexión

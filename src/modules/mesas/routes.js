@@ -20,13 +20,13 @@ module.exports = async function mesasRoutes (fastify) {
               th.tiempo_promedio_seg::integer AS tiempo_promedio_seg
        FROM mesas m
        LEFT JOIN usuarios u ON m.operador_id = u.id AND u.eliminado_en IS NULL
-       LEFT JOIN turnos t ON t.mesa_id = m.id AND t.estado = 'en_atencion' AND t.llamado_en >= CURRENT_DATE
+       LEFT JOIN turnos t ON t.mesa_id = m.id AND t.estado = 'en_atencion'
        LEFT JOIN (
          SELECT mesa_id,
                 COUNT(*) AS atendidos_hoy,
                 ROUND(AVG(duracion_atencion_seg)) AS tiempo_promedio_seg
          FROM turnos
-         WHERE estado = 'atendido' AND creado_en >= date_trunc('day', NOW())
+         WHERE estado = 'atendido' AND (fecha_turno = fn_fecha_hoy() OR creado_en >= date_trunc('day', NOW()))
          GROUP BY mesa_id
        ) th ON th.mesa_id = m.id
        WHERE m.estado != 'eliminada' AND m.eliminado_en IS NULL

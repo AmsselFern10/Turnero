@@ -113,6 +113,14 @@ module.exports = async function turnosRoutes (fastify) {
                 vouchers_restantes
               }),
               // Canal unificado de progreso de lote (RF-TURN-09): 1 broadcast, 0 queries extra a BD
+              // BUG-SISTEMA-001 corregido: también se envía al canal mesa:X para que el panel
+              // actualice el indicador de "próximo número" sin depender de suscribirse a lote:activo
+              fastify.broadcast(`mesa:${mesa_id}`, 'proximo_actualizado', {
+                lote:               turno.lote_numero,
+                ultimo_llamado:     turno.numero,
+                proximo_numero,
+                vouchers_restantes
+              }),
               fastify.broadcast('lote:activo', 'proximo_actualizado', {
                 lote:               turno.lote_numero,
                 ultimo_llamado:     turno.numero,
@@ -246,11 +254,17 @@ module.exports = async function turnosRoutes (fastify) {
       try { if (fastify.redis?.del) await fastify.redis.del(`mi_turno:${turno.token_consulta}`) } catch (_) {}
     }
 
-    // Notificar al admin y actualizar listas de rezagados en operadores post-commit (desacoplado)
+    // Notificar al admin, panel del operador y actualizar listas de rezagados (desacoplado)
     setImmediate(async () => {
       try {
         await Promise.allSettled([
           fastify.broadcast('admin:all', 'turno_cancelado', {
+            turno_id:    turno.id,
+            turno_numero: turno.numero,
+            mesa_id
+          }),
+          // BUG-SISTEMA-002 corregido: el panel del operador también recibe la notificación
+          fastify.broadcast(`mesa:${mesa_id}`, 'turno_cancelado', {
             turno_id:    turno.id,
             turno_numero: turno.numero,
             mesa_id
@@ -553,9 +567,8 @@ module.exports = async function turnosRoutes (fastify) {
     // Registrar cooldown
     fastify._cooldownsRellamado.set(mesa_id, ahora)
 
-    // Evento ID determinístico por ventana de cooldown (evita duplicación si llegan ráfagas en milisegundos idénticos)
-    const ventanaCooldown = Math.floor(ahora / 3000)
-    const evento_id = `rellamado_${mesa_id}_${turno.id}_${ventanaCooldown}`
+    // Evento ID único por llamado (respetando cooldown previo de 3s)
+    const evento_id = `rellamado_${mesa_id}_${turno.id}_${ahora}`
     const payloadRellamado = {
       evento_id,
       turno:       turno.numero,
@@ -564,7 +577,8 @@ module.exports = async function turnosRoutes (fastify) {
       mesa_nombre: turno.mesa_nombre,
       lote_numero: turno.numero_lote || null,
       origen:      turno.origen || 'voucher_fisico',
-      llamado_en:  new Date().toISOString()
+      llamado_en:  new Date().toISOString(),
+      es_rellamado: true
     }
 
     // Re-anunciar a la TV pública y canal de Kiosko de forma desacoplada post-respuesta
@@ -814,7 +828,7 @@ module.exports = async function turnosRoutes (fastify) {
     const { limite = 20, mesa_id } = request.query
 
     const params  = [limite]
-    let whereClause = `WHERE t.creado_en >= date_trunc('day', NOW())`
+    let whereClause = `WHERE (t.fecha_turno = fn_fecha_hoy() OR t.creado_en >= date_trunc('day', NOW()))`
 
     if (mesa_id) {
       params.push(mesa_id)

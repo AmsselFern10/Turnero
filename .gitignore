@@ -17,6 +17,10 @@ logs/
 # Docker — datos persistentes (nunca en repo)
 data/
 
+# Backups locales
+backups/
+*.sql.gz
+
 # IDE
 .vscode/
 .idea/

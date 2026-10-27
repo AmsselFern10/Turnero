@@ -36,9 +36,9 @@
 }
 
 /* ── 2. NÚMERO DEL PRÓXIMO TURNO EN ESPERA ────────────────────────────────── */
-/* Mantiene tamaño fijo optimizado para su recuadro (no afectado por deslizadores) */
+/* Mantiene tamaño optimizado y legible para su recuadro */
 .tv-prox-num {
-  font-size: clamp(1.5rem, min(4.2vh, 3.6vw), 3rem);
+  font-size: clamp(1.65rem, min(4.8vh, 3.8vw), 3.25rem);
   line-height: 1;
 }
 
@@ -52,7 +52,7 @@
 /* ── 4. IDENTIFICADORES DE MESA Y BANNER (Proporcionados y legibles) ──────── */
 /* Mesa principal en barra inferior (escala con la card principal) */
 .tv-mesa {
-  font-size: calc(clamp(1.85rem, min(5.5vh, 4.2vw), 4rem) * var(--tv-escala-principal, var(--tv-num-scale, 1)));
+  font-size: calc(clamp(2.1rem, min(6.2vh, 4.6vw), 4.5rem) * var(--tv-escala-principal, var(--tv-num-scale, 1)));
   line-height: 1;
   color: var(--primary-cobalt);
   font-weight: 900;
@@ -60,16 +60,16 @@
 
 /* Texto del banner DIRÍJASE A (escala con la card principal) */
 .tv-banner-text {
-  font-size: calc(clamp(1.125rem, min(2.8vh, 2vw), 1.875rem) * var(--tv-escala-principal, var(--tv-num-scale, 1)));
+  font-size: calc(clamp(1.25rem, min(3.2vh, 2.2vw), 2.15rem) * var(--tv-escala-principal, var(--tv-num-scale, 1)));
 }
 
-/* Banner del próximo turno en espera: compacto según mockup */
+/* Banner del próximo turno en espera: proporcionado verticalmente */
 .tv-hero-callout {
   background-color: rgba(239, 246, 255, 0.55);
   border: 1px solid var(--primary-border);
 }
 
-/* Barra de destino asignado: compacta y agrupada con el turno según mockup */
+/* Barra de destino asignado: mayor presencia vertical y armónica */
 .tv-hero-bottom {
   background-color: rgba(239, 246, 255, 0.65);
   border: 1px solid var(--primary-border);
@@ -200,10 +200,10 @@
   }
 
   .tv-hero-callout {
-    padding: 0.5rem 0.875rem !important;
+    padding: 0.65rem 1.15rem !important;
   }
 
   .tv-hero-bottom {
-    padding: 0.625rem 1rem !important;
+    padding: 0.85rem 1.35rem !important;
   }
 }

@@ -745,8 +745,24 @@ export function tvView() {
         return;
       }
 
-      // Si el hero actual ya está reproduciendo el re-llamado de este turno, descartar emisión duplicada
+      // Si el hero actual ya está reproduciendo el re-llamado de este turno, re-disparar audio y extender timer
       if (this.ultimoLlamado && this.glowState === 'rellamado' && Number(this.ultimoLlamado.numero) === Number(numero)) {
+        if (this._avanceTimer) {
+          clearTimeout(this._avanceTimer);
+          this._avanceTimer = setTimeout(() => {
+            this._avanceTimer = null;
+            if (this._watchdogTimer) { clearTimeout(this._watchdogTimer); this._watchdogTimer = null; }
+            if (this._cola.length === 0 && this._ultimoLlamadoReal) {
+              this.ultimoLlamado = { ...this._ultimoLlamadoReal };
+              this.proximoNumero = this._ultimoLlamadoReal.proximo ?? null;
+            }
+            this.glowState = 'idle';
+            this._reproducirSiguiente();
+          }, CFG.tiempoVisualizacionMs);
+        }
+        playCallChime()
+          .then(() => speakCall({ numero: Number(numero), mesa_numero, esRellamado: true }))
+          .catch(err => console.warn('[TV] Error en re-llamado activo:', err));
         return;
       }
 
@@ -890,7 +906,7 @@ export function tvView() {
         // ── AUDIO (campana + voz) en paralelo al temporizador de exhibición ──
         // Se lanzan sin await: el temporizador fijo es la única señal de avance.
         playCallChime()
-          .then(() => speakCall({ numero: item.numero, mesa_numero: item.mesa_numero }))
+          .then(() => speakCall({ numero: item.numero, mesa_numero: item.mesa_numero, esRellamado }))
           .catch(err => console.warn('[TV] Error en anuncio multimedia:', err));
 
         // ── TEMPORIZADOR FIJO DE EXHIBICIÓN ──────────────────────────────────

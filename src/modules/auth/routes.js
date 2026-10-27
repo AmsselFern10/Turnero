@@ -22,12 +22,12 @@ module.exports = async function authRoutes (fastify) {
   fastify.post('/login', {
     config: {
       rateLimit: {
-        max:         process.env.NODE_ENV === 'production' ? 5 : 100, // RNF-SEG-08: 5 en prod, 100 en dev/stress
-        timeWindow:  '5 minutes',
-        ban:         5,
+        max:         parseInt(process.env.RATE_LIMIT_LOGIN_MAX || '10', 10),
+        timeWindow:  '1 minute',
+        ban:         parseInt(process.env.RATE_LIMIT_LOGIN_MAX || '10', 10),
         errorResponseBuilder: () => ({
           statusCode: 429,
-          error: { codigo: 'demasiados_intentos', mensaje: 'Demasiados intentos. Intente de nuevo en 15 minutos.' }
+          error: { codigo: 'demasiados_intentos', mensaje: 'Demasiados intentos. Intente de nuevo en 1 minuto.' }
         })
       }
     },

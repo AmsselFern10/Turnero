@@ -163,16 +163,16 @@ function desuscribir (ws) {
  * @returns {number} Número de secuencia monotónico asignado
  */
 function broadcastLocal (canal, tipo, payload, customSeq = null, logger = null) {
+  // Invalidar caché de TV ante nuevos llamados independientemente de si hay suscriptores locales conectados
+  if (canal === 'tv:global') {
+    snapshotCacheTv = null
+  }
+
   const conns = suscriptores.get(canal)
   if (!conns || conns.size === 0) return 0
 
   const seq = customSeq !== null ? customSeq : ((canalSeqs.get(canal) || 0) + 1)
   if (customSeq === null) canalSeqs.set(canal, seq)
-
-  // Invalidar caché de TV ante nuevos llamados
-  if (canal === 'tv:global') {
-    snapshotCacheTv = null
-  }
 
   const mensaje = JSON.stringify({
     tipo,
@@ -536,6 +536,60 @@ async function hubPlugin (fastify) {
     ws.userId = user.id
     ws.isAlive = true
 
+    // Control de sesión única para ventanillas operativas (panel_mesa):
+    // Si ya existe una sesión previa conectada a esta mesa o este usuario operando una mesa,
+    // se notifica a la conexión anterior y se cierra limpiamente con código 4409.
+    if (canal.startsWith('mesa:')) {
+      const connsMesa = suscriptores.get(canal)
+      if (connsMesa && connsMesa.size > 0) {
+        for (const prevWs of Array.from(connsMesa)) {
+          if (prevWs !== ws && prevWs.readyState === 1 /* OPEN */) {
+            try {
+              prevWs.send(JSON.stringify({
+                tipo: 'sesion_duplicada',
+                payload: {
+                  mensaje: 'Se ha abierto una nueva sesión para esta ventanilla en otra ventana o dispositivo.',
+                  mesa_id: request.wsMesaId,
+                  motivo: 'sesion_duplicada'
+                },
+                seq: 0,
+                timestamp: new Date().toISOString()
+              }))
+              prevWs.close(4409, 'Sesion duplicada: ventanilla abierta en otra ventana')
+            } catch (_) {}
+            desuscribir(prevWs)
+          }
+        }
+      }
+
+      // También cerrar si este mismo usuario ya tenía otra sesión de mesa activa
+      if (user.id && userSockets.has(String(user.id))) {
+        const userConns = userSockets.get(String(user.id))
+        if (userConns && userConns.size > 0) {
+          for (const prevWs of Array.from(userConns)) {
+            if (prevWs !== ws && prevWs.canales) {
+              const tieneMesa = Array.from(prevWs.canales).some(c => c.startsWith('mesa:'))
+              if (tieneMesa && prevWs.readyState === 1 /* OPEN */) {
+                try {
+                  prevWs.send(JSON.stringify({
+                    tipo: 'sesion_duplicada',
+                    payload: {
+                      mensaje: 'Se ha abierto una nueva sesión para este usuario en otra ventana o dispositivo.',
+                      motivo: 'sesion_duplicada'
+                    },
+                    seq: 0,
+                    timestamp: new Date().toISOString()
+                  }))
+                  prevWs.close(4409, 'Sesion duplicada: usuario conectado en otra ventana')
+                } catch (_) {}
+                desuscribir(prevWs)
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Suscribir socket al canal verificado
     suscribir(canal, ws)
     if (canal.startsWith('mesa:')) {
@@ -611,8 +665,12 @@ async function hubPlugin (fastify) {
 
   // ── Heartbeat unificado global (WS-011: 1 solo timer en event loop) ────────
   const globalHeartbeatTimer = setInterval(() => {
+    const socketsVistos = new Set()
     for (const conns of suscriptores.values()) {
       for (const ws of conns) {
+        if (socketsVistos.has(ws)) continue
+        socketsVistos.add(ws)
+
         if (!ws.isAlive) {
           fastify.log.debug({ userId: ws.userId }, 'Terminando socket zombi por falta de respuesta')
           try { ws.terminate() } catch (_) {}
