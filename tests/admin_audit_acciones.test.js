@@ -1,13 +1,10 @@
 'use strict'
 
 /**
- * Consistencia de audit_log.accion
- *
- * Verifica que todos los valores en AUDIT_ACCIONES coincidan con la restriccion
- * CHECK real de PostgreSQL en la base de datos.
- *
- * Requiere: Base de datos accesible.
- * Ejecucion: node tests/audit-acciones.test.js
+ * MÓDULO: admin_gestion
+ * OBJETIVO: Verificar que todos los valores en AUDIT_ACCIONES coincidan con la
+ *   restricción CHECK real de audit_log_accion_check en PostgreSQL.
+ * EJECUCIÓN: node tests/admin_audit_acciones.test.js
  */
 
 const { Client } = require('pg')

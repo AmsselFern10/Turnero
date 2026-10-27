@@ -1,15 +1,9 @@
 /**
- * Verificacion de Invariantes y Restricciones de Base de Datos
- *
- * Comprueba las reglas de negocio criticas en PostgreSQL:
- * 1. Solo 1 lote activo simultaneamente.
- * 2. Maximo 1 turno en atencion por mesa.
- * 3. Maximo 1 mesa asignada por operador.
- * 4. Inmutabilidad de la tabla audit_log.
- * 5. Secuencia correlativa sin regresion en lotes.
- *
- * Requiere: Base de Datos corriendo.
- * Ejecucion: node tests/verificacion.test.js
+ * MÓDULO: admin_gestion
+ * OBJETIVO: Comprobar las invariantes y restricciones de negocio críticas en PostgreSQL:
+ *   lote único activo, 1 turno en atención por mesa, operador único por mesa,
+ *   inmutabilidad de audit_log, no-regresión de numeración y concurrencia.
+ * EJECUCIÓN: node tests/admin_invariantes_bd.test.js
  */
 
 require('dotenv').config()

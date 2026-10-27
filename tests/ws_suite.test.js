@@ -1,11 +1,8 @@
 /**
- * Suite de Verificacion de WebSockets y Tiempo Real
- *
- * Valida conexion con JWT, suscripcion a canales segmentados (mesa, tv, admin),
- * heartbeat (ping/pong) y transmision reactiva de llamados.
- *
- * Requiere: Servidor HTTP/WS, Redis y Base de Datos corriendo.
- * Ejecucion: node tests/ws-suite.test.js
+ * MÓDULO: ws_hub
+ * OBJETIVO: Validación de WebSockets y tiempo real: conexión con JWT, suscripción
+ *   a canales segmentados (mesa, tv, admin), heartbeat (ping/pong) y transmisión reactiva de llamados.
+ * EJECUCIÓN: node tests/ws_suite.test.js
  */
 
 const WebSocket = require('ws')

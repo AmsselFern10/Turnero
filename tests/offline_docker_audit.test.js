@@ -1,14 +1,8 @@
 /**
- * Auditoria Offline y Docker - Turnero 2026 (v2.1 consolidado)
- *
- * Verifica sin necesidad de servidor ni base de datos:
- * 1. HTMLs sin recursos externos (scripts, CSS, fuentes de CDN).
- * 2. CSS y fuentes 100% autoalojadas.
- * 3. Controladores JS con ciclo de vida destroy().
- * 4. Archivos de Docker y despliegue presentes y correctos.
- * 5. Migraciones SQL consolidadas (4 archivos, 001 a 004).
- *
- * Ejecucion: node tests/offline-docker-audit.test.js
+ * MÓDULO: offline_docker_audit
+ * OBJETIVO: Auditoría offline y Docker: HTMLs sin recursos externos (CDN),
+ *   CSS y fuentes autoalojadas, controladores con destroy(), Dockerfiles y migraciones SQL.
+ * EJECUCIÓN: node tests/offline_docker_audit.test.js
  */
 
 const fs   = require('fs');

@@ -1,12 +1,10 @@
 /**
- * Auditoria del Panel de Operador (Ventanilla)
- *
- * Verifica la recepcion de llamados en tiempo real, sincronizacion de estado
- * y aislamiento de turnos en cada mesa operativa.
- *
- * Requiere: Servidor HTTP/WS y Base de Datos corriendo.
- * Ejecucion: node tests/panel-audit.test.js
+ * MÓDULO: panel_mesa
+ * OBJETIVO: Verificar el snapshot de estado consolidado, idempotencia de llamadas
+ *           y sincronización WebSocket entre mesas y la TV (auditoría del panel).
+ * EJECUCIÓN: node tests/mesa_acciones_snapshot_idempotencia.test.js
  */
+
 
 const WebSocket = require('ws')
 const { Pool } = require('pg')
@@ -50,11 +48,16 @@ async function run() {
 
   // 1. Preparación de la base de datos
   console.log('1. Preparando estado de la BD (Lote activo y 3 mesas asignadas)...')
-  // Asegurar que existe lote activo con vouchers
+  // Asegurar que existe exactamente un lote activo con vouchers suficientes.
+  // Primero pausar cualquier activo existente para evitar conflicto de unique constraint,
+  // luego activar/crear el lote de prueba.
+  await pool.query(`UPDATE lotes_voucher SET estado = 'pausado' WHERE estado = 'activo'`)
   await pool.query(`
-    UPDATE lotes_voucher
-    SET estado = 'activo', numero_hasta = 1000
-    WHERE id = 1
+    INSERT INTO lotes_voucher (id, numero_lote, numero_desde, numero_hasta, ultimo_numero_llamado, estado)
+    VALUES (1, 1, 1, 1000, 0, 'activo')
+    ON CONFLICT (id) DO UPDATE
+      SET estado = 'activo',
+          numero_hasta = 1000
   `)
 
   // Liberar asignaciones previas para evitar conflicto en ux_mesas_operador_unico

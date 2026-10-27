@@ -1,5 +1,12 @@
 'use strict'
 
+/**
+ * MÓDULO: admin_gestion
+ * OBJETIVO: Verificación integral de todas las claves de configuración del sistema,
+ *   auditoría inmutable de cambios (audit_log), control de acceso RBAC y reglas de UI.
+ * EJECUCIÓN: node tests/admin_configuracion_sistema.test.js
+ */
+
 const { Pool } = require('pg')
 const bcrypt = require('bcrypt')
 const jwt = require('jsonwebtoken')

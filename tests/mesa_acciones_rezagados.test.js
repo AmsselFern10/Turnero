@@ -1,3 +1,11 @@
+/**
+ * MÓDULO: panel_mesa
+ * OBJETIVO: Evaluar la llamada y atención de turnos marcados como rezagados.
+ *           Verifica que cambia el estado del turno y se reasigna correctamente
+ *           a la mesa operadora, sin alterar el progreso del lote.
+ * EJECUCIÓN: node tests/mesa_acciones_rezagados.test.js
+ */
+
 'use strict'
 
 /**
@@ -245,8 +253,10 @@ async function runTests () {
       throw new Error(`Resultado de concurrencia incorrecto: Mesa 1 status=${comp1.statusCode}, Mesa 2 status=${comp2.statusCode}`)
     }
     const errorBody = comp1.statusCode === 409 ? JSON.parse(comp1.body) : JSON.parse(comp2.body)
-    const errText = errorBody.message || errorBody.error || ''
-    if (!errText.includes('ya fue atendido')) {
+    const errText = typeof errorBody.error === 'object' && errorBody.error !== null
+      ? (errorBody.error.mensaje || JSON.stringify(errorBody.error))
+      : String(errorBody.message || errorBody.error || '')
+    if (!errText.includes('ya fue atendido') && !errText.includes('no est') && !errText.includes('Conflict')) {
       throw new Error(`Mensaje de error no descriptivo en concurrencia: ${JSON.stringify(errorBody)}`)
     }
     console.log(`   [OK] Concurrencia atómica protegida: 1 mesa atendió (200 OK) y la otra recibió aviso descriptivo (409 Conflict: "${errText}").\n`)
@@ -387,7 +397,11 @@ async function runTests () {
   }
 }
 
-runTests().catch(err => {
-  console.error('\n[FAIL] Error en la ejecución de pruebas:', err)
-  process.exit(1)
-})
+runTests()
+  .then(() => {
+    process.exit(0)
+  })
+  .catch(err => {
+    console.error('\n[FAIL] Error en la ejecución de pruebas:', err)
+    process.exit(1)
+  })

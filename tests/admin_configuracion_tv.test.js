@@ -1,13 +1,7 @@
 /**
- * ==============================================================================
- * Test de Verificación: Dos Deslizadores Independientes para TV (v2.1)
- * ==============================================================================
- * Pruebas requeridas:
- * 1. Mover el primero: solo cambia el número principal. Mover el segundo: solo cambian los 4 turnos anteriores y el banner.
- * 2. Con la TV abierta, ambos cambios se ven al instante, sin recargar (WS preview y config).
- * 3. "Restablecer" de cada uno vuelve a su valor por defecto (100%) sin tocar al otro.
- * 4. Valores extremos y 4 dígitos: nada se corta ni sale de la pantalla (720p, 1080p, 4K).
- * 5. Sin red, la TV recargada usa el último valor guardado.
+ * MÓDULO: admin_gestion
+ * OBJETIVO: Probar los parámetros visuales de la TV: persistencia y propagación en tiempo real de opacidad, escala tipográfica, fondos y dos deslizadores independientes.
+ * EJECUCIÓN: node tests/admin_configuracion_tv.test.js
  */
 
 'use strict'
@@ -23,7 +17,7 @@ const buildApp = require('../src/app')
 
 async function runTests() {
   console.log('======================================================================')
-  console.log(' INICIANDO VERIFICACIÓN: DOS DESLIZADORES INDEPENDIENTES PARA TV')
+  console.log(' ADMIN — PARÁMETROS VISUALES Y ESCALAS DE TV')
   console.log('======================================================================\n')
 
   const app = await buildApp()
@@ -220,7 +214,9 @@ async function runTests() {
   }
 }
 
-runTests().catch(err => {
+runTests().then(() => {
+  process.exit(0)
+}).catch(err => {
   console.error('\n❌ ERROR EN PRUEBAS:', err)
   process.exit(1)
 })

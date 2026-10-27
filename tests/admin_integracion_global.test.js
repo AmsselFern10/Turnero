@@ -1,11 +1,8 @@
 /**
- * ==============================================================================
- * VERIFICACION FINAL: TV, PANEL DE MESA, ADMIN Y KIOSKO EN VIVO
- * Sistema Turnero de Matrículas 2026 (v2.1)
- *
- * Simula 3 Paneles de Operador, 1 Pantalla TV, 1 Admin y 3 Smartphones (Kiosko)
- * validando los 11 escenarios en tiempo real solicitados por el usuario.
- * ==============================================================================
+ * MÓDULO: admin_gestion
+ * OBJETIVO: Verificación de integración global end-to-end simulando 3 Paneles de Operador,
+ *   1 Pantalla TV, 1 Admin y 3 Smartphones (Kiosko) validando 11 escenarios en tiempo real.
+ * EJECUCIÓN: node tests/admin_integracion_global.test.js
  */
 
 'use strict'
@@ -63,6 +60,7 @@ async function run () {
   await pool.query("DELETE FROM kiosko_contador_diario")
   await pool.query("UPDATE configuracion SET valor = 'false' WHERE clave = 'kiosko_web_activo'")
   await pool.query("UPDATE configuracion SET valor = 'voucher_fisico' WHERE clave = 'modo_generacion_turnos'")
+  await pool.query("UPDATE configuracion SET valor = 'estudiante' WHERE clave = 'kiosko_modo_uso'")
 
   // 2. Levantar servidor Fastify en TEST_PORT
   console.log('[1/4] Levantando servidor de pruebas en puerto ' + TEST_PORT + '...')
@@ -354,6 +352,11 @@ async function run () {
     headers: { 'Authorization': `Bearer ${tokenAdmin}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ valor: 'kiosko_web' })
   })
+  await fetch(`${BASE_HTTP}/admin/configuracion/kiosko_modo_uso`, {
+    method: 'PATCH',
+    headers: { 'Authorization': `Bearer ${tokenAdmin}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ valor: 'estudiante' })
+  })
 
   await sleep(150)
 
@@ -375,10 +378,12 @@ async function run () {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-Device-Id': `device_test_${i}`,
         'Idempotency-Key': crypto.randomUUID()
       },
       body: JSON.stringify({
         deviceId: `device_test_${i}`,
+        device_id: `device_test_${i}`,
         modo: 'celular'
       })
     }).then(r => r.json())
@@ -582,6 +587,8 @@ async function run () {
 
   if (failedCount > 0) {
     process.exit(1)
+  } else {
+    process.exit(0)
   }
 }
 
