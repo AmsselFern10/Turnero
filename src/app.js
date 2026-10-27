@@ -49,11 +49,11 @@ async function buildApp (opts = {}) {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc:  ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net"],
+        scriptSrc:  ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
         connectSrc: ["'self'", "ws:", "wss:"],
-        styleSrc:   ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        fontSrc:    ["'self'", "https://fonts.gstatic.com"],
-        imgSrc:     ["'self'", "data:"],
+        styleSrc:   ["'self'", "'unsafe-inline'"],
+        fontSrc:    ["'self'"],
+        imgSrc:     ["'self'", "data:", "blob:"],
         upgradeInsecureRequests: null
       }
     }
