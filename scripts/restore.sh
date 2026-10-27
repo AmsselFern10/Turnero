@@ -50,6 +50,11 @@ docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d postgres -c \
   "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$DB_NAME' AND pid <> pg_backend_pid();" \
   > /dev/null 2>&1 || true
 
+# Limpiar esquema public para evitar colisiones de tablas, funciones y primary keys existentes
+docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -c \
+  "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO $DB_USER; GRANT ALL ON SCHEMA public TO public;" \
+  > /dev/null 2>&1 || true
+
 # Restaurar
 gunzip -c "$BACKUP_FILE" | docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME"
 

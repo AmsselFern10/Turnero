@@ -1,16 +1,12 @@
-'use strict'
+'use strict';
 
 /**
- * Script de Seed - Turnero de Matriculas 2026 (v2.1)
- *
- * Limpia la base de datos y genera el estado base operativo:
- * - 2 Administradores:
- *     * admin  / admin
- *     * admin2 / soporte
- * - 5 Operadores: op1 a op5 / Operador2026!
- * - 10 Mesas: Mesa 1 a Mesa 10 (estado: inactiva)
- * - 1 Lote de Vouchers: 1 a 500 (estado: activo)
- * - Configuracion del sistema (21 claves, kiosko desactivado, modo voucher_fisico)
+ * ARCHIVO: scripts/seed.js
+ * DESCRIPCIÓN: Puebla la base de datos con los datos iniciales de prueba y estado base operativo:
+ *              administradores, operadores con contraseñas bcrypt reales, mesas inactivas,
+ *              lote inicial activo y las 24 claves de configuración del sistema v2.1.
+ * EJECUCIÓN: node scripts/seed.js
+ *            npm run seed
  */
 
 const fs = require('fs')
@@ -170,9 +166,15 @@ async function seed() {
               actualizado_en = NOW()
       `, [clave, valor, descripcion])
     }
-    console.log('[OK] 21 parametros de configuracion actualizados.')
+    console.log('[OK] 24 parametros de configuracion actualizados.')
 
     await client.query('COMMIT')
+    try {
+      const Redis = require('ioredis')
+      const redisClient = new Redis(process.env.REDIS_URL || 'redis://localhost:6379')
+      await redisClient.flushall()
+      await redisClient.quit()
+    } catch (_) {}
 
     console.log('\n[DONE] Seed completado exitosamente.')
     console.log('----------------------------------------------------')

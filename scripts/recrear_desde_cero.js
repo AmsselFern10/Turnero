@@ -1,3 +1,13 @@
+'use strict';
+
+/**
+ * ARCHIVO: scripts/recrear_desde_cero.js
+ * DESCRIPCIÓN: Reconstruye la base de datos por completo desde cero: elimina todas las tablas,
+ *              tipos, vistas y secuencias, ejecuta las migraciones en orden (001 a 005)
+ *              y puebla los datos iniciales mediante seed.js.
+ * EJECUCIÓN: node scripts/recrear_desde_cero.js
+ */
+
 const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');

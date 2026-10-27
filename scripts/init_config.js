@@ -1,3 +1,13 @@
+'use strict';
+
+/**
+ * ARCHIVO: scripts/init_config.js
+ * DESCRIPCIÓN: Inicializa e inserta las claves y valores por defecto en la tabla 'configuracion'
+ *              de PostgreSQL si no existen, asegurando que todos los parámetros del sistema
+ *              (tiempos, alertas, kiosko, audio, límites) queden sincronizados con el schema v2.1.
+ * EJECUCIÓN: node scripts/init_config.js
+ */
+
 const fs = require('fs');
 const path = require('path');
 
@@ -43,7 +53,7 @@ const pool = new Pool({
     `postgresql://${process.env.DB_USER || 'postgres'}:${encodeURIComponent(process.env.DB_PASSWORD || 'turnero')}@${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT_EXPOSED || 5432}/${process.env.DB_NAME || 'turnero'}`
 });
 
-// 21 claves sincronizadas con 001_tablas_datos.sql + 004_complementos.sql (migracion consolidada v2.1.2)
+// 24 claves sincronizadas con 001_tablas_datos.sql + 004_complementos.sql (migracion consolidada v2.1.2)
 const sql = `
 INSERT INTO configuracion (clave, valor, descripcion) VALUES
   ('alerta_vouchers_restantes',   '20',                                    'Umbral de vouchers restantes en el lote activo para emitir alerta al administrador (1 a 500).'),
@@ -56,7 +66,9 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
   ('voz_anuncio_activa',          'true',                                   'Reproducir anuncio por voz sintetica en la pantalla publica al llamar cada turno.'),
   ('impresora_ip',                '',                                       'Direccion IP de la impresora termica ESC/POS en la red local.'),
   ('impresora_puerto',            '9100',                                   'Puerto TCP de la impresora termica ESC/POS (estandar: 9100).'),
-  ('impresora_activa',            'false',                                  'Habilitar la impresion fisica directa de tickets desde el servidor via LAN.'),
+    ('impresora_activa',            'false',                                  'Habilitar la impresion fisica directa de tickets desde el servidor via LAN.'),
+  ('impresora_canal',             'directa',                                'Canal de impresion: directa (red LAN ESC/POS), sistema (dialogo del navegador) o bluetooth.'),
+  ('impresora_ancho_papel',       '58',                                     'Ancho del papel termico en milimetros: 58 (32 caracteres) o 80 (48 caracteres).'),
   ('tv_escala_turnos',            '100',                                    'Escala porcentual para el tamano de los numeros de turno en pantalla TV, compatibilidad (75-140).'),
   ('tv_escala_principal',         '100',                                    'Escala porcentual del numero de turno principal en pantalla TV (75-140).'),
   ('tv_escala_secundaria',        '100',                                    'Escala porcentual de turnos anteriores y banner de mesa en TV (75-140).'),
@@ -76,7 +88,7 @@ ON CONFLICT (clave) DO UPDATE
 
 pool.query(sql)
   .then(() => {
-    console.log('[OK] CONFIGURACION INICIALIZADA EXITOSAMENTE (21 claves, kiosko desactivado)');
+    console.log('[OK] CONFIGURACION INICIALIZADA EXITOSAMENTE (24 claves, kiosko desactivado)');
     pool.end();
   })
   .catch(err => {

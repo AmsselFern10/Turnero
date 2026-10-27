@@ -1,4 +1,12 @@
-'use strict'
+'use strict';
+
+/**
+ * ARCHIVO: scripts/run_migration.js
+ * DESCRIPCIÓN: Ejecuta un archivo de migración SQL individual contra la base de datos configurada,
+ *              mostrando el resultado y la distribución de roles resultante.
+ * EJECUCIÓN: node scripts/run_migration.js <ruta_a_archivo.sql>
+ */
+
 const { Pool } = require('pg')
 const fs = require('fs')
 const path = require('path')

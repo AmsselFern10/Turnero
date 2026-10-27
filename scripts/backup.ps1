@@ -48,7 +48,7 @@ Write-Host "[$([datetime]::UtcNow.ToString('o'))] Iniciando respaldo de $DbName.
 # pg_dump dentro del contenedor | comprimir con gzip (requiere git-bash o WSL en PATH)
 # Alternativa: usa el pg_dump nativo si tienes PostgreSQL client instalado en Windows
 try {
-    $dump = & docker exec $DbContainer pg_dump -U $DbUser -Fp --no-password $DbName
+    $dump = & docker exec $DbContainer pg_dump -U $DbUser --clean --if-exists -Fp --no-password $DbName
     if ($LASTEXITCODE -ne 0) { throw "pg_dump fallo con codigo $LASTEXITCODE" }
 
     # Comprimir con System.IO.Compression

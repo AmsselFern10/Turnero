@@ -41,7 +41,7 @@ mkdir -p "$BACKUP_DIR"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Iniciando respaldo de $DB_NAME..."
 
 docker exec "$DB_CONTAINER" \
-  pg_dump -U "$DB_USER" -Fp --no-password "$DB_NAME" \
+  pg_dump -U "$DB_USER" --clean --if-exists -Fp --no-password "$DB_NAME" \
   | gzip -9 > "$BACKUP_FILE"
 
 BACKUP_SIZE=$(du -sh "$BACKUP_FILE" | cut -f1)

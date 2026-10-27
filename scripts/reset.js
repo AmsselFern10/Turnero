@@ -1,15 +1,13 @@
-'use strict'
+'use strict';
 
 /**
- * Script de Reseteo Total — Turnero de Matriculas 2026 (v2.1)
- *
- * Accion:
- * - Vacia completamente todas las tablas operativas: turnos, lotes, mesas, audit_log y usuarios.
- * - Reinicia secuencias numericas.
- * - Crea UNICAMENTE el usuario administrador: admin / soporte
- * - Deja 0 mesas, 0 lotes y 0 operadores.
- * - Limpia llaves en Redis si esta disponible.
- * - Cero emojis en salida.
+ * ARCHIVO: scripts/reset.js
+ * DESCRIPCIÓN: Realiza un reseteo operativo de la base de datos: vacía las tablas transaccionales
+ *              (turnos, lotes_voucher, mesas, audit_log, usuarios), reinicia secuencias
+ *              y crea únicamente el usuario administrador inicial (admin / soporte),
+ *              limpiando también las claves en Redis.
+ * EJECUCIÓN: node scripts/reset.js
+ *            npm run db:reset
  */
 
 const fs = require('fs')
@@ -84,7 +82,7 @@ async function resetearSistema() {
     `, ['admin', 'Administrador del Sistema', adminHash, 'admin'])
     const adminId = resAdmin.rows[0].id
 
-    // 4. Restaurar configuracion base (21 claves completas)
+    // 4. Restaurar configuracion base (24 claves completas)
     const configuraciones = [
       ['alerta_vouchers_restantes',   '20',                                    'Umbral de vouchers restantes en el lote activo para emitir alerta al administrador (1 a 500).'],
       ['modo_generacion_turnos',      'voucher_fisico',                         'Modo operativo activo del sistema: voucher_fisico (papel) o kiosko_web (digital).'],
@@ -96,7 +94,9 @@ async function resetearSistema() {
       ['voz_anuncio_activa',          'true',                                   'Reproducir anuncio por voz sintetica en la pantalla publica al llamar cada turno.'],
       ['impresora_ip',                '',                                       'Direccion IP de la impresora termica ESC/POS en la red local.'],
       ['impresora_puerto',            '9100',                                   'Puerto TCP de la impresora termica ESC/POS (estandar: 9100).'],
-      ['impresora_activa',            'false',                                  'Habilitar la impresion fisica directa de tickets desde el servidor via LAN.'],
+            ['impresora_activa',            'false',                                  'Habilitar la impresion fisica directa de tickets desde el servidor via LAN.'],
+      ['impresora_canal',             'directa',                                'Canal de impresion: directa (red LAN ESC/POS), sistema (dialogo del navegador) o bluetooth.'],
+      ['impresora_ancho_papel',       '58',                                     'Ancho del papel termico en milimetros: 58 (32 caracteres) o 80 (48 caracteres).'],
       ['tv_escala_turnos',            '100',                                    'Escala porcentual para el tamano de los numeros de turno en pantalla TV, compatibilidad (75-140).'],
       ['tv_escala_principal',         '100',                                    'Escala porcentual del numero de turno principal en pantalla TV (75-140).'],
       ['tv_escala_secundaria',        '100',                                    'Escala porcentual de turnos anteriores y banner de mesa en TV (75-140).'],

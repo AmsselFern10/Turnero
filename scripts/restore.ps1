@@ -53,6 +53,10 @@ try {
     docker exec $DbContainer psql -U $DbUser -d postgres -c `
       "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$DbName' AND pid <> pg_backend_pid();" 2>$null | Out-Null
 
+    # Limpiar esquema public para evitar colisiones de tablas, funciones y primary keys existentes
+    docker exec $DbContainer psql -U $DbUser -d $DbName -c `
+      "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO $DbUser; GRANT ALL ON SCHEMA public TO public;" 2>$null | Out-Null
+
     # Restaurar
     $sql | docker exec -i $DbContainer psql -U $DbUser -d $DbName
     if ($LASTEXITCODE -ne 0) { throw "psql fallo con codigo $LASTEXITCODE" }
