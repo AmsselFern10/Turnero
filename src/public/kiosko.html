@@ -476,17 +476,16 @@
               <span class="pill pill-primary text-[10px] py-0.5 px-2">Recomendado para red LAN</span>
             </div>
             <p class="text-slate-500 mt-0.5">Envío directo de bytes ESC/POS al puerto 9100 de la impresora en red. Compatible de forma nativa en red local HTTP.</p>
-            <div x-show="canalImpresion === 'servidor'" class="mt-2.5 pt-2 border-t border-slate-200/80 space-y-2">
-              <div class="text-[11px] text-slate-600">
-                <span>IP general del sistema: </span>
-                <span class="font-mono-num font-bold text-slate-800" x-text="impresoraServidorIp || 'Sin configurar en Ajustes'"></span>
-              </div>
-              <div>
-                <label class="block text-[11px] font-medium text-slate-700 mb-1">IP específica para esta tablet (opcional):</label>
+            <div x-show="canalImpresion === 'servidor'" class="mt-2.5 pt-2.5 border-t border-slate-200/80 space-y-1.5">
+              <label class="block text-[11px] font-semibold text-slate-700">Dirección IP de la impresora térmica:</label>
+              <div class="relative">
                 <input type="text" x-model="ipTabletPersonalizada"
-                       placeholder="Ej: 192.168.1.150 (vacío para usar la del sistema)"
-                       class="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-mono-num focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                       placeholder="Ej: 192.168.0.150"
+                       class="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-mono-num focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
               </div>
+              <p class="text-[11px] text-slate-500 leading-relaxed">
+                Cada tablet gestiona directamente la IP de su impresora en red (puerto TCP 9100).
+              </p>
             </div>
           </div>
         </label>
@@ -598,16 +597,19 @@
       </div>
 
       <!-- Prueba de Impresión y Avisos -->
-      <div class="pt-3 border-t border-slate-200 space-y-3">
-        <div class="flex items-center justify-between">
-          <span class="text-xs text-slate-600">Verifique el funcionamiento antes de iniciar jornada:</span>
+      <div class="pt-3 border-t border-slate-200 space-y-2.5">
+        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="text-xs">
+            <span class="font-bold text-slate-800 block">Comprobación de hardware</span>
+            <span class="text-slate-500 text-[11px]">Verifique la conexión antes de iniciar la jornada</span>
+          </div>
           <button type="button" @click="probarImpresion()" :disabled="probandoImpresora || canalImpresion === 'ninguno'"
                   title="Imprimir ticket de prueba" aria-label="Imprimir ticket de prueba"
-                  class="btn-xs btn-secondary flex items-center gap-1.5 shadow-2xs cursor-pointer">
-            <svg class="w-3.5 h-3.5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  class="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-semibold text-xs shadow-xs transition-all active:scale-[0.98] cursor-pointer whitespace-nowrap flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed">
+            <svg class="w-4 h-4 stroke-[2] text-slate-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24-1.076-.673-2.13-1.27-3.104m12.1 0c-.597.974-1.03 2.028-1.27 3.104M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-18 0A2.25 2.25 0 015.25 14.25h13.5A2.25 2.25 0 0121 16.5m-18 0h18" />
             </svg>
-            <span x-text="probandoImpresora ? 'Probando...' : 'Imprimir ticket de prueba'">Imprimir ticket de prueba</span>
+            <span x-text="probandoImpresora ? 'Imprimiendo prueba...' : 'Imprimir ticket de prueba'">Imprimir ticket de prueba</span>
           </button>
         </div>
 

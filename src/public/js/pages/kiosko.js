@@ -519,6 +519,9 @@ export function kioskoView () {
         }
         if (res.impresora_ip !== undefined) {
           this.impresoraServidorIp = res.impresora_ip || '';
+          if (!this.ipTabletPersonalizada && this.impresoraServidorIp) {
+            this.ipTabletPersonalizada = this.impresoraServidorIp;
+          }
         }
         if (res.impresora_puerto !== undefined) {
           this.impresoraServidorPuerto = parseInt(res.impresora_puerto, 10) || 9100;
